@@ -1306,7 +1306,10 @@ function loadSocketIoScript(callback){
 function joinMultiplayer(){
   const url = document.getElementById('mpServerUrl').value.trim().replace(/\/$/, '');
   const roomCode = document.getElementById('mpRoomCode').value.trim() || 'default';
-  const name = document.getElementById('playerNameInput').value.trim() || randomName();
+  // 서버도 이름을 12글자로 잘라서 저장하니, 우리도 똑같이 잘라야
+  // 나중에 "내가 잡았어요" 판정(by === playerName)이 어긋나지 않아요
+  const name = (document.getElementById('playerNameInput').value.trim() || randomName()).slice(0, 12);
+  playerName = name; // 싱글플레이를 안 거치고 바로 온라인으로 들어와도 "내 캐치"를 알아볼 수 있게 해줘요
 
   if(!url){
     document.getElementById('mpStatus').textContent = '서버 주소를 먼저 입력해주세요!';
