@@ -5,6 +5,7 @@
 
 const express = require('express');
 const http = require('http');
+const path = require('path');
 const { Server } = require('socket.io');
 
 const app = express();
@@ -12,13 +13,24 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
 // public 폴더 안의 게임 파일(index.html 등)을 그대로 보여줘요
-app.use(express.static('public'));
+// (어느 폴더에서 node server.js를 실행해도 항상 이 파일 옆의 public을 찾도록 절대경로를 써요)
+app.use(express.static(path.join(__dirname, 'public')));
 
 // 방(room) 하나마다: 참가자 목록, 현재 떠있는 물고기, 라운드 타이머 등을 저장해요
 const rooms = {};
 
 const ROUND_SECONDS = 60;
 const RESET_DELAY_MS = 6000; // 라운드가 끝나고 이만큼 기다렸다가 새 라운드를 시작해요
+const MAX_ROOMS = 200; // 방이 너무 많이 만들어지는 걸 막아요
+const MAX_PLAYERS_PER_ROOM = 20; // 방 하나에 너무 많은 사람이 몰리는 걸 막아요
+
+// 물고기가 화면을 가로지르는 시간(ms)을 정하는 기준이에요.
+// 실제 화면 폭은 친구마다 다르지만(핸드폰/모니터), 이 "시간"만큼은 모두가 똑같이 써야
+// 서버가 물고기를 지우는 시점과 친구들 화면이 어긋나지 않아요.
+const FISH_DURATION_REFERENCE_PX = 1380; // 평범한 화면 폭(1280) + 여유값
+function fishDurationMs(speed){
+  return (FISH_DURATION_REFERENCE_PX / (speed * 40)) * 1000;
+}
 
 // 단계(레벨) 설정: 방에서 가장 점수가 높은 친구를 기준으로 다 같이 단계가 올라가요
 // (index.html의 levelStages와 맞춰뒀어요)
@@ -71,6 +83,19 @@ function pickFishType(){
   return fishTypes[0];
 }
 
+// 방 코드는 대소문자/앞뒤 공백뿐 아니라 중간 공백도 무시해서, 친구끼리 코드를
+// 살짝 다르게 입력해도(예: "HOYA 123" vs "HOYA123") 같은 방으로 만나게 해줘요
+function normalizeRoomCode(raw){
+  const str = typeof raw === 'string' ? raw : String(raw || '');
+  const cleaned = str.toUpperCase().replace(/\s+/g, '');
+  return cleaned || 'DEFAULT';
+}
+
+function normalizeName(raw){
+  const str = typeof raw === 'string' ? raw : String(raw || '');
+  return (str.trim() || '친구').slice(0, 12);
+}
+
 function getRoom(code){
   if(!rooms[code]){
     rooms[code] = {
@@ -83,6 +108,7 @@ function getRoom(code){
       rivalTimer: null,
       weatherTimer: null,
       weatherEndTimer: null,
+      resetTimer: null,
       activeWeather: null, // 'storm' | 'snow' | null
       timeLeft: ROUND_SECONDS,
       started: false,
@@ -101,22 +127,23 @@ function spawnFishForRoom(code){
   const id = 'f' + (room.fishIdCounter++);
   const fromLeft = Math.random() < 0.5;
   const y = 0.2 + Math.random() * 0.55;
-  const fishData = { id, type, fromLeft, y, startTime: Date.now() };
+  const durationMs = fishDurationMs(type.speed);
+  const fishData = { id, type, fromLeft, y, startTime: Date.now(), durationMs };
   room.fish[id] = fishData;
   io.to(code).emit('fishSpawn', fishData);
 
-  const duration = 11000 / type.speed;
   setTimeout(() => {
     if(room.fish[id]){
       delete room.fish[id];
       io.to(code).emit('fishExpire', { id });
     }
-  }, duration);
+  }, durationMs);
 }
 
 function scheduleBossForRoom(code){
   const room = rooms[code];
   if(!room) return;
+  clearTimeout(room.bossTimer);
   const delay = 22000 + Math.random() * 15000; // 22~37초마다 랜덤하게 보스 등장 (싱글플레이와 동일)
   room.bossTimer = setTimeout(() => spawnBossForRoom(code), delay);
 }
@@ -128,18 +155,18 @@ function spawnBossForRoom(code){
   const id = 'boss' + (room.fishIdCounter++);
   const fromLeft = Math.random() < 0.5;
   const y = 0.25 + Math.random() * 0.5;
-  const fishData = { id, type: bossType, fromLeft, y, startTime: Date.now() };
+  const durationMs = fishDurationMs(bossType.speed);
+  const fishData = { id, type: bossType, fromLeft, y, startTime: Date.now(), durationMs };
   room.fish[id] = fishData;
   io.to(code).emit('fishSpawn', fishData);
 
-  const duration = 11000 / bossType.speed;
   setTimeout(() => {
     if(room.fish[id]){
       delete room.fish[id];
       io.to(code).emit('fishExpire', { id });
       scheduleBossForRoom(code); // 보스가 도망가면 다음 보스를 또 예약해요
     }
-  }, duration);
+  }, durationMs);
 }
 
 // 지금 단계 + 날씨 상태에 맞는 스폰 속도로 물고기 생성 타이머를 다시 맞춰요
@@ -173,6 +200,7 @@ function checkLevelUpForRoom(code){
 function scheduleRivalForRoom(code){
   const room = rooms[code];
   if(!room) return;
+  clearTimeout(room.rivalTimer);
   const delay = 6000 + Math.random() * 6000; // 6~12초마다 랜덤하게 등장 (싱글플레이와 동일)
   room.rivalTimer = setTimeout(() => tryStealForRoom(code), delay);
 }
@@ -181,12 +209,13 @@ function tryStealForRoom(code){
   const room = rooms[code];
   if(!room) return;
 
-  const fishList = Object.values(room.fish);
-  if(fishList.length === 0){ scheduleRivalForRoom(code); return; }
+  // 보스는 친구들이 직접 잡거나 도망가게 두고, 해적은 노리지 않아요
+  const stealable = Object.values(room.fish).filter(f => !f.type.isBoss);
+  if(stealable.length === 0){ scheduleRivalForRoom(code); return; }
 
   // 보물통이 떠 있으면 그것부터 노려요!
-  const treasures = fishList.filter(f => f.type.isTreasure);
-  const pool = treasures.length > 0 ? treasures : fishList;
+  const treasures = stealable.filter(f => f.type.isTreasure);
+  const pool = treasures.length > 0 ? treasures : stealable;
   const target = pool[Math.floor(Math.random() * pool.length)];
 
   delete room.fish[target.id];
@@ -198,6 +227,7 @@ function tryStealForRoom(code){
 function scheduleWeatherForRoom(code){
   const room = rooms[code];
   if(!room) return;
+  clearTimeout(room.weatherTimer);
   const delay = 18000 + Math.random() * 15000; // 18~33초마다 랜덤하게 날씨 이벤트
   room.weatherTimer = setTimeout(() => triggerWeatherForRoom(code), delay);
 }
@@ -215,6 +245,7 @@ function triggerWeatherForRoom(code){
   applySpawnRate(code);
   io.to(code).emit('weatherEvent', { kind, durationMs: duration });
 
+  clearTimeout(room.weatherEndTimer);
   room.weatherEndTimer = setTimeout(() => {
     room.activeWeather = null;
     applySpawnRate(code);
@@ -238,12 +269,14 @@ function endRound(code){
   clearTimeout(room.rivalTimer);
   clearTimeout(room.weatherTimer);
   clearTimeout(room.weatherEndTimer);
+  clearTimeout(room.resetTimer);
   room.spawnTimer = null;
   room.bossTimer = null;
   room.rivalTimer = null;
   room.weatherTimer = null;
   room.weatherEndTimer = null;
   room.started = false;
+  room.timeLeft = ROUND_SECONDS; // 다음 라운드를 기다리는 동안 누가 들어와도 0초로 보이지 않게
 
   // 폭풍우/눈이 오던 중이었다면 친구들 화면에서도 정리해줘요
   if(room.activeWeather){
@@ -257,12 +290,16 @@ function endRound(code){
 
   io.to(code).emit('roundEnded', { players: room.players });
 
-  setTimeout(() => startRound(code), RESET_DELAY_MS);
+  room.resetTimer = setTimeout(() => startRound(code), RESET_DELAY_MS);
 }
 
 function startRound(code){
   const room = rooms[code];
   if(!room || Object.keys(room.players).length === 0) return; // 아무도 없으면 굳이 새 라운드를 시작 안 해요
+  if(room.started) return; // 이미 라운드가 진행 중이면 다시 시작하지 않아요 (재입장 등으로 중복 시작되는 것 방지)
+
+  clearTimeout(room.resetTimer);
+  room.resetTimer = null;
 
   room.timeLeft = ROUND_SECONDS;
   room.started = true;
@@ -290,29 +327,44 @@ function startRound(code){
 }
 
 io.on('connection', (socket) => {
-  socket.on('joinRoom', ({ roomCode, name }) => {
-    const code = (roomCode || 'default').toUpperCase().trim();
+  socket.on('joinRoom', (payload) => {
+    const code = normalizeRoomCode(payload && payload.roomCode);
+    const name = normalizeName(payload && payload.name);
+
+    // 방이 너무 많거나(새 방인 경우) 한 방에 사람이 너무 많이 몰려있으면 못 들어오게 해요
+    if(!rooms[code] && Object.keys(rooms).length >= MAX_ROOMS){
+      socket.emit('joinError', { message: '지금은 방이 너무 많아서 새 방을 열 수 없어요. 잠시 후 다시 시도해주세요.' });
+      return;
+    }
+    const room = getRoom(code);
+    if(Object.keys(room.players).length >= MAX_PLAYERS_PER_ROOM){
+      socket.emit('joinError', { message: '이 방은 이미 친구들로 가득 찼어요. 다른 방 코드를 써보세요!' });
+      return;
+    }
+
     socket.join(code);
     socket.data.roomCode = code;
-    socket.data.name = (name || '친구').slice(0, 12);
-
-    const room = getRoom(code);
-    room.players[socket.id] = { name: socket.data.name, score: 0 };
+    socket.data.name = name;
+    room.players[socket.id] = { name, score: 0 };
 
     if(!room.started){
       startRound(code);
     }
 
     socket.emit('roomState', {
+      code,
       players: room.players,
-      fish: Object.values(room.fish),
+      fish: Object.values(room.fish).map(f => ({ ...f, elapsedMs: Date.now() - f.startTime })),
       timeLeft: room.timeLeft,
       level: room.currentLevel,
     });
     io.to(code).emit('playerListUpdate', room.players);
   });
 
-  socket.on('catchAttempt', ({ fishId }) => {
+  socket.on('catchAttempt', (payload) => {
+    const fishId = payload && typeof payload.fishId === 'string' ? payload.fishId : null;
+    if(!fishId) return;
+
     const code = socket.data.roomCode;
     const room = rooms[code];
     if(!room) return;
@@ -347,6 +399,8 @@ io.on('connection', (socket) => {
     io.to(code).emit('fishCaught', {
       fishId,
       by: player ? player.name : '???',
+      byId: socket.id, // 이름이 겹쳐도 정확히 "누가" 잡았는지 클라이언트가 판별할 수 있게
+      name: type.name, // 도감(caughtLog) 기록용
       points: earnedPoints,
       emoji: type.emoji,
       isTreasure: !!type.isTreasure,
@@ -374,6 +428,7 @@ io.on('connection', (socket) => {
         clearTimeout(room.rivalTimer);
         clearTimeout(room.weatherTimer);
         clearTimeout(room.weatherEndTimer);
+        clearTimeout(room.resetTimer);
         delete rooms[code];
       }
     }
