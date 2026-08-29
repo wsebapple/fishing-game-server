@@ -54,13 +54,12 @@ function spawnFishForRoom(code){
   const type = pickFishType();
   const id = 'f' + (room.fishIdCounter++);
   const fromLeft = Math.random() < 0.5;
-  const y = 0.2 + Math.random() * 0.55; // 화면 세로 비율(0~1)로 표현
+  const y = 0.2 + Math.random() * 0.55;
   const fishData = { id, type, fromLeft, y, startTime: Date.now() };
   room.fish[id] = fishData;
   io.to(code).emit('fishSpawn', fishData);
 
-  // 일정 시간 지나면 못 잡은 물고기는 자동으로 사라져요
-  const duration = 6000 / type.speed;
+  const duration = 11000 / type.speed;
   setTimeout(() => {
     if(room.fish[id]){
       delete room.fish[id];
@@ -96,7 +95,7 @@ io.on('connection', (socket) => {
     if(!room) return;
 
     const fish = room.fish[fishId];
-    if(!fish) return; // 이미 다른 친구가 먼저 잡았어요
+    if(!fish) return;
 
     delete room.fish[fishId];
     const player = room.players[socket.id];
