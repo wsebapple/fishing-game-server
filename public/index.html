@@ -1,0 +1,1446 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>바다에서 물고기를 잡아라!</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Jua&family=Baloo+2:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --deep:#043b5c;
+    --mid:#0b72b9;
+    --aqua:#6ec6e0;
+    --sun:#ffc93c;
+    --coral:#ff6b6b;
+    --sand:#f4e1b7;
+    --foam:#eaf9ff;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0; height:100%; overflow:hidden;
+    font-family:'Jua','Baloo 2',sans-serif;
+    -webkit-user-select:none; user-select:none;
+  }
+  #scene{
+    position:relative; width:100%; height:100vh;
+    background:linear-gradient(180deg,
+      #9be9ff 0%,
+      #57d3ee 10%,
+      #1fb4d9 24%,
+      #0b8fc2 40%,
+      #0b72b9 55%,
+      #0a4f86 70%,
+      #063a63 85%,
+      #021f33 100%);
+    overflow:hidden;
+  }
+  /* 해 */
+  #sun{
+    position:absolute; top:24px; right:32px; width:70px; height:70px;
+    background:var(--sun); border-radius:50%;
+    box-shadow:0 0 0 8px rgba(255,201,60,0.35);
+    transition:transform .25s ease;
+    z-index:6;
+  }
+  #sun.bounce{ transform:scale(1.25) rotate(15deg); }
+
+  /* 하늘: 배가 물 위에 떠 있다는 걸 보여주기 위한 밝은 영역 */
+  #sky{
+    position:absolute; top:0; left:0; width:100%; height:84px;
+    background:linear-gradient(180deg, #cdf2ff 0%, #eefbff 100%);
+    z-index:0;
+  }
+  /* 찰랑거리는 수면선: 하늘과 바다 사이 경계 */
+  #waterline{
+    position:absolute; top:76px; left:0; width:200%; height:20px;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='20' viewBox='0 0 120 20'><path d='M0 10 Q15 0 30 10 T60 10 T90 10 T120 10 V20 H0 Z' fill='white' fill-opacity='0.6'/></svg>");
+    background-repeat:repeat-x;
+    background-size:120px 20px;
+    z-index:4;
+    animation:waterScroll 2.4s linear infinite;
+  }
+  @keyframes waterScroll{
+    from{ transform:translateX(0); }
+    to{ transform:translateX(-120px); }
+  }
+
+  /* 물속을 더 생동감 있게 만드는 배경 장식들 */
+  .lightRay{
+    position:absolute; top:-10%; width:110px; height:140%;
+    background:linear-gradient(180deg, rgba(255,255,255,0.32) 0%, rgba(255,255,255,0) 72%);
+    transform:rotate(12deg);
+    mix-blend-mode:screen;
+    z-index:1; pointer-events:none;
+    animation:raySway 9s ease-in-out infinite;
+  }
+  @keyframes raySway{
+    0%,100%{ transform:rotate(9deg) translateX(0); }
+    50%{ transform:rotate(15deg) translateX(26px); }
+  }
+
+  .bubble{
+    position:absolute; bottom:-30px;
+    background:radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95), rgba(255,255,255,0.1));
+    border-radius:50%;
+    z-index:1; pointer-events:none;
+    animation-name:bubbleUp; animation-timing-function:ease-in; animation-iteration-count:infinite;
+  }
+  @keyframes bubbleUp{
+    0%{ transform:translateY(0) translateX(0); opacity:0.85; }
+    85%{ opacity:0.7; }
+    100%{ transform:translateY(-112vh) translateX(18px); opacity:0; }
+  }
+
+  .sparkle{
+    position:absolute; width:4px; height:4px; background:#fff; border-radius:50%;
+    z-index:1; pointer-events:none; opacity:0;
+    animation:twinkle 3s ease-in-out infinite;
+  }
+  @keyframes twinkle{
+    0%,100%{ opacity:0; transform:scale(0.5); }
+    50%{ opacity:0.85; transform:scale(1.3); }
+  }
+
+  .seaweed{
+    position:absolute; bottom:0; width:16px;
+    background:linear-gradient(180deg, #2a9463, #0d4a2d);
+    border-radius:50% 50% 0 0 / 70% 70% 0 0;
+    transform-origin:bottom center;
+    z-index:1; pointer-events:none;
+    animation:sway 4.5s ease-in-out infinite;
+  }
+  @keyframes sway{
+    0%,100%{ transform:rotate(-7deg); }
+    50%{ transform:rotate(7deg); }
+  }
+
+  /* 태풍/폭풍우 이벤트 */
+  #stormOverlay{
+    position:absolute; inset:0; z-index:5; pointer-events:none;
+    background:
+      repeating-linear-gradient(115deg, rgba(255,255,255,0.28) 0 2px, rgba(255,255,255,0) 2px 14px),
+      rgba(4,20,35,0.4);
+    background-size:60px 140px, 100% 100%;
+    opacity:0; transition:opacity .8s ease;
+  }
+  #stormOverlay.active{
+    opacity:1;
+    animation:rainMove 0.5s linear infinite;
+  }
+  @keyframes rainMove{
+    from{ background-position:0 0, 0 0; }
+    to{ background-position:-30px 140px, 0 0; }
+  }
+  #lightningFlash{
+    position:absolute; inset:0; z-index:6; pointer-events:none;
+    background:#fff; opacity:0;
+  }
+  #lightningFlash.flash{ animation:flash 0.3s ease-out; }
+  @keyframes flash{
+    0%{ opacity:0.85; } 100%{ opacity:0; }
+  }
+  /* 폭풍우일 때 낚싯바늘 주위만 잘 보이고 멀어질수록 어두워지는 안개 */
+  #stormFog{
+    position:absolute; inset:0; z-index:5; pointer-events:none;
+    opacity:0; transition:opacity .8s ease;
+    background: radial-gradient(circle at var(--fx, 50%) var(--fy, 40%),
+      rgba(2,10,20,0) 0px,
+      rgba(2,10,20,0.1) 110px,
+      rgba(2,10,20,0.5) 260px,
+      rgba(2,10,20,0.82) 480px);
+  }
+  #stormFog.active{ opacity:1; }
+
+  /* 눈 내리는 계절 이벤트 */
+  #snowTint{
+    position:absolute; inset:0; z-index:4; pointer-events:none;
+    background:rgba(255,255,255,0.14);
+    opacity:0; transition:opacity .8s ease;
+  }
+  #snowTint.active{ opacity:1; }
+  .snowflake{
+    position:absolute; top:-24px; z-index:5; pointer-events:none;
+    animation-name:snowFall; animation-timing-function:linear; animation-iteration-count:1;
+  }
+  @keyframes snowFall{
+    0%{ transform:translateY(0) translateX(0) rotate(0deg); opacity:0.95; }
+    100%{ transform:translateY(115vh) translateX(30px) rotate(60deg); opacity:0.5; }
+  }
+
+  /* 물결 */
+
+  /* 낚싯대 & 줄 */
+  #rodPole{
+    position:absolute; top:0; width:6px; height:70px; background:#7a4a2b;
+    border-radius:3px; transform-origin:top center;
+  }
+  #boat{
+    position:absolute; top:46px; width:140px; height:60px;
+    transform:translateX(-50%);
+    z-index:3; pointer-events:none;
+  }
+  #boat .hull{
+    position:absolute; bottom:0; left:0; width:140px; height:36px;
+    background:
+      repeating-linear-gradient(180deg, rgba(0,0,0,0.1) 0 3px, rgba(0,0,0,0) 3px 9px),
+      linear-gradient(180deg, #dd9a5c, #a85c2c);
+    clip-path: polygon(2% 25%, 10% 100%, 90% 100%, 98% 25%, 85% 0%, 15% 0%);
+    box-shadow: inset 0 -8px 10px rgba(0,0,0,0.25);
+  }
+  #boat .porthole{
+    position:absolute; bottom:11px; width:11px; height:11px; border-radius:50%;
+    background:radial-gradient(circle at 35% 35%, #eaf9ff, #8fd8ff);
+    border:2px solid #5c3418;
+  }
+  #boat .porthole.p1{ left:38px; }
+  #boat .porthole.p2{ left:92px; }
+  #boat .cabin{
+    position:absolute; bottom:32px; left:42px; width:56px; height:26px;
+    background:linear-gradient(180deg,#ffffff,#dfe9ee);
+    border:3px solid #6b4224;
+    border-radius:8px 8px 2px 2px;
+  }
+  #boat .window{
+    position:absolute; bottom:38px; left:56px; width:22px; height:14px;
+    background:linear-gradient(180deg,#bdeeff,#6fc4e8);
+    border:2px solid #5c3418; border-radius:3px;
+  }
+  #boat .mast{
+    position:absolute; bottom:56px; left:68px; width:4px; height:44px;
+    background:linear-gradient(180deg,#a5754a,#5c3418);
+    border-radius:2px;
+  }
+  #boat .sail{
+    position:absolute; bottom:62px; left:71px; width:0; height:0;
+    border-style:solid; border-width:0 0 36px 32px;
+    border-color:transparent transparent #fffdf6 transparent;
+    transform-origin:bottom left;
+    filter:drop-shadow(1px 1px 2px rgba(0,0,0,0.18));
+    animation:sailFlap 2.6s ease-in-out infinite;
+  }
+  @keyframes sailFlap{
+    0%,100%{ transform:skewY(0deg); }
+    50%{ transform:skewY(5deg); }
+  }
+  #boat .pennant{
+    position:absolute; bottom:96px; left:70px; width:0; height:0;
+    border-style:solid; border-width:6px 0 6px 13px;
+    border-color:transparent transparent transparent var(--coral);
+    transform-origin:left center;
+    animation:pennantWave 1.5s ease-in-out infinite;
+  }
+  @keyframes pennantWave{
+    0%,100%{ transform:skewY(0deg); }
+    50%{ transform:skewY(-14deg); }
+  }
+  #boat .wake{
+    position:absolute; bottom:-6px; left:18px; width:104px; height:10px;
+    background:rgba(255,255,255,0.4); border-radius:50%;
+    filter:blur(2px);
+    animation:wakePulse 2s ease-in-out infinite;
+  }
+  @keyframes wakePulse{
+    0%,100%{ transform:scaleX(1); opacity:0.45; }
+    50%{ transform:scaleX(1.18); opacity:0.75; }
+  }
+  #boat.bob{
+    animation:bob 2.2s ease-in-out infinite;
+  }
+  @keyframes bob{
+    0%,100%{ transform:translateX(-50%) translateY(0); }
+    50%{ transform:translateX(-50%) translateY(6px); }
+  }
+
+  /* 다른 배(경쟁자): 가끔 나타나서 물고기를 채가요 */
+  #rivalBoat{
+    position:absolute; top:40px; font-size:54px;
+    transform:translate(-50%,-14px) scaleX(-1);
+    filter:hue-rotate(200deg) saturate(1.5);
+    opacity:0; transition:opacity .4s ease, transform .4s ease;
+    z-index:3; pointer-events:none;
+  }
+  #rivalBoat.show{ opacity:1; transform:translate(-50%,0) scaleX(-1); }
+  #line{
+    position:absolute; top:70px; width:2px; background:#eee;
+  }
+  #hook{
+    position:absolute; width:26px; height:26px; font-size:22px;
+    text-align:center; line-height:26px; transform:translate(-50%,-50%);
+  }
+
+  /* HUD */
+  #hud{
+    position:absolute; top:14px; left:14px; display:flex; gap:10px; z-index:5;
+  }
+  .pill{
+    background:rgba(4,59,92,0.55); color:var(--foam); padding:8px 16px;
+    border-radius:999px; font-size:20px; border:2px solid rgba(255,255,255,0.3);
+    backdrop-filter:blur(2px);
+  }
+  .pill b{ color:var(--sun); }
+
+  /* 물고기 */
+  .fish{
+    position:absolute; font-size:38px; cursor:pointer;
+    filter:drop-shadow(0 3px 3px rgba(0,0,0,0.25));
+    transition:transform .15s;
+    z-index:2;
+    padding:16px;
+    line-height:1;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .fish:active{ transform:scale(1.3); }
+  .fish.caught{
+    animation:flap 0.35s ease-in-out forwards;
+    pointer-events:none;
+  }
+  @keyframes flap{
+    0%{ transform:scaleX(1) rotate(0deg); }
+    20%{ transform:scaleX(0.75) rotate(-16deg); }
+    40%{ transform:scaleX(1.15) rotate(12deg); }
+    60%{ transform:scaleX(0.85) rotate(-9deg); }
+    80%{ transform:scaleX(1.05) rotate(5deg); }
+    100%{ transform:scale(0.25) rotate(0deg); opacity:0; }
+  }
+  .caughtPop{
+    position:absolute; font-family:'Baloo 2',sans-serif; font-weight:700;
+    color:#fff; font-size:22px; pointer-events:none;
+    animation:popUp .7s ease-out forwards;
+  }
+  @keyframes popUp{
+    from{ transform:translateY(0); opacity:1; }
+    to{ transform:translateY(-50px); opacity:0; }
+  }
+  #levelUpBanner{
+    position:absolute; top:40%; left:50%; transform:translate(-50%,-50%) scale(0.5);
+    font-size:56px; color:var(--sun); text-shadow:3px 3px 0 var(--deep);
+    opacity:0; pointer-events:none; z-index:8;
+  }
+  #levelUpBanner.show{
+    animation:levelPop 1.2s ease-out forwards;
+  }
+  @keyframes levelPop{
+    0%{ opacity:0; transform:translate(-50%,-50%) scale(0.3); }
+    30%{ opacity:1; transform:translate(-50%,-50%) scale(1.15); }
+    60%{ opacity:1; transform:translate(-50%,-50%) scale(1); }
+    100%{ opacity:0; transform:translate(-50%,-50%) scale(1); }
+  }
+
+  /* 시작/종료 화면 */
+  .overlay{
+    position:absolute; inset:0; background:rgba(3,30,48,0.78);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    color:var(--foam); text-align:center; z-index:10; gap:14px; padding:20px;
+  }
+  .overlay h1{ font-size:44px; margin:0; color:var(--sun); text-shadow:2px 2px 0 var(--deep); }
+  .overlay p{ font-size:20px; margin:0; max-width:420px; line-height:1.5; }
+  .bigBtn{
+    font-family:'Jua',sans-serif; font-size:26px; padding:14px 40px;
+    background:var(--coral); color:#fff; border:none; border-radius:999px;
+    box-shadow:0 6px 0 #c94747; cursor:pointer; margin-top:10px;
+  }
+  .bigBtn:active{ box-shadow:0 2px 0 #c94747; transform:translateY(4px); }
+  .hidden{ display:none; }
+  #resultScore{ font-size:32px; color:var(--sun); }
+
+  #dexGrid{
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(100px,1fr));
+    gap:12px; max-width:560px; margin:10px 0;
+  }
+  .dexCard{
+    background:rgba(255,255,255,0.1); border:2px solid rgba(255,255,255,0.25);
+    border-radius:14px; padding:10px 6px; text-align:center;
+  }
+  .dexCard .icon{ font-size:36px; }
+  .dexCard .name{ font-size:16px; margin-top:4px; }
+  .dexCard .count{ font-size:13px; color:var(--sun); }
+  .dexCard.locked{ opacity:0.5; }
+  .dexCard.locked .icon{ filter:grayscale(1); }
+
+  .nameRow{
+    display:flex; gap:8px; align-items:center; justify-content:center; margin-top:4px;
+  }
+  #playerNameInput{
+    padding:10px 16px; border-radius:999px; border:none;
+    font-family:'Jua','Baloo 2',sans-serif; font-size:16px;
+    width:170px; text-align:center;
+  }
+  .smallBtn{
+    font-family:'Jua',sans-serif; font-size:20px; padding:10px 16px;
+    background:#6c63ff; color:#fff; border:none; border-radius:999px;
+    box-shadow:0 4px 0 #4b44c9; cursor:pointer;
+  }
+  #leaderboardList{ max-width:420px; width:100%; }
+  .lbRow{
+    display:flex; justify-content:space-between; gap:10px;
+    background:rgba(255,255,255,0.12); padding:10px 16px;
+    border-radius:12px; margin-bottom:8px; font-size:18px;
+  }
+  .lbRow .lbRank{ color:var(--sun); min-width:34px; }
+  .lbRow .lbName{ flex:1; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+</style>
+</head>
+<body>
+<div id="scene">
+  <div id="sky"></div>
+  <div id="waterline"></div>
+
+  <div class="lightRay" style="left:15%;"></div>
+  <div class="lightRay" style="left:55%; animation-delay:-3s;"></div>
+  <div class="lightRay" style="left:80%; animation-delay:-6s;"></div>
+
+  <div class="seaweed" style="left:5%; height:70px; animation-delay:-1s;"></div>
+  <div class="seaweed" style="left:11%; height:100px; animation-delay:-2.4s;"></div>
+  <div class="seaweed" style="left:88%; height:80px; animation-delay:-0.6s;"></div>
+  <div class="seaweed" style="left:94%; height:60px; animation-delay:-3.2s;"></div>
+
+  <div id="sun"></div>
+
+  <div id="hud">
+    <div class="pill">⏱ <b id="timeLeft">60</b>초</div>
+    <div class="pill">🎣 <b id="score">0</b>점</div>
+    <div class="pill">🌟 <b id="level">1</b>단계</div>
+    <div class="pill" id="soundToggle" style="cursor:pointer;">🔊</div>
+  </div>
+
+  <div id="boat" class="bob">
+    <div class="wake"></div>
+    <div class="hull"></div>
+    <div class="porthole p1"></div>
+    <div class="porthole p2"></div>
+    <div class="cabin"></div>
+    <div class="window"></div>
+    <div class="mast"></div>
+    <div class="sail"></div>
+    <div class="pennant"></div>
+  </div>
+  <div id="rivalBoat">⛵</div>
+  <div id="rodPole"></div>
+  <div id="line"></div>
+  <div id="hook">🪝</div>
+
+  <div id="levelUpBanner">🌟 2단계! 🌟</div>
+  <div id="stormOverlay"></div>
+  <div id="stormFog"></div>
+  <div id="snowTint"></div>
+  <div id="lightningFlash"></div>
+
+  <!-- 시작 화면 -->
+  <div class="overlay" id="startScreen">
+    <h1>🐟 바다에서 물고기를 잡아라! 🐠</h1>
+    <p>물고기가 헤엄쳐 지나가면 <b>손가락(마우스)으로 콕!</b> 눌러서 잡아보세요.<br>60초 안에 최대한 많이 잡아봐요!</p>
+    <div class="nameRow">
+      <input id="playerNameInput" placeholder="이름(별명)을 적어주세요" maxlength="10">
+      <button class="smallBtn" id="randomNameBtn" title="이름 자동으로 짓기">🎲</button>
+    </div>
+    <p id="bestScoreStart" style="font-size:22px; color:var(--sun);"></p>
+    <button class="bigBtn" id="startBtn">시작하기</button>
+    <button class="bigBtn" id="dexBtnStart" style="background:#3b8f6b; box-shadow:0 6px 0 #2c6b50;">📖 도감 보기</button>
+    <button class="bigBtn" id="leaderboardBtnStart" style="background:#d98c2b; box-shadow:0 6px 0 #a8661a;">🏆 친구 순위 보기</button>
+    <button class="bigBtn" id="mpOpenBtn" style="background:#3b6fc9; box-shadow:0 6px 0 #2a4f8f;">🌐 온라인 같이하기</button>
+  </div>
+
+  <!-- 온라인 접속 화면 -->
+  <div class="overlay hidden" id="mpScreen">
+    <h1>🌐 온라인 같이하기</h1>
+    <p style="font-size:15px; max-width:400px; opacity:0.85;">부모님이 만들어주신 서버 주소랑, 친구랑 똑같이 맞춘 방 코드를 입력하세요!</p>
+    <div class="nameRow" style="flex-direction:column; gap:10px;">
+      <input id="mpServerUrl" placeholder="서버 주소 (https://...)" style="width:280px; padding:10px 16px; border-radius:999px; border:none; font-family:'Jua',sans-serif; text-align:center;">
+      <input id="mpRoomCode" placeholder="방 코드 (예: HOYA123)" style="width:280px; padding:10px 16px; border-radius:999px; border:none; font-family:'Jua',sans-serif; text-align:center;">
+    </div>
+    <p id="mpStatus" style="font-size:15px; color:#ffd166; min-height:20px;"></p>
+    <button class="bigBtn" id="mpJoinBtn" style="background:#3b6fc9; box-shadow:0 6px 0 #2a4f8f;">입장하기</button>
+    <button class="bigBtn" id="mpCloseBtn">닫기</button>
+  </div>
+
+  <!-- 온라인 플레이 중 점수판 -->
+  <div id="mpPanel" class="hidden" style="position:absolute; top:14px; right:14px; z-index:7; background:rgba(4,59,92,0.7); border:2px solid rgba(255,255,255,0.3); border-radius:14px; padding:10px 14px; color:#eafcff; font-family:'Jua',sans-serif; min-width:150px;">
+    <div style="font-size:15px; margin-bottom:6px;">🌐 같이 하는 친구들</div>
+    <div id="mpPlayerList" style="font-size:14px; line-height:1.6;"></div>
+    <button id="mpLeaveBtn" style="margin-top:8px; font-family:'Jua',sans-serif; font-size:13px; padding:4px 10px; border-radius:999px; border:none; background:var(--coral); color:#fff; cursor:pointer;">나가기</button>
+  </div>
+
+  <!-- 종료 화면 -->
+  <div class="overlay hidden" id="endScreen">
+    <h1>🎉 게임 끝!</h1>
+    <div id="resultScore"></div>
+    <p id="resultMsg"></p>
+    <p id="lootResult" style="font-size:17px; max-width:420px; color:#ffe9b0;"></p>
+    <p id="bestScoreEnd" style="font-size:20px; color:var(--sun);"></p>
+    <button class="bigBtn" id="retryBtn">다시하기</button>
+    <button class="bigBtn" id="dexBtnEnd" style="background:#3b8f6b; box-shadow:0 6px 0 #2c6b50;">📖 도감 보기</button>
+    <button class="bigBtn" id="leaderboardBtnEnd" style="background:#d98c2b; box-shadow:0 6px 0 #a8661a;">🏆 친구 순위 보기</button>
+  </div>
+
+  <!-- 도감 화면 -->
+  <div class="overlay hidden" id="dexScreen">
+    <h1>📖 바다생물 도감</h1>
+    <div id="dexGrid"></div>
+    <button class="bigBtn" id="dexCloseBtn">닫기</button>
+  </div>
+
+  <!-- 친구 순위 화면 -->
+  <div class="overlay hidden" id="leaderboardScreen">
+    <h1>🏆 친구 순위</h1>
+    <p style="font-size:15px; opacity:0.85; max-width:400px;">같은 링크로 게임을 연 친구들의 점수가 모두 여기 모여요!</p>
+    <div id="leaderboardList"></div>
+    <button class="bigBtn" id="leaderboardRefreshBtn" style="background:#3b8f6b; box-shadow:0 6px 0 #2c6b50;">🔄 새로고침</button>
+    <button class="bigBtn" id="leaderboardCloseBtn">닫기</button>
+  </div>
+</div>
+
+<script>
+/* ------------------------------------------------------
+   낚시 게임 - 아이와 함께 자유롭게 고쳐보는 시작 코드예요!
+   아래 fishTypes 배열만 바꿔도 완전히 다른 게임이 됩니다.
+------------------------------------------------------ */
+
+/* 배경을 더 생동감 있게 만드는 거품 + 반짝임 자동 생성 */
+function createBackgroundDecor(){
+  const sceneEl = document.getElementById('scene');
+  for(let i = 0; i < 14; i++){
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    const size = 6 + Math.random() * 14;
+    bubble.style.width = size + 'px';
+    bubble.style.height = size + 'px';
+    bubble.style.left = Math.random() * 100 + '%';
+    bubble.style.animationDuration = (7 + Math.random() * 8) + 's';
+    bubble.style.animationDelay = (-Math.random() * 15) + 's';
+    sceneEl.appendChild(bubble);
+  }
+  for(let i = 0; i < 16; i++){
+    const sparkle = document.createElement('div');
+    sparkle.className = 'sparkle';
+    sparkle.style.left = Math.random() * 100 + '%';
+    sparkle.style.top = (10 + Math.random() * 80) + '%';
+    sparkle.style.animationDuration = (2 + Math.random() * 3) + 's';
+    sparkle.style.animationDelay = (-Math.random() * 4) + 's';
+    sceneEl.appendChild(sparkle);
+  }
+}
+createBackgroundDecor();
+
+// 보물통을 열면 이 중에서 하나가 랜덤으로 나와요
+const lootItems = ['반짝이는 진주', '오래된 금화', '인어의 머리핀', '신비한 조개껍질', '작은 다이아몬드', '보물지도 조각', '산호 장식품', '용왕님의 반지'];
+let treasureLoot = []; // 이번 판에 모은 보물 목록
+
+const fishTypes = [
+  { emoji: "🐳", points: 15, speed: 1.6, chance: 5, label: "", name: "고래" },
+  { emoji: "🦈", points: 10, speed: 4.2, chance: 8, label: "", name: "상어" },
+  { emoji: "🐡", points: 7,  speed: 3.0, chance: 6, label: "", name: "가오리" },
+  { emoji: "🐙", points: 6,  speed: 2.6, chance: 7, label: "", name: "문어" },
+  { emoji: "🐟", points: 5,  speed: 3.2, chance: 9, label: "", name: "참치" },
+  { emoji: "🦀", points: 2,  speed: 2.0, chance: 6, label: "", name: "게" },
+  { emoji: "🐚", points: 3,  speed: 1.8, chance: 7, label: "", name: "조개" },
+  { emoji: "⭐", points: 1,  speed: 1.4, chance: 5, label: "", name: "불가사리" },
+  { emoji: "🦐", points: 1,  speed: 2.4, chance: 8, label: "", name: "새우" },
+  { emoji: "📦", points: 0,  speed: 2.2, chance: 6, label: "", name: "보물통", isTreasure: true, minBonus: 5, maxBonus: 15 },
+  { emoji: "🧲", points: 0,  speed: 2.2, chance: 5, label: "", name: "자석", isMagnet: true, magnetMs: 6000 },
+  { emoji: "⏰", points: 0,  speed: 2.2, chance: 5, label: "", name: "시계", isTimeBonus: true, timeBonus: 5 },
+  { emoji: "🪼", points: -4, speed: 2.6, chance: 6, label: "", name: "해파리" },
+  { emoji: "🦠", points: -6, speed: 1.8, chance: 5, label: "", name: "오염물" },
+  { emoji: "🥾", points: 0,  speed: 2.0, chance: 6, label: "꽝! 헌 신발이에요 😅", name: "헌 신발" },
+  { emoji: "🗑️", points: 0, speed: 2.0, chance: 6, label: "꽝! 쓰레기예요 🙈", name: "쓰레기" },
+  { emoji: "🦑", points: 40, speed: 1.2, chance: 0, label: "", name: "보스 오징어", isBoss: true },
+];
+
+// 도감: 잡은 바다생물을 기록해요 (게임을 다시 해도 안 사라져요)
+const caughtLog = {};
+fishTypes.forEach(f => caughtLog[f.name] = 0);
+
+let score = 0;
+let timeLeft = 60;
+let gameTimer = null;
+let spawnTimer = null;
+let running = false;
+const scene = document.getElementById('scene');
+
+// 단계(레벨) 설정: 점수에 따라 몇 단계인지 정하고, 단계마다 물고기가 조금 더 빨리 나와요
+const levelStages = [
+  { level: 1, upTo: 30, spawnMs: 700 },
+  { level: 2, upTo: 60, spawnMs: 550 },
+  { level: 3, upTo: 100, spawnMs: 420 },
+];
+let currentLevel = 1;
+let rivalTimeout = null;
+let bestScore = 0; // 이 창을 열어둔 동안의 최고 점수예요 (창을 닫으면 초기화돼요)
+let magnetActive = false;
+let magnetTimer = null;
+let frozen = false;
+let freezeTimeout = null;
+let stormActive = false;
+let stormTimeout = null;
+let bossTimeout = null;
+let playerName = '';
+let mpSocket = null;
+let mpActive = false;
+let mpFishEls = {};
+
+/* ------------------------------------------------------
+   사운드 엔진: 소리 파일 없이 코드로 직접 소리를 만들어요
+   (오실레이터로 음을 연주하는 방식 - 저작권 걱정 없어요!)
+------------------------------------------------------ */
+let audioCtx = null;
+let soundOn = true;
+let bgMusicTimer = null;
+let bgMusicStep = 0;
+
+function ensureAudio(){
+  if(!audioCtx){
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if(audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function playTone(freq, duration=0.15, type='sine', volume=0.2, when=0){
+  if(!soundOn || !audioCtx) return;
+  const t0 = audioCtx.currentTime + when;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t0);
+  gain.gain.setValueAtTime(0, t0);
+  gain.gain.linearRampToValueAtTime(volume, t0 + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(t0);
+  osc.stop(t0 + duration + 0.03);
+}
+
+function playCatchSound(points, isTreasure, isMagnet, isTimeBonus){
+  if(isTreasure){
+    [880,1100,1320,1568].forEach((f,i)=>playTone(f,0.12,'triangle',0.18,i*0.07));
+    return;
+  }
+  if(isMagnet){
+    [660,880,660,880].forEach((f,i)=>playTone(f,0.1,'square',0.16,i*0.06));
+    return;
+  }
+  if(isTimeBonus){
+    [784,988].forEach((f,i)=>playTone(f,0.16,'sine',0.2,i*0.1));
+    return;
+  }
+  if(points > 0){
+    const base = 440 + Math.min(points,15) * 20;
+    playTone(base, 0.14, 'triangle', 0.22);
+    playTone(base*1.5, 0.1, 'triangle', 0.12, 0.05);
+  } else if(points < 0){
+    playTone(180, 0.25, 'sawtooth', 0.2);
+    playTone(140, 0.25, 'sawtooth', 0.15, 0.08);
+  } else {
+    playTone(200, 0.1, 'square', 0.12);
+    playTone(150, 0.15, 'square', 0.12, 0.1);
+  }
+}
+
+function playStealSound(){
+  playTone(300, 0.15, 'sawtooth', 0.15);
+  playTone(220, 0.2, 'sawtooth', 0.15, 0.1);
+  playTone(160, 0.25, 'sawtooth', 0.15, 0.2);
+}
+
+function playLevelUpSound(){
+  [523,659,784,1046].forEach((f,i)=>playTone(f,0.15,'square',0.2,i*0.09));
+}
+
+function playGameOverSound(isRecord){
+  if(isRecord){
+    [660,880,1108,1320].forEach((f,i)=>playTone(f,0.18,'triangle',0.22,i*0.12));
+  } else {
+    [440,392,349].forEach((f,i)=>playTone(f,0.22,'sine',0.2,i*0.15));
+  }
+}
+
+// 배경음악: 짧은 멜로디를 계속 반복해서 연주해요 (0은 쉼표)
+const bgMelody = [523,0,659,0,784,0,659,0, 587,0,698,0,880,0,698,0];
+
+function startBgMusic(){
+  stopBgMusic();
+  if(!soundOn) return;
+  bgMusicStep = 0;
+  bgMusicTimer = setInterval(() => {
+    const note = bgMelody[bgMusicStep % bgMelody.length];
+    if(note) playTone(note, 0.18, 'triangle', 0.05);
+    bgMusicStep++;
+  }, 260);
+}
+
+function stopBgMusic(){
+  if(bgMusicTimer){ clearInterval(bgMusicTimer); bgMusicTimer = null; }
+}
+
+document.getElementById('soundToggle').addEventListener('click', () => {
+  ensureAudio();
+  soundOn = !soundOn;
+  document.getElementById('soundToggle').innerHTML = soundOn ? '🔊' : '🔇';
+  if(soundOn && running) startBgMusic();
+  else stopBgMusic();
+});
+
+function getLevelForScore(s){
+  for(const stage of levelStages){
+    if(s < stage.upTo) return stage;
+  }
+  return levelStages[levelStages.length - 1]; // 100점 넘으면 3단계 유지(최고 난이도)
+}
+
+function showBanner(text){
+  const banner = document.getElementById('levelUpBanner');
+  banner.textContent = text;
+  banner.classList.remove('show');
+  void banner.offsetWidth; // 애니메이션 재시작을 위한 트릭
+  banner.classList.add('show');
+}
+
+function checkLevelUp(){
+  const stage = getLevelForScore(score);
+  if(stage.level !== currentLevel){
+    currentLevel = stage.level;
+    document.getElementById('level').textContent = currentLevel;
+
+    // 물고기 스폰 속도를 새 단계에 맞게 조정
+    clearInterval(spawnTimer);
+    spawnTimer = setInterval(spawnFish, stage.spawnMs);
+
+    showBanner('🌟 ' + currentLevel + '단계! 🌟');
+    playLevelUpSound();
+  }
+}
+
+// 마우스를 따라 낚싯대/줄 움직이기
+const rodPole = document.getElementById('rodPole');
+const line = document.getElementById('line');
+const hook = document.getElementById('hook');
+const boat = document.getElementById('boat');
+
+function updateHookIcon(){
+  hook.textContent = frozen ? '🧊' : (magnetActive ? '🧲' : '🪝');
+}
+
+function moveRod(x, y){
+  if(frozen) return; // 얼어있는 동안엔 낚싯줄을 움직일 수 없어요
+  const clampedX = Math.max(80, Math.min(window.innerWidth - 80, x));
+  const clampedY = Math.max(110, Math.min(window.innerHeight - 110, y || 330));
+
+  boat.style.left = clampedX + 'px';
+  rodPole.style.left = (clampedX - 3) + 'px';
+  line.style.left = (clampedX - 1) + 'px';
+  line.style.top = '70px';
+  line.style.height = (clampedY - 70) + 'px';
+  hook.style.left = clampedX + 'px';
+  hook.style.top = clampedY + 'px';
+
+  // 폭풍우 안개의 중심을 낚싯바늘 위치로 맞춰요
+  const fog = document.getElementById('stormFog');
+  fog.style.setProperty('--fx', clampedX + 'px');
+  fog.style.setProperty('--fy', clampedY + 'px');
+}
+scene.addEventListener('mousemove', e => moveRod(e.clientX, e.clientY));
+scene.addEventListener('touchmove', e => { moveRod(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); }, {passive:false});
+moveRod(window.innerWidth/2, 330);
+
+function pickFishType(){
+  const total = fishTypes.reduce((s,f)=>s+f.chance,0);
+  let r = Math.random()*total;
+  for(const f of fishTypes){
+    if(r < f.chance) return f;
+    r -= f.chance;
+  }
+  return fishTypes[0];
+}
+
+function spawnFish(){
+  if(!running) return;
+  const type = pickFishType();
+  const fish = document.createElement('div');
+  fish.className = 'fish';
+  fish.textContent = type.emoji;
+  fish.dataset.name = type.name;
+
+  const fromLeft = Math.random() < 0.5;
+  const y = 120 + Math.random() * (window.innerHeight - 260);
+  fish.style.top = y + 'px';
+  fish.style.left = (fromLeft ? -50 : window.innerWidth + 50) + 'px';
+  if(!fromLeft) fish.style.transform = 'scaleX(-1)';
+  scene.appendChild(fish);
+
+  const distance = window.innerWidth + 100;
+  const duration = distance / (type.speed * 40); // 초 단위 대략치
+  const startTime = performance.now();
+
+  function animate(now){
+    if(!fish.isConnected) return;
+
+    // 자석이 켜져 있으면 물고기가 낚싯바늘 쪽으로 저절로 끌려와요
+    if(magnetActive && !type.isMagnet){
+      const hookX = parseFloat(hook.style.left) || window.innerWidth/2;
+      const hookY = parseFloat(hook.style.top) || 300;
+      const curX = parseFloat(fish.style.left) || 0;
+      const curY = parseFloat(fish.style.top) || 0;
+      const dx = hookX - curX, dy = hookY - curY;
+      const dist = Math.max(Math.sqrt(dx*dx + dy*dy), 0.01);
+      if(dist < 30){
+        catchFish(fish, type);
+        return;
+      }
+      const step = 6;
+      fish.style.left = (curX + (dx/dist) * step) + 'px';
+      fish.style.top = (curY + (dy/dist) * step) + 'px';
+      requestAnimationFrame(animate);
+      return;
+    }
+
+    const elapsed = (now - startTime) / 1000;
+    const progress = elapsed / duration;
+    if(progress >= 1){ fish.remove(); return; }
+    const x = fromLeft
+      ? -50 + progress * distance
+      : (window.innerWidth + 50) - progress * distance;
+    fish.style.left = x + 'px';
+    requestAnimationFrame(animate);
+  }
+  requestAnimationFrame(animate);
+
+  fish.addEventListener('click', () => catchFish(fish, type));
+  fish.addEventListener('touchstart', (e) => { catchFish(fish, type); e.stopPropagation(); });
+}
+
+function catchFish(fish, type){
+  if(!running || !fish.isConnected) return;
+
+  // 보물통은 잡을 때마다 랜덤 보너스 점수 + 랜덤 보물 아이템을 줘요
+  let earnedPoints = type.points;
+  let lootName = '';
+  if(type.isTreasure){
+    earnedPoints = Math.floor(Math.random() * (type.maxBonus - type.minBonus + 1)) + type.minBonus;
+    lootName = lootItems[Math.floor(Math.random() * lootItems.length)];
+    treasureLoot.push(lootName);
+  }
+
+  // 자석: 잠깐동안 물고기들이 낚싯바늘로 저절로 끌려와요
+  if(type.isMagnet){
+    magnetActive = true;
+    updateHookIcon();
+    clearTimeout(magnetTimer);
+    magnetTimer = setTimeout(() => {
+      magnetActive = false;
+      updateHookIcon();
+    }, type.magnetMs);
+  }
+
+  // 시계: 시간이 늘어나요
+  if(type.isTimeBonus){
+    timeLeft += type.timeBonus;
+    document.getElementById('timeLeft').textContent = timeLeft;
+  }
+
+  score += earnedPoints;
+  if(score < 0) score = 0;
+  document.getElementById('score').textContent = score;
+  checkLevelUp();
+  caughtLog[type.name]++;
+  playCatchSound(earnedPoints, type.isTreasure, type.isMagnet, type.isTimeBonus);
+
+  document.getElementById('sun').classList.add('bounce');
+  setTimeout(()=>document.getElementById('sun').classList.remove('bounce'), 250);
+
+  const pop = document.createElement('div');
+  pop.className = 'caughtPop';
+  if(type.isTreasure){
+    pop.textContent = '🎁 ' + lootName + '! +' + earnedPoints;
+    pop.style.color = '#ffe066';
+    pop.style.fontSize = '18px';
+  } else if(type.isMagnet){
+    pop.textContent = '🧲 자석 발동! 물고기가 끌려와요!';
+    pop.style.color = '#a0e6ff';
+    pop.style.fontSize = '16px';
+  } else if(type.isTimeBonus){
+    pop.textContent = '⏰ 시간 +' + type.timeBonus + '초!';
+    pop.style.color = '#b6ffb0';
+    pop.style.fontSize = '18px';
+  } else if(type.points === 0){
+    pop.textContent = type.label || "꽝!";
+    pop.style.color = '#d8d8d8';
+    pop.style.fontSize = '18px';
+  } else {
+    pop.textContent = (earnedPoints > 0 ? '+' : '') + earnedPoints;
+    pop.style.color = earnedPoints > 0 ? '#fff' : '#ffb3b3';
+  }
+  pop.style.left = fish.style.left;
+  pop.style.top = fish.style.top;
+  scene.appendChild(pop);
+  setTimeout(()=>pop.remove(), 700);
+
+  fish.classList.add('caught');
+  setTimeout(() => fish.remove(), 350);
+}
+
+function scheduleRival(){
+  if(!running) return;
+  const delay = 6000 + Math.random() * 6000; // 6~12초마다 랜덤하게 등장
+  rivalTimeout = setTimeout(tryStealFish, delay);
+}
+
+function tryStealFish(){
+  if(!running) return;
+  const fishes = Array.from(document.querySelectorAll('.fish'));
+  if(fishes.length === 0){ scheduleRival(); return; }
+
+  // 보물통이 화면에 있으면 그것부터 노려요!
+  const treasures = fishes.filter(f => f.dataset.name === '보물통');
+  const pool = treasures.length > 0 ? treasures : fishes;
+  const target = pool[Math.floor(Math.random() * pool.length)];
+  const targetX = Math.max(80, Math.min(window.innerWidth - 80, parseFloat(target.style.left) || window.innerWidth/2));
+
+  const rival = document.getElementById('rivalBoat');
+  rival.style.left = targetX + 'px';
+  rival.classList.add('show');
+
+  setTimeout(() => {
+    if(target.isConnected){
+      playStealSound();
+      target.style.transition = 'transform .3s ease, opacity .3s ease';
+      target.style.transform = (target.style.transform || '') + ' scale(0.3)';
+      target.style.opacity = '0';
+
+      const steal = document.createElement('div');
+      steal.className = 'caughtPop';
+      steal.textContent = target.dataset.name === '보물통'
+        ? '🏴‍☠️ 해적이 보물통을 가져갔어요!'
+        : '🏴‍☠️ 다른 배가 채갔어요!';
+      steal.style.color = '#ff9b9b';
+      steal.style.fontSize = '16px';
+      steal.style.left = target.style.left;
+      steal.style.top = target.style.top;
+      scene.appendChild(steal);
+      setTimeout(() => steal.remove(), 900);
+      setTimeout(() => target.remove(), 300);
+    }
+    setTimeout(() => rival.classList.remove('show'), 500);
+  }, 700);
+
+  scheduleRival();
+}
+
+function playThunderSound(){
+  playTone(90, 0.5, 'sawtooth', 0.18);
+  playTone(60, 0.6, 'sawtooth', 0.14, 0.1);
+}
+
+function scheduleWeather(){
+  if(!running) return;
+  const delay = 18000 + Math.random() * 15000; // 18~33초마다 랜덤하게 날씨 이벤트
+  stormTimeout = setTimeout(triggerWeatherEvent, delay);
+}
+
+function triggerWeatherEvent(){
+  if(!running) return;
+  if(Math.random() < 0.5) triggerStorm();
+  else triggerSnow();
+}
+
+function triggerSnow(){
+  if(!running) return;
+  document.getElementById('snowTint').classList.add('active');
+  showBanner('❄️ 눈이 내려요! 낚싯줄이 얼었어요 🥶');
+
+  // 눈이 내리기 시작하면 5초 동안 낚싯줄이 얼어서 움직일 수 없어요
+  frozen = true;
+  updateHookIcon();
+  clearTimeout(freezeTimeout);
+  freezeTimeout = setTimeout(() => {
+    frozen = false;
+    updateHookIcon();
+  }, 5000);
+
+  // 눈 오는 동안은 조금 더 느긋하게
+  clearInterval(spawnTimer);
+  const snowSpawnMs = levelStages[currentLevel - 1].spawnMs * 1.25;
+  spawnTimer = setInterval(spawnFish, snowSpawnMs);
+
+  const flakeInterval = setInterval(() => {
+    const flake = document.createElement('div');
+    flake.className = 'snowflake';
+    flake.textContent = '❄️';
+    flake.style.left = Math.random() * 100 + '%';
+    flake.style.fontSize = (10 + Math.random() * 14) + 'px';
+    flake.style.animationDuration = (4 + Math.random() * 3) + 's';
+    scene.appendChild(flake);
+    setTimeout(() => flake.remove(), 8000);
+  }, 220);
+
+  const duration = 7000 + Math.random() * 3000;
+  setTimeout(() => {
+    clearInterval(flakeInterval);
+    document.getElementById('snowTint').classList.remove('active');
+    showBanner('☀️ 눈이 그쳤어요!');
+    if(running){
+      clearInterval(spawnTimer);
+      spawnTimer = setInterval(spawnFish, levelStages[currentLevel - 1].spawnMs);
+    }
+    scheduleWeather();
+  }, duration);
+}
+
+function triggerStorm(){
+  if(!running) return;
+  stormActive = true;
+  document.getElementById('stormOverlay').classList.add('active');
+  document.getElementById('stormFog').classList.add('active');
+  showBanner('⛈️ 폭풍우가 몰아쳐요!');
+  playThunderSound();
+
+  // 폭풍우 동안 물고기가 더 빨리, 자주 나와요
+  clearInterval(spawnTimer);
+  const stormSpawnMs = Math.max(220, levelStages[currentLevel - 1].spawnMs * 0.55);
+  spawnTimer = setInterval(spawnFish, stormSpawnMs);
+
+  // 가끔 번개가 번쩍여요
+  const flashInterval = setInterval(() => {
+    const flash = document.getElementById('lightningFlash');
+    flash.classList.remove('flash');
+    void flash.offsetWidth;
+    flash.classList.add('flash');
+    playThunderSound();
+  }, 1800 + Math.random() * 1200);
+
+  const stormDuration = 6000 + Math.random() * 3000;
+  setTimeout(() => {
+    clearInterval(flashInterval);
+    stormActive = false;
+    document.getElementById('stormOverlay').classList.remove('active');
+    document.getElementById('stormFog').classList.remove('active');
+    showBanner('🌤️ 폭풍우가 지나갔어요!');
+    if(running){
+      clearInterval(spawnTimer);
+      spawnTimer = setInterval(spawnFish, levelStages[currentLevel - 1].spawnMs);
+    }
+    scheduleWeather();
+  }, stormDuration);
+}
+
+function playBossSound(){
+  [220,277,330,415].forEach((f,i)=>playTone(f,0.22,'sawtooth',0.2,i*0.1));
+}
+
+function scheduleBoss(){
+  if(!running) return;
+  const delay = 22000 + Math.random() * 15000; // 22~37초마다 랜덤하게 보스 등장
+  bossTimeout = setTimeout(spawnBoss, delay);
+}
+
+function spawnBoss(){
+  if(!running) return;
+  const bossType = fishTypes.find(f => f.isBoss);
+  showBanner('🦑 보스 오징어 출현!');
+  playBossSound();
+
+  const fromLeft = Math.random() < 0.5;
+  const y = 150 + Math.random() * (window.innerHeight - 320);
+  const fish = document.createElement('div');
+  fish.className = 'fish boss-fish';
+  fish.textContent = bossType.emoji;
+  fish.dataset.name = bossType.name;
+  fish.style.top = y + 'px';
+  fish.style.left = (fromLeft ? -100 : window.innerWidth + 100) + 'px';
+  fish.style.fontSize = '86px';
+  if(!fromLeft) fish.style.transform = 'scaleX(-1)';
+  scene.appendChild(fish);
+
+  const distance = window.innerWidth + 200;
+  const duration = distance / (bossType.speed * 40);
+  const startTime = performance.now();
+
+  function animate(now){
+    if(!fish.isConnected) return;
+    const elapsed = (now - startTime) / 1000;
+    const progress = elapsed / duration;
+    if(progress >= 1){ fish.remove(); scheduleBoss(); return; }
+    const x = fromLeft
+      ? -100 + progress * distance
+      : (window.innerWidth + 100) - progress * distance;
+    fish.style.left = x + 'px';
+    requestAnimationFrame(animate);
+  }
+  requestAnimationFrame(animate);
+
+  fish.addEventListener('click', () => catchBoss(fish, bossType));
+  fish.addEventListener('touchstart', (e) => { catchBoss(fish, bossType); e.stopPropagation(); });
+}
+
+function catchBoss(fish, bossType){
+  if(!running || !fish.isConnected) return;
+  fish.classList.add('caught');
+  setTimeout(() => fish.remove(), 350);
+  score += bossType.points;
+  document.getElementById('score').textContent = score;
+  checkLevelUp();
+  caughtLog[bossType.name] = (caughtLog[bossType.name] || 0) + 1;
+  playCatchSound(bossType.points, false, false, false);
+
+  const pop = document.createElement('div');
+  pop.className = 'caughtPop';
+  pop.textContent = '🦑 보스 처치! +' + bossType.points;
+  pop.style.color = '#ffd166';
+  pop.style.fontSize = '22px';
+  pop.style.left = fish.style.left;
+  pop.style.top = fish.style.top;
+  scene.appendChild(pop);
+  setTimeout(() => pop.remove(), 900);
+
+  scheduleBoss();
+}
+
+function startGame(){
+  ensureAudio();
+  score = 0; timeLeft = 60; running = true;
+  currentLevel = 1;
+  treasureLoot = [];
+  playerName = document.getElementById('playerNameInput').value.trim();
+  document.getElementById('score').textContent = score;
+  document.getElementById('timeLeft').textContent = timeLeft;
+  document.getElementById('level').textContent = currentLevel;
+  document.getElementById('startScreen').classList.add('hidden');
+  document.getElementById('endScreen').classList.add('hidden');
+  document.getElementById('levelUpBanner').classList.remove('show');
+  startBgMusic();
+
+  document.querySelectorAll('.fish').forEach(f=>f.remove());
+
+  spawnTimer = setInterval(spawnFish, levelStages[0].spawnMs);
+  scheduleRival();
+  magnetActive = false;
+  clearTimeout(magnetTimer);
+  frozen = false;
+  clearTimeout(freezeTimeout);
+  updateHookIcon();
+  stormActive = false;
+  document.getElementById('stormOverlay').classList.remove('active');
+  document.getElementById('stormFog').classList.remove('active');
+  document.getElementById('snowTint').classList.remove('active');
+  scheduleWeather();
+  scheduleBoss();
+  gameTimer = setInterval(()=>{
+    timeLeft--;
+    document.getElementById('timeLeft').textContent = timeLeft;
+    if(timeLeft <= 0) endGame();
+  }, 1000);
+}
+
+function endGame(){
+  running = false;
+  clearInterval(spawnTimer);
+  clearInterval(gameTimer);
+  clearTimeout(rivalTimeout);
+  clearTimeout(stormTimeout);
+  clearTimeout(magnetTimer);
+  clearTimeout(bossTimeout);
+  clearTimeout(freezeTimeout);
+  magnetActive = false;
+  frozen = false;
+  stormActive = false;
+  document.getElementById('stormOverlay').classList.remove('active');
+  document.getElementById('stormFog').classList.remove('active');
+  document.getElementById('snowTint').classList.remove('active');
+  document.getElementById('hook').textContent = '🪝';
+  document.getElementById('rivalBoat').classList.remove('show');
+  document.querySelectorAll('.fish').forEach(f=>f.remove());
+
+  const isNewRecord = score > bestScore;
+  if(isNewRecord) bestScore = score;
+  stopBgMusic();
+  playGameOverSound(isNewRecord);
+  saveScoreToLeaderboard(playerName, score);
+
+  document.getElementById('resultScore').textContent = score + '점';
+  const msg = isNewRecord ? '🎉 신기록이에요! 최고점수를 경신했어요!'
+            : score >= 25 ? '와, 진짜 낚시왕이에요! 🏆'
+            : score >= 12 ? '아주 잘했어요! 👍'
+            : '다음엔 더 잘할 수 있어요! 🐟';
+  document.getElementById('resultMsg').textContent = msg;
+  document.getElementById('lootResult').textContent = treasureLoot.length > 0
+    ? '📦 보물함 전리품: ' + treasureLoot.join(', ')
+    : '이번 판엔 보물통을 못 열었어요. 다음엔 찾아봐요!';
+  document.getElementById('bestScoreEnd').textContent = '🏅 최고점수: ' + bestScore + '점';
+  document.getElementById('bestScoreStart').textContent = bestScore > 0 ? ('🏅 최고점수: ' + bestScore + '점') : '';
+  document.getElementById('endScreen').classList.remove('hidden');
+}
+
+document.getElementById('startBtn').addEventListener('click', startGame);
+document.getElementById('retryBtn').addEventListener('click', startGame);
+
+function renderDex(){
+  const grid = document.getElementById('dexGrid');
+  grid.innerHTML = '';
+  fishTypes.forEach(f => {
+    const caught = caughtLog[f.name] > 0;
+    const card = document.createElement('div');
+    card.className = 'dexCard' + (caught ? '' : ' locked');
+    const pointsText = f.isTreasure ? `${f.minBonus}~${f.maxBonus}점 랜덤`
+      : f.isMagnet ? '물고기가 끌려와요!'
+      : f.isTimeBonus ? `시간 +${f.timeBonus}초`
+      : `${f.points}점`;
+    card.innerHTML = caught
+      ? `<div class="icon">${f.emoji}</div><div class="name">${f.name}</div><div class="count">${caughtLog[f.name]}번 · ${pointsText}</div>`
+      : `<div class="icon">❔</div><div class="name">???</div><div class="count">아직 못 잡음</div>`;
+    grid.appendChild(card);
+  });
+}
+
+function openDex(){
+  renderDex();
+  document.getElementById('dexScreen').classList.remove('hidden');
+}
+document.getElementById('dexBtnStart').addEventListener('click', openDex);
+document.getElementById('dexBtnEnd').addEventListener('click', openDex);
+document.getElementById('dexCloseBtn').addEventListener('click', () => {
+  document.getElementById('dexScreen').classList.add('hidden');
+});
+
+/* ------------------------------------------------------
+   친구 순위표: 같은 링크로 게임을 연 친구들끼리 점수를 공유해요
+   (window.storage의 공유 저장소를 사용해요)
+------------------------------------------------------ */
+function randomName(){
+  const adjectives = ['신나는','용감한','반짝이는','재빠른','행복한','씩씩한','졸린','배고픈','멋진','귀여운'];
+  const nouns = ['물고기','상어','문어','고래','낚시왕','새우','불가사리','조개'];
+  const num = Math.floor(Math.random() * 100);
+  return adjectives[Math.floor(Math.random()*adjectives.length)] + ' ' + nouns[Math.floor(Math.random()*nouns.length)] + num;
+}
+
+document.getElementById('randomNameBtn').addEventListener('click', () => {
+  document.getElementById('playerNameInput').value = randomName();
+});
+
+async function saveScoreToLeaderboard(name, finalScore){
+  if(typeof window.storage === 'undefined') return;
+  try {
+    const key = 'leaderboard-' + Date.now() + '-' + Math.floor(Math.random() * 10000);
+    await window.storage.set(key, JSON.stringify({
+      name: name || '이름없음',
+      score: finalScore,
+      date: new Date().toLocaleDateString('ko-KR')
+    }), true);
+  } catch(e){
+    console.error('순위표 저장 실패', e);
+  }
+}
+
+async function loadLeaderboard(){
+  const listEl = document.getElementById('leaderboardList');
+  listEl.innerHTML = '<p>불러오는 중...</p>';
+
+  if(typeof window.storage === 'undefined'){
+    listEl.innerHTML = '<p>이 기능은 공유된 링크로 열었을 때만 작동해요.<br>다운로드한 파일 단독으로는 순위가 안 보일 수 있어요.</p>';
+    return;
+  }
+
+  try {
+    const keysResult = await window.storage.list('leaderboard-', true);
+    const keys = (keysResult && keysResult.keys) ? keysResult.keys : [];
+
+    if(keys.length === 0){
+      listEl.innerHTML = '<p>아직 아무도 기록을 안 남겼어요.<br>첫 번째 기록의 주인공이 되어보세요! 🏆</p>';
+      return;
+    }
+
+    const entries = [];
+    for(const k of keys.slice(0, 50)){
+      try {
+        const res = await window.storage.get(k, true);
+        if(res && res.value) entries.push(JSON.parse(res.value));
+      } catch(e){ /* 무시하고 계속 */ }
+    }
+
+    entries.sort((a, b) => b.score - a.score);
+    const top = entries.slice(0, 10);
+
+    listEl.innerHTML = top.map((e, i) => `
+      <div class="lbRow">
+        <span class="lbRank">${i+1}위</span>
+        <span class="lbName">${escapeHtml(e.name)}</span>
+        <span>${e.score}점</span>
+      </div>
+    `).join('');
+  } catch(e){
+    listEl.innerHTML = '<p>순위를 불러오는 데 문제가 생겼어요. 잠시 후 다시 시도해주세요.</p>';
+  }
+}
+
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function openLeaderboard(){
+  document.getElementById('leaderboardScreen').classList.remove('hidden');
+  loadLeaderboard();
+}
+document.getElementById('leaderboardBtnStart').addEventListener('click', openLeaderboard);
+document.getElementById('leaderboardBtnEnd').addEventListener('click', openLeaderboard);
+document.getElementById('leaderboardRefreshBtn').addEventListener('click', loadLeaderboard);
+document.getElementById('leaderboardCloseBtn').addEventListener('click', () => {
+  document.getElementById('leaderboardScreen').classList.add('hidden');
+});
+
+/* ------------------------------------------------------
+   온라인 같이하기: 부모님이 배포한 서버에 접속해서
+   실시간으로 같은 물고기를 보고 서로 먼저 잡기 경쟁을 해요
+------------------------------------------------------ */
+function loadSocketIoScript(callback){
+  if(window.io){ callback(); return; }
+  const script = document.createElement('script');
+  // socket.io 클라이언트 라이브러리는 접속할 서버에서 직접 제공해줘요
+  const url = document.getElementById('mpServerUrl').value.trim().replace(/\/$/, '');
+  script.src = url + '/socket.io/socket.io.js';
+  script.onload = callback;
+  script.onerror = () => {
+    document.getElementById('mpStatus').textContent = '서버에 연결할 수 없어요. 주소를 확인해주세요!';
+  };
+  document.head.appendChild(script);
+}
+
+function joinMultiplayer(){
+  const url = document.getElementById('mpServerUrl').value.trim().replace(/\/$/, '');
+  const roomCode = document.getElementById('mpRoomCode').value.trim() || 'default';
+  const name = document.getElementById('playerNameInput').value.trim() || randomName();
+
+  if(!url){
+    document.getElementById('mpStatus').textContent = '서버 주소를 먼저 입력해주세요!';
+    return;
+  }
+  document.getElementById('mpStatus').textContent = '연결하는 중...';
+
+  loadSocketIoScript(() => {
+    ensureAudio();
+    mpSocket = window.io(url);
+
+    mpSocket.on('connect', () => {
+      mpSocket.emit('joinRoom', { roomCode, name });
+      startMultiplayerMode();
+    });
+
+    mpSocket.on('connect_error', () => {
+      document.getElementById('mpStatus').textContent = '연결에 실패했어요. 서버 주소를 다시 확인해주세요.';
+    });
+
+    mpSocket.on('roomState', (state) => {
+      Object.values(state.fish).forEach(spawnMpFish);
+      renderMpPlayerList(state.players);
+    });
+
+    mpSocket.on('fishSpawn', spawnMpFish);
+
+    mpSocket.on('fishExpire', ({ id }) => {
+      const el = mpFishEls[id];
+      if(el){ el.remove(); delete mpFishEls[id]; }
+    });
+
+    mpSocket.on('fishCaught', ({ fishId, by, points, emoji }) => {
+      const el = mpFishEls[fishId];
+      if(el){
+        const popText = document.createElement('div');
+        popText.className = 'caughtPop';
+        popText.textContent = emoji + ' ' + by + ' +' + points;
+        popText.style.color = points >= 0 ? '#fff' : '#ffb3b3';
+        popText.style.left = el.style.left;
+        popText.style.top = el.style.top;
+        scene.appendChild(popText);
+        setTimeout(() => popText.remove(), 800);
+
+        el.classList.add('caught');
+        setTimeout(() => el.remove(), 350);
+        delete mpFishEls[fishId];
+
+        if(by === playerName) playCatchSound(points, false, false, false);
+      }
+    });
+
+    mpSocket.on('playerListUpdate', renderMpPlayerList);
+  });
+}
+
+function spawnMpFish(data){
+  const type = data.type;
+  const fish = document.createElement('div');
+  fish.className = 'fish';
+  fish.textContent = type.emoji;
+  const y = data.y * window.innerHeight;
+  fish.style.top = y + 'px';
+  fish.style.left = (data.fromLeft ? -50 : window.innerWidth + 50) + 'px';
+  if(!data.fromLeft) fish.style.transform = 'scaleX(-1)';
+  scene.appendChild(fish);
+  mpFishEls[data.id] = fish;
+
+  const distance = window.innerWidth + 100;
+  const duration = 6000 / type.speed; // 서버와 같은 지속시간 공식을 써서 타이밍을 맞춰요
+  const elapsedAlready = Date.now() - data.startTime;
+
+  function animate(){
+    if(!fish.isConnected) return;
+    const elapsed = (Date.now() - data.startTime);
+    const progress = elapsed / duration;
+    if(progress >= 1) return; // 서버의 fishExpire 이벤트가 제거를 처리해요
+    const x = data.fromLeft
+      ? -50 + progress * distance
+      : (window.innerWidth + 50) - progress * distance;
+    fish.style.left = x + 'px';
+    requestAnimationFrame(animate);
+  }
+  requestAnimationFrame(animate);
+
+  fish.addEventListener('click', () => {
+    if(mpSocket) mpSocket.emit('catchAttempt', { fishId: data.id });
+  });
+  fish.addEventListener('touchstart', (e) => {
+    if(mpSocket) mpSocket.emit('catchAttempt', { fishId: data.id });
+    e.stopPropagation();
+  });
+}
+
+function renderMpPlayerList(players){
+  const list = Object.values(players).sort((a, b) => b.score - a.score);
+  document.getElementById('mpPlayerList').innerHTML = list
+    .map(p => `${p.name}: ${p.score}점`)
+    .join('<br>');
+}
+
+function startMultiplayerMode(){
+  mpActive = true;
+  running = false; // 싱글플레이 타이머/스폰은 꺼둬요
+  document.getElementById('mpScreen').classList.add('hidden');
+  document.getElementById('startScreen').classList.add('hidden');
+  document.getElementById('endScreen').classList.add('hidden');
+  document.getElementById('mpPanel').classList.remove('hidden');
+  document.querySelectorAll('.fish').forEach(f => f.remove());
+  mpFishEls = {};
+}
+
+function leaveMultiplayer(){
+  if(mpSocket){ mpSocket.disconnect(); mpSocket = null; }
+  mpActive = false;
+  document.querySelectorAll('.fish').forEach(f => f.remove());
+  mpFishEls = {};
+  document.getElementById('mpPanel').classList.add('hidden');
+  document.getElementById('startScreen').classList.remove('hidden');
+}
+
+document.getElementById('mpOpenBtn').addEventListener('click', () => {
+  document.getElementById('mpScreen').classList.remove('hidden');
+  // 이 게임 자체를 서버 주소에서 열었다면, 서버 주소를 자동으로 채워줘요
+  const urlInput = document.getElementById('mpServerUrl');
+  if(!urlInput.value && window.location.protocol !== 'file:'){
+    urlInput.value = window.location.origin;
+  }
+});
+document.getElementById('mpCloseBtn').addEventListener('click', () => {
+  document.getElementById('mpScreen').classList.add('hidden');
+});
+document.getElementById('mpJoinBtn').addEventListener('click', joinMultiplayer);
+document.getElementById('mpLeaveBtn').addEventListener('click', leaveMultiplayer);
+</script>
+</body>
+</html>
