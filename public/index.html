@@ -1593,6 +1593,11 @@ function renderMpPlayerList(players){
   document.getElementById('mpPlayerList').innerHTML = list
     .map(p => `${p.name}: ${p.score}점`)
     .join('<br>');
+
+  // 왼쪽 위 메인 점수판은 원래 싱글플레이용이라 멀티플레이 중엔 안 움직였어요.
+  // 여기서도 내 점수를 바로 반영해줘요.
+  const me = list.find(p => p.name === playerName);
+  if(me) document.getElementById('score').textContent = me.score;
 }
 
 function startMultiplayerMode(){
@@ -1606,6 +1611,7 @@ function startMultiplayerMode(){
   magnetActive = false; clearTimeout(magnetTimer);
   updateHookIcon();
   updateMpLevel(1);
+  document.getElementById('score').textContent = 0; // 이전 싱글플레이 점수가 남아있지 않도록 초기화
   document.getElementById('mpScreen').classList.add('hidden');
   document.getElementById('startScreen').classList.add('hidden');
   document.getElementById('endScreen').classList.add('hidden');
