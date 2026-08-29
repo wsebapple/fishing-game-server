@@ -19,6 +19,7 @@ const rooms = {};
 
 const ROUND_SECONDS = 60;
 const RESET_DELAY_MS = 6000; // 라운드가 끝나고 이만큼 기다렸다가 새 라운드를 시작해요
+const BASE_SPAWN_MS = 900;
 
 // 보물통을 열면 이 중에서 하나가 랜덤으로 나와요 (index.html의 lootItems와 맞춰뒀어요)
 const lootItems = ['반짝이는 진주', '오래된 금화', '인어의 머리핀', '신비한 조개껍질', '작은 다이아몬드', '보물지도 조각', '산호 장식품', '용왕님의 반지'];
@@ -65,6 +66,10 @@ function getRoom(code){
       spawnTimer: null,
       bossTimer: null,
       timerInterval: null,
+      rivalTimer: null,
+      weatherTimer: null,
+      weatherEndTimer: null,
+      activeWeather: null, // 'storm' | 'snow' | null
       timeLeft: ROUND_SECONDS,
       started: false,
     };
@@ -121,6 +126,66 @@ function spawnBossForRoom(code){
   }, duration);
 }
 
+function scheduleRivalForRoom(code){
+  const room = rooms[code];
+  if(!room) return;
+  const delay = 6000 + Math.random() * 6000; // 6~12초마다 랜덤하게 등장 (싱글플레이와 동일)
+  room.rivalTimer = setTimeout(() => tryStealForRoom(code), delay);
+}
+
+function tryStealForRoom(code){
+  const room = rooms[code];
+  if(!room) return;
+
+  const fishList = Object.values(room.fish);
+  if(fishList.length === 0){ scheduleRivalForRoom(code); return; }
+
+  // 보물통이 떠 있으면 그것부터 노려요!
+  const treasures = fishList.filter(f => f.type.isTreasure);
+  const pool = treasures.length > 0 ? treasures : fishList;
+  const target = pool[Math.floor(Math.random() * pool.length)];
+
+  delete room.fish[target.id];
+  io.to(code).emit('fishStolen', { id: target.id, name: target.type.name });
+
+  scheduleRivalForRoom(code);
+}
+
+function scheduleWeatherForRoom(code){
+  const room = rooms[code];
+  if(!room) return;
+  const delay = 18000 + Math.random() * 15000; // 18~33초마다 랜덤하게 날씨 이벤트
+  room.weatherTimer = setTimeout(() => triggerWeatherForRoom(code), delay);
+}
+
+function triggerWeatherForRoom(code){
+  const room = rooms[code];
+  if(!room) return;
+
+  const kind = Math.random() < 0.5 ? 'storm' : 'snow';
+  room.activeWeather = kind;
+  const spawnMs = kind === 'storm'
+    ? Math.max(220, BASE_SPAWN_MS * 0.55)
+    : BASE_SPAWN_MS * 1.25;
+  const duration = kind === 'storm'
+    ? 6000 + Math.random() * 3000
+    : 7000 + Math.random() * 3000;
+
+  clearInterval(room.spawnTimer);
+  room.spawnTimer = setInterval(() => spawnFishForRoom(code), spawnMs);
+  io.to(code).emit('weatherEvent', { kind, durationMs: duration });
+
+  room.weatherEndTimer = setTimeout(() => {
+    room.activeWeather = null;
+    if(room.started){
+      clearInterval(room.spawnTimer);
+      room.spawnTimer = setInterval(() => spawnFishForRoom(code), BASE_SPAWN_MS);
+    }
+    io.to(code).emit('weatherEvent', { kind: kind + 'End' });
+    scheduleWeatherForRoom(code);
+  }, duration);
+}
+
 function broadcastTime(code){
   const room = rooms[code];
   if(!room) return;
@@ -133,9 +198,21 @@ function endRound(code){
 
   clearInterval(room.spawnTimer);
   clearTimeout(room.bossTimer);
+  clearTimeout(room.rivalTimer);
+  clearTimeout(room.weatherTimer);
+  clearTimeout(room.weatherEndTimer);
   room.spawnTimer = null;
   room.bossTimer = null;
+  room.rivalTimer = null;
+  room.weatherTimer = null;
+  room.weatherEndTimer = null;
   room.started = false;
+
+  // 폭풍우/눈이 오던 중이었다면 친구들 화면에서도 정리해줘요
+  if(room.activeWeather){
+    io.to(code).emit('weatherEvent', { kind: room.activeWeather + 'End' });
+    room.activeWeather = null;
+  }
 
   // 화면에 남아있던 물고기를 모두 치워요
   Object.keys(room.fish).forEach(id => io.to(code).emit('fishExpire', { id }));
@@ -167,8 +244,10 @@ function startRound(code){
   }, 1000);
 
   clearInterval(room.spawnTimer);
-  room.spawnTimer = setInterval(() => spawnFishForRoom(code), 900);
+  room.spawnTimer = setInterval(() => spawnFishForRoom(code), BASE_SPAWN_MS);
   scheduleBossForRoom(code);
+  scheduleRivalForRoom(code);
+  scheduleWeatherForRoom(code);
 }
 
 io.on('connection', (socket) => {
@@ -251,6 +330,9 @@ io.on('connection', (socket) => {
         clearInterval(room.spawnTimer);
         clearInterval(room.timerInterval);
         clearTimeout(room.bossTimer);
+        clearTimeout(room.rivalTimer);
+        clearTimeout(room.weatherTimer);
+        clearTimeout(room.weatherEndTimer);
         delete rooms[code];
       }
     }
