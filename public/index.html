@@ -1330,22 +1330,75 @@ function joinMultiplayer(){
     mpSocket.on('roomState', (state) => {
       Object.values(state.fish).forEach(spawnMpFish);
       renderMpPlayerList(state.players);
+      if(typeof state.timeLeft === 'number') updateMpTime(state.timeLeft);
     });
 
-    mpSocket.on('fishSpawn', spawnMpFish);
+    mpSocket.on('fishSpawn', (data) => {
+      spawnMpFish(data);
+      if(data.type.isBoss){
+        showBanner('🦑 보스 오징어 출현!');
+        playBossSound();
+      }
+    });
 
     mpSocket.on('fishExpire', ({ id }) => {
       const el = mpFishEls[id];
       if(el){ el.remove(); delete mpFishEls[id]; }
     });
 
-    mpSocket.on('fishCaught', ({ fishId, by, points, emoji }) => {
+    mpSocket.on('timeUpdate', ({ timeLeft }) => updateMpTime(timeLeft));
+
+    mpSocket.on('roundReset', ({ players, timeLeft }) => {
+      renderMpPlayerList(players);
+      updateMpTime(timeLeft);
+      document.querySelectorAll('.fish').forEach(f => f.remove());
+      mpFishEls = {};
+      showBanner('🎣 새 라운드 시작!');
+    });
+
+    mpSocket.on('roundEnded', ({ players }) => {
+      renderMpPlayerList(players);
+      showBanner('⏰ 라운드 종료!');
+      playGameOverSound(false);
+    });
+
+    mpSocket.on('fishCaught', (info) => {
+      const { fishId, by, points, emoji, isTreasure, isMagnet, isTimeBonus, isBoss, label, lootName } = info;
       const el = mpFishEls[fishId];
+      const isMe = by === playerName;
+
+      if(isMe){
+        playCatchSound(points, isTreasure, isMagnet, isTimeBonus);
+        if(isMagnet){
+          magnetActive = true;
+          updateHookIcon();
+          clearTimeout(magnetTimer);
+          magnetTimer = setTimeout(() => { magnetActive = false; updateHookIcon(); }, 6000);
+        }
+      }
+
       if(el){
         const popText = document.createElement('div');
         popText.className = 'caughtPop';
-        popText.textContent = emoji + ' ' + by + ' +' + points;
-        popText.style.color = points >= 0 ? '#fff' : '#ffb3b3';
+        if(isBoss){
+          popText.textContent = '🦑 ' + by + ' 보스 처치! +' + points;
+          popText.style.color = '#ffd166'; popText.style.fontSize = '20px';
+        } else if(isTreasure){
+          popText.textContent = '🎁 ' + by + ' ' + (lootName || '보물') + '! +' + points;
+          popText.style.color = '#ffe066';
+        } else if(isMagnet){
+          popText.textContent = '🧲 ' + by + ' 자석 발동!';
+          popText.style.color = '#a0e6ff';
+        } else if(isTimeBonus){
+          popText.textContent = '⏰ ' + by + ' 시간 +5초!';
+          popText.style.color = '#b6ffb0';
+        } else if(points === 0){
+          popText.textContent = by + ' ' + (label || '꽝!');
+          popText.style.color = '#d8d8d8';
+        } else {
+          popText.textContent = emoji + ' ' + by + ' ' + (points >= 0 ? '+' : '') + points;
+          popText.style.color = points >= 0 ? '#fff' : '#ffb3b3';
+        }
         popText.style.left = el.style.left;
         popText.style.top = el.style.top;
         scene.appendChild(popText);
@@ -1354,8 +1407,6 @@ function joinMultiplayer(){
         el.classList.add('caught');
         setTimeout(() => el.remove(), 350);
         delete mpFishEls[fishId];
-
-        if(by === playerName) playCatchSound(points, false, false, false);
       }
     });
 
@@ -1363,24 +1414,52 @@ function joinMultiplayer(){
   });
 }
 
+function updateMpTime(t){
+  timeLeft = t;
+  document.getElementById('timeLeft').textContent = timeLeft;
+}
+
 function spawnMpFish(data){
   const type = data.type;
   const fish = document.createElement('div');
   fish.className = 'fish';
   fish.textContent = type.emoji;
+  fish.dataset.name = type.name;
   const y = data.y * window.innerHeight;
   fish.style.top = y + 'px';
   fish.style.left = (data.fromLeft ? -50 : window.innerWidth + 50) + 'px';
   if(!data.fromLeft) fish.style.transform = 'scaleX(-1)';
+  if(type.isBoss) fish.style.fontSize = '86px';
   scene.appendChild(fish);
   mpFishEls[data.id] = fish;
 
   const distance = window.innerWidth + 100;
   const duration = 6000 / type.speed; // 서버와 같은 지속시간 공식을 써서 타이밍을 맞춰요
-  const elapsedAlready = Date.now() - data.startTime;
+  let caughtSent = false;
+
+  function tryLocalCatch(){
+    // 내가 자석을 켠 상태라면, 이 물고기를 내 낚싯바늘 쪽으로 끌어당겨서 보여줘요
+    if(!magnetActive || type.isMagnet || caughtSent) return false;
+    const hookX = parseFloat(hook.style.left) || window.innerWidth/2;
+    const hookY = parseFloat(hook.style.top) || 300;
+    const curX = parseFloat(fish.style.left) || 0;
+    const curY = parseFloat(fish.style.top) || 0;
+    const dx = hookX - curX, dy = hookY - curY;
+    const dist = Math.max(Math.sqrt(dx*dx + dy*dy), 0.01);
+    if(dist < 30){
+      caughtSent = true;
+      if(mpSocket) mpSocket.emit('catchAttempt', { fishId: data.id });
+      return true;
+    }
+    const step = 6;
+    fish.style.left = (curX + (dx/dist) * step) + 'px';
+    fish.style.top = (curY + (dy/dist) * step) + 'px';
+    return true;
+  }
 
   function animate(){
     if(!fish.isConnected) return;
+    if(tryLocalCatch()){ requestAnimationFrame(animate); return; }
     const elapsed = (Date.now() - data.startTime);
     const progress = elapsed / duration;
     if(progress >= 1) return; // 서버의 fishExpire 이벤트가 제거를 처리해요
@@ -1410,18 +1489,32 @@ function renderMpPlayerList(players){
 
 function startMultiplayerMode(){
   mpActive = true;
-  running = false; // 싱글플레이 타이머/스폰은 꺼둬요
+  running = false; // 싱글플레이 스폰/보스/날씨는 꺼두고, 시간과 물고기는 서버가 맡아요
+  clearInterval(gameTimer); gameTimer = null;
+  clearInterval(spawnTimer); spawnTimer = null;
+  clearTimeout(rivalTimeout); clearTimeout(stormTimeout); clearTimeout(bossTimeout);
+  document.getElementById('rivalBoat').classList.remove('show');
+  document.getElementById('stormOverlay').classList.remove('active');
+  document.getElementById('stormFog').classList.remove('active');
+  document.getElementById('snowTint').classList.remove('active');
+  magnetActive = false; clearTimeout(magnetTimer);
+  frozen = false; clearTimeout(freezeTimeout);
+  updateHookIcon();
   document.getElementById('mpScreen').classList.add('hidden');
   document.getElementById('startScreen').classList.add('hidden');
   document.getElementById('endScreen').classList.add('hidden');
   document.getElementById('mpPanel').classList.remove('hidden');
   document.querySelectorAll('.fish').forEach(f => f.remove());
   mpFishEls = {};
+  startBgMusic();
 }
 
 function leaveMultiplayer(){
   if(mpSocket){ mpSocket.disconnect(); mpSocket = null; }
   mpActive = false;
+  magnetActive = false; clearTimeout(magnetTimer);
+  updateHookIcon();
+  stopBgMusic();
   document.querySelectorAll('.fish').forEach(f => f.remove());
   mpFishEls = {};
   document.getElementById('mpPanel').classList.add('hidden');
