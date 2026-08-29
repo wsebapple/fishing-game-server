@@ -10,9 +10,8 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
-app.get('/', (req, res) => {
-  res.send('🎣 낚시게임 멀티플레이 서버가 잘 돌아가고 있어요!');
-});
+// public 폴더 안의 게임 파일(index.html 등)을 그대로 보여줘요
+app.use(express.static('public'));
 
 // 방(room) 하나마다: 참가자 목록, 현재 떠있는 물고기, 스폰 타이머를 저장해요
 const rooms = {};
