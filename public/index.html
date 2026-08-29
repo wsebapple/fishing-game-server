@@ -1331,6 +1331,7 @@ function joinMultiplayer(){
       Object.values(state.fish).forEach(spawnMpFish);
       renderMpPlayerList(state.players);
       if(typeof state.timeLeft === 'number') updateMpTime(state.timeLeft);
+      if(typeof state.level === 'number') updateMpLevel(state.level);
     });
 
     mpSocket.on('fishSpawn', (data) => {
@@ -1348,9 +1349,16 @@ function joinMultiplayer(){
 
     mpSocket.on('timeUpdate', ({ timeLeft }) => updateMpTime(timeLeft));
 
-    mpSocket.on('roundReset', ({ players, timeLeft }) => {
+    mpSocket.on('levelUp', ({ level }) => {
+      updateMpLevel(level);
+      showBanner('🌟 ' + level + '단계! 🌟');
+      playLevelUpSound();
+    });
+
+    mpSocket.on('roundReset', ({ players, timeLeft, level }) => {
       renderMpPlayerList(players);
       updateMpTime(timeLeft);
+      updateMpLevel(level || 1);
       document.querySelectorAll('.fish').forEach(f => f.remove());
       mpFishEls = {};
       stopMpWeather();
@@ -1506,6 +1514,11 @@ function stopMpWeather(kind){
   else if(kind === 'snow') showBanner('☀️ 눈이 그쳤어요!');
 }
 
+function updateMpLevel(level){
+  currentLevel = level;
+  document.getElementById('level').textContent = currentLevel;
+}
+
 function updateMpTime(t){
   timeLeft = t;
   document.getElementById('timeLeft').textContent = timeLeft;
@@ -1589,6 +1602,7 @@ function startMultiplayerMode(){
   stopMpWeather();
   magnetActive = false; clearTimeout(magnetTimer);
   updateHookIcon();
+  updateMpLevel(1);
   document.getElementById('mpScreen').classList.add('hidden');
   document.getElementById('startScreen').classList.add('hidden');
   document.getElementById('endScreen').classList.add('hidden');

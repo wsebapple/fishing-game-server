@@ -19,7 +19,21 @@ const rooms = {};
 
 const ROUND_SECONDS = 60;
 const RESET_DELAY_MS = 6000; // 라운드가 끝나고 이만큼 기다렸다가 새 라운드를 시작해요
-const BASE_SPAWN_MS = 900;
+
+// 단계(레벨) 설정: 방에서 가장 점수가 높은 친구를 기준으로 다 같이 단계가 올라가요
+// (index.html의 levelStages와 맞춰뒀어요)
+const levelStages = [
+  { level: 1, upTo: 30, spawnMs: 700 },
+  { level: 2, upTo: 60, spawnMs: 550 },
+  { level: 3, upTo: 100, spawnMs: 420 },
+];
+
+function getLevelForScore(s){
+  for(const stage of levelStages){
+    if(s < stage.upTo) return stage;
+  }
+  return levelStages[levelStages.length - 1];
+}
 
 // 보물통을 열면 이 중에서 하나가 랜덤으로 나와요 (index.html의 lootItems와 맞춰뒀어요)
 const lootItems = ['반짝이는 진주', '오래된 금화', '인어의 머리핀', '신비한 조개껍질', '작은 다이아몬드', '보물지도 조각', '산호 장식품', '용왕님의 반지'];
@@ -72,6 +86,8 @@ function getRoom(code){
       activeWeather: null, // 'storm' | 'snow' | null
       timeLeft: ROUND_SECONDS,
       started: false,
+      currentLevel: 1,
+      levelSpawnMs: levelStages[0].spawnMs,
     };
   }
   return rooms[code];
@@ -126,6 +142,34 @@ function spawnBossForRoom(code){
   }, duration);
 }
 
+// 지금 단계 + 날씨 상태에 맞는 스폰 속도로 물고기 생성 타이머를 다시 맞춰요
+function applySpawnRate(code){
+  const room = rooms[code];
+  if(!room || !room.started) return;
+
+  let spawnMs = room.levelSpawnMs;
+  if(room.activeWeather === 'storm') spawnMs = Math.max(220, room.levelSpawnMs * 0.55);
+  else if(room.activeWeather === 'snow') spawnMs = room.levelSpawnMs * 1.25;
+
+  clearInterval(room.spawnTimer);
+  room.spawnTimer = setInterval(() => spawnFishForRoom(code), spawnMs);
+}
+
+// 방에서 가장 점수가 높은 친구를 기준으로 단계를 올려요 (다 같이 더 빠르고 짜릿해져요)
+function checkLevelUpForRoom(code){
+  const room = rooms[code];
+  if(!room) return;
+
+  const topScore = Object.values(room.players).reduce((max, p) => Math.max(max, p.score), 0);
+  const stage = getLevelForScore(topScore);
+  if(stage.level === room.currentLevel) return;
+
+  room.currentLevel = stage.level;
+  room.levelSpawnMs = stage.spawnMs;
+  applySpawnRate(code);
+  io.to(code).emit('levelUp', { level: room.currentLevel });
+}
+
 function scheduleRivalForRoom(code){
   const room = rooms[code];
   if(!room) return;
@@ -164,23 +208,16 @@ function triggerWeatherForRoom(code){
 
   const kind = Math.random() < 0.5 ? 'storm' : 'snow';
   room.activeWeather = kind;
-  const spawnMs = kind === 'storm'
-    ? Math.max(220, BASE_SPAWN_MS * 0.55)
-    : BASE_SPAWN_MS * 1.25;
   const duration = kind === 'storm'
     ? 6000 + Math.random() * 3000
     : 7000 + Math.random() * 3000;
 
-  clearInterval(room.spawnTimer);
-  room.spawnTimer = setInterval(() => spawnFishForRoom(code), spawnMs);
+  applySpawnRate(code);
   io.to(code).emit('weatherEvent', { kind, durationMs: duration });
 
   room.weatherEndTimer = setTimeout(() => {
     room.activeWeather = null;
-    if(room.started){
-      clearInterval(room.spawnTimer);
-      room.spawnTimer = setInterval(() => spawnFishForRoom(code), BASE_SPAWN_MS);
-    }
+    applySpawnRate(code);
     io.to(code).emit('weatherEvent', { kind: kind + 'End' });
     scheduleWeatherForRoom(code);
   }, duration);
@@ -229,9 +266,12 @@ function startRound(code){
 
   room.timeLeft = ROUND_SECONDS;
   room.started = true;
+  room.currentLevel = 1;
+  room.levelSpawnMs = levelStages[0].spawnMs;
+  room.activeWeather = null;
   Object.values(room.players).forEach(p => p.score = 0);
 
-  io.to(code).emit('roundReset', { players: room.players, timeLeft: room.timeLeft });
+  io.to(code).emit('roundReset', { players: room.players, timeLeft: room.timeLeft, level: room.currentLevel });
 
   clearInterval(room.timerInterval);
   room.timerInterval = setInterval(() => {
@@ -243,8 +283,7 @@ function startRound(code){
     }
   }, 1000);
 
-  clearInterval(room.spawnTimer);
-  room.spawnTimer = setInterval(() => spawnFishForRoom(code), BASE_SPAWN_MS);
+  applySpawnRate(code);
   scheduleBossForRoom(code);
   scheduleRivalForRoom(code);
   scheduleWeatherForRoom(code);
@@ -268,6 +307,7 @@ io.on('connection', (socket) => {
       players: room.players,
       fish: Object.values(room.fish),
       timeLeft: room.timeLeft,
+      level: room.currentLevel,
     });
     io.to(code).emit('playerListUpdate', room.players);
   });
@@ -301,6 +341,7 @@ io.on('connection', (socket) => {
     if(player){
       player.score += earnedPoints;
       if(player.score < 0) player.score = 0;
+      checkLevelUpForRoom(code);
     }
 
     io.to(code).emit('fishCaught', {
