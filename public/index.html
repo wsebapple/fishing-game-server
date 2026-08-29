@@ -456,7 +456,8 @@
 
   <!-- 온라인 플레이 중 점수판 -->
   <div id="mpPanel" class="hidden" style="position:absolute; top:14px; right:14px; z-index:7; background:rgba(4,59,92,0.7); border:2px solid rgba(255,255,255,0.3); border-radius:14px; padding:10px 14px; color:#eafcff; font-family:'Jua',sans-serif; min-width:150px;">
-    <div style="font-size:15px; margin-bottom:6px;">🌐 같이 하는 친구들</div>
+    <div style="font-size:15px; margin-bottom:2px;">🌐 같이 하는 친구들</div>
+    <div id="mpRoomCodeDisplay" style="font-size:12px; opacity:0.8; margin-bottom:6px;"></div>
     <div id="mpPlayerList" style="font-size:14px; line-height:1.6;"></div>
     <button id="mpLeaveBtn" style="margin-top:8px; font-family:'Jua',sans-serif; font-size:13px; padding:4px 10px; border-radius:999px; border:none; background:var(--coral); color:#fff; cursor:pointer;">나가기</button>
   </div>
@@ -572,9 +573,12 @@ let frozen = false;
 let freezeTimeout = null;
 let stormActive = false;
 let stormTimeout = null;
+let stormFlashInterval = null; // 번개 번쩍임 반복 타이머 (게임 종료 시 반드시 정리해야 해요)
+let snowFlakeInterval = null; // 눈송이 생성 반복 타이머 (게임 종료 시 반드시 정리해야 해요)
 let bossTimeout = null;
 let playerName = '';
 let mpSocket = null;
+let mpConnecting = false;
 let mpActive = false;
 let mpFishEls = {};
 
@@ -960,7 +964,8 @@ function triggerSnow(){
   const snowSpawnMs = levelStages[currentLevel - 1].spawnMs * 1.25;
   spawnTimer = setInterval(spawnFish, snowSpawnMs);
 
-  const flakeInterval = setInterval(() => {
+  clearInterval(snowFlakeInterval);
+  snowFlakeInterval = setInterval(() => {
     const flake = document.createElement('div');
     flake.className = 'snowflake';
     flake.textContent = '❄️';
@@ -973,7 +978,7 @@ function triggerSnow(){
 
   const duration = 7000 + Math.random() * 3000;
   setTimeout(() => {
-    clearInterval(flakeInterval);
+    clearInterval(snowFlakeInterval); snowFlakeInterval = null;
     document.getElementById('snowTint').classList.remove('active');
     showBanner('☀️ 눈이 그쳤어요!');
     if(running){
@@ -998,7 +1003,8 @@ function triggerStorm(){
   spawnTimer = setInterval(spawnFish, stormSpawnMs);
 
   // 가끔 번개가 번쩍여요
-  const flashInterval = setInterval(() => {
+  clearInterval(stormFlashInterval);
+  stormFlashInterval = setInterval(() => {
     const flash = document.getElementById('lightningFlash');
     flash.classList.remove('flash');
     void flash.offsetWidth;
@@ -1008,7 +1014,7 @@ function triggerStorm(){
 
   const stormDuration = 6000 + Math.random() * 3000;
   setTimeout(() => {
-    clearInterval(flashInterval);
+    clearInterval(stormFlashInterval); stormFlashInterval = null;
     stormActive = false;
     document.getElementById('stormOverlay').classList.remove('active');
     document.getElementById('stormFog').classList.remove('active');
@@ -1095,6 +1101,15 @@ function catchBoss(fish, bossType){
 
 function startGame(){
   ensureAudio();
+  // 이전 판(특히 폭풍우/눈이 오던 도중 다시하기를 누른 경우)의 타이머가 남아있을 수 있으니
+  // 새 판을 시작하기 전에 전부 확실히 정리해요
+  clearInterval(spawnTimer); clearInterval(gameTimer);
+  clearTimeout(rivalTimeout); clearTimeout(stormTimeout); clearTimeout(bossTimeout);
+  clearTimeout(magnetTimer); clearTimeout(freezeTimeout);
+  clearInterval(stormFlashInterval); stormFlashInterval = null;
+  clearInterval(snowFlakeInterval); snowFlakeInterval = null;
+  document.querySelectorAll('.snowflake').forEach(f => f.remove());
+
   score = 0; timeLeft = 60; running = true;
   currentLevel = 1;
   treasureLoot = [];
@@ -1112,9 +1127,7 @@ function startGame(){
   spawnTimer = setInterval(spawnFish, levelStages[0].spawnMs);
   scheduleRival();
   magnetActive = false;
-  clearTimeout(magnetTimer);
   frozen = false;
-  clearTimeout(freezeTimeout);
   updateHookIcon();
   stormActive = false;
   document.getElementById('stormOverlay').classList.remove('active');
@@ -1138,6 +1151,8 @@ function endGame(){
   clearTimeout(magnetTimer);
   clearTimeout(bossTimeout);
   clearTimeout(freezeTimeout);
+  clearInterval(stormFlashInterval); stormFlashInterval = null;
+  clearInterval(snowFlakeInterval); snowFlakeInterval = null;
   magnetActive = false;
   frozen = false;
   stormActive = false;
@@ -1147,6 +1162,7 @@ function endGame(){
   document.getElementById('hook').textContent = '🪝';
   document.getElementById('rivalBoat').classList.remove('show');
   document.querySelectorAll('.fish').forEach(f=>f.remove());
+  document.querySelectorAll('.snowflake').forEach(f=>f.remove());
 
   const isNewRecord = score > bestScore;
   if(isNewRecord) bestScore = score;
@@ -1304,17 +1320,21 @@ function loadSocketIoScript(callback){
 }
 
 function joinMultiplayer(){
+  if(mpConnecting) return; // 입장하기를 여러 번 눌러도 소켓이 중복 생성되지 않게 해요
   const url = document.getElementById('mpServerUrl').value.trim().replace(/\/$/, '');
   const roomCode = document.getElementById('mpRoomCode').value.trim() || 'default';
   // 서버도 이름을 12글자로 잘라서 저장하니, 우리도 똑같이 잘라야
-  // 나중에 "내가 잡았어요" 판정(by === playerName)이 어긋나지 않아요
+  // 화면에 보이는 이름이 서버가 broadcast하는 이름과 어긋나지 않아요
   const name = (document.getElementById('playerNameInput').value.trim() || randomName()).slice(0, 12);
-  playerName = name; // 싱글플레이를 안 거치고 바로 온라인으로 들어와도 "내 캐치"를 알아볼 수 있게 해줘요
+  playerName = name; // 싱글플레이를 안 거치고 바로 온라인으로 들어와도 화면에 내 이름이 정확히 보이게 해줘요
 
   if(!url){
     document.getElementById('mpStatus').textContent = '서버 주소를 먼저 입력해주세요!';
     return;
   }
+
+  if(mpSocket){ mpSocket.disconnect(); mpSocket = null; } // 이전에 연결됐던 소켓이 남아있으면 정리하고 새로 시작해요
+  mpConnecting = true;
   document.getElementById('mpStatus').textContent = '연결하는 중...';
 
   loadSocketIoScript(() => {
@@ -1323,14 +1343,24 @@ function joinMultiplayer(){
 
     mpSocket.on('connect', () => {
       mpSocket.emit('joinRoom', { roomCode, name });
-      startMultiplayerMode();
+      // 화면 전환은 서버가 입장을 실제로 받아준 뒤(roomState 수신 시)에 해요
     });
 
     mpSocket.on('connect_error', () => {
+      mpConnecting = false;
       document.getElementById('mpStatus').textContent = '연결에 실패했어요. 서버 주소를 다시 확인해주세요.';
     });
 
+    mpSocket.on('joinError', ({ message }) => {
+      mpConnecting = false;
+      document.getElementById('mpStatus').textContent = message || '지금은 입장할 수 없어요.';
+      if(mpSocket){ mpSocket.disconnect(); mpSocket = null; }
+    });
+
     mpSocket.on('roomState', (state) => {
+      mpConnecting = false;
+      if(!mpActive) startMultiplayerMode(); // 방 입장이 확정된 시점에만 화면을 전환해요
+      if(state.code) document.getElementById('mpRoomCodeDisplay').textContent = '방 코드: ' + state.code;
       Object.values(state.fish).forEach(spawnMpFish);
       renderMpPlayerList(state.players);
       if(typeof state.timeLeft === 'number') updateMpTime(state.timeLeft);
@@ -1372,7 +1402,15 @@ function joinMultiplayer(){
       renderMpPlayerList(players);
       stopMpWeather();
       showBanner('⏰ 라운드 종료!');
-      playGameOverSound(false);
+      const me = players[mpSocket.id];
+      const isNewRecord = !!me && me.score > bestScore;
+      if(me){
+        if(isNewRecord) bestScore = me.score;
+        saveScoreToLeaderboard(playerName, me.score);
+        document.getElementById('bestScoreStart').textContent = bestScore > 0 ? ('🏅 최고점수: ' + bestScore + '점') : '';
+        document.getElementById('bestScoreEnd').textContent = '🏅 최고점수: ' + bestScore + '점';
+      }
+      playGameOverSound(isNewRecord);
     });
 
     mpSocket.on('weatherEvent', ({ kind, durationMs }) => {
@@ -1413,12 +1451,16 @@ function joinMultiplayer(){
     });
 
     mpSocket.on('fishCaught', (info) => {
-      const { fishId, by, points, emoji, isTreasure, isMagnet, isTimeBonus, isBoss, label, lootName } = info;
+      const { fishId, by, byId, name, points, emoji, isTreasure, isMagnet, isTimeBonus, isBoss, label, lootName } = info;
       const el = mpFishEls[fishId];
-      const isMe = by === playerName;
+      // 이름은 친구랑 겹칠 수 있어서(둘 다 "친구"로 들어오는 등) 서버가 보내주는
+      // 내 socket.id(byId)로 정확히 "내가 잡았는지"를 판정해요
+      const isMe = mpSocket && byId === mpSocket.id;
 
       if(isMe){
         playCatchSound(points, isTreasure, isMagnet, isTimeBonus);
+        if(name) caughtLog[name] = (caughtLog[name] || 0) + 1; // 📖 도감에도 기록해요
+        if(isTreasure) treasureLoot.push(lootName || '보물');
         if(isMagnet){
           magnetActive = true;
           updateHookIcon();
@@ -1542,7 +1584,11 @@ function spawnMpFish(data){
   mpFishEls[data.id] = fish;
 
   const distance = window.innerWidth + 100;
-  const duration = 6000 / type.speed; // 서버와 같은 지속시간 공식을 써서 타이밍을 맞춰요
+  const duration = data.durationMs; // 서버가 정해준 "화면을 가로지르는 시간"을 그대로 써서 서버 만료 시점과 맞춰요
+  // 내 기기 시계와 서버 시계가 어긋나 있어도 문제가 없도록, Date.now() 대신
+  // "이 물고기를 화면에 그리기 시작한 내 브라우저 시각"을 기준으로 흐른 시간을 재요.
+  // 뒤늦게 방에 들어와서 이미 날아가고 있던 물고기라면(elapsedMs) 그만큼 앞에서 시작해요.
+  const localStart = performance.now() - (data.elapsedMs || 0);
   let caughtSent = false;
 
   function tryLocalCatch(){
@@ -1567,8 +1613,11 @@ function spawnMpFish(data){
 
   function animate(){
     if(!fish.isConnected) return;
+    // 캐치 요청을 이미 보냈다면, 서버 응답(fishCaught/fishExpire)이 올 때까지
+    // 원래 유영 경로로 되돌아가지 않고 제자리에서 기다려요
+    if(caughtSent){ requestAnimationFrame(animate); return; }
     if(tryLocalCatch()){ requestAnimationFrame(animate); return; }
-    const elapsed = (Date.now() - data.startTime);
+    const elapsed = performance.now() - localStart;
     const progress = elapsed / duration;
     if(progress >= 1) return; // 서버의 fishExpire 이벤트가 제거를 처리해요
     const x = data.fromLeft
@@ -1590,13 +1639,14 @@ function spawnMpFish(data){
 
 function renderMpPlayerList(players){
   const list = Object.values(players).sort((a, b) => b.score - a.score);
+  // 친구 이름은 다른 사람이 입력한 텍스트라, HTML로 그대로 넣으면 위험할 수 있어요(escapeHtml 필수)
   document.getElementById('mpPlayerList').innerHTML = list
-    .map(p => `${p.name}: ${p.score}점`)
+    .map(p => `${escapeHtml(p.name)}: ${p.score}점`)
     .join('<br>');
 
   // 왼쪽 위 메인 점수판은 원래 싱글플레이용이라 멀티플레이 중엔 안 움직였어요.
-  // 여기서도 내 점수를 바로 반영해줘요.
-  const me = list.find(p => p.name === playerName);
+  // 여기서도 내 점수를 바로 반영해줘요. (이름이 같은 친구가 있어도 안 헷갈리게 socket.id로 찾아요)
+  const me = mpSocket && players[mpSocket.id];
   if(me) document.getElementById('score').textContent = me.score;
 }
 
@@ -1623,6 +1673,7 @@ function startMultiplayerMode(){
 
 function leaveMultiplayer(){
   if(mpSocket){ mpSocket.disconnect(); mpSocket = null; }
+  mpConnecting = false;
   mpActive = false;
   magnetActive = false; clearTimeout(magnetTimer);
   document.getElementById('rivalBoat').classList.remove('show');
@@ -1631,6 +1682,8 @@ function leaveMultiplayer(){
   document.querySelectorAll('.fish').forEach(f => f.remove());
   mpFishEls = {};
   document.getElementById('mpPanel').classList.add('hidden');
+  document.getElementById('mpStatus').textContent = '';
+  document.getElementById('mpRoomCodeDisplay').textContent = '';
   document.getElementById('startScreen').classList.remove('hidden');
 }
 
