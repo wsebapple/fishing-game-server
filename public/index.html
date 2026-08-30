@@ -41,7 +41,7 @@
     background:var(--sun); border-radius:50%;
     box-shadow:0 0 0 8px rgba(255,201,60,0.35);
     transition:transform .25s ease;
-    z-index:6;
+    z-index:2; /* HUD(5)/배(3)보다 뒤에 있어야 해가 알약이나 배를 가리지 않아요 */
   }
   #sun.bounce{ transform:scale(1.25) rotate(15deg); }
 
@@ -285,14 +285,22 @@
 
   /* HUD */
   #hud{
-    position:absolute; top:14px; left:14px; display:flex; gap:10px; z-index:5;
+    position:absolute; top:14px; left:14px; right:14px; display:flex; flex-wrap:wrap;
+    gap:10px; z-index:5;
   }
   .pill{
     background:rgba(4,59,92,0.55); color:var(--foam); padding:8px 16px;
     border-radius:999px; font-size:20px; border:2px solid rgba(255,255,255,0.3);
-    backdrop-filter:blur(2px);
+    backdrop-filter:blur(2px); white-space:nowrap;
   }
   .pill b{ color:var(--sun); }
+
+  /* 좁은 폰 화면에서는 알약 5개가 한 줄에 안 들어가 글자가 두 줄로 쪼개지던 문제를 막아요 */
+  @media (max-width: 480px){
+    #hud{ gap:6px; }
+    .pill{ font-size:14px; padding:6px 10px; }
+    #sun{ width:50px; height:50px; top:16px; right:16px; }
+  }
 
   /* 물고기 */
   .fish{
