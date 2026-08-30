@@ -269,6 +269,20 @@
     text-align:center; line-height:26px; transform:translate(-50%,-50%);
   }
 
+  /* 터치 기기 전용 가상 조이스틱 */
+  #joystickBase{
+    position:absolute; left:22px; bottom:22px; width:110px; height:110px;
+    border-radius:50%; background:rgba(4,59,92,0.4);
+    border:3px solid rgba(255,255,255,0.45);
+    z-index:9; touch-action:none;
+  }
+  #joystickKnob{
+    position:absolute; left:50%; top:50%; width:52px; height:52px;
+    margin-left:-26px; margin-top:-26px; border-radius:50%;
+    background:rgba(255,255,255,0.85); border:3px solid rgba(255,255,255,0.95);
+    box-shadow:0 2px 6px rgba(0,0,0,0.3);
+  }
+
   /* HUD */
   #hud{
     position:absolute; top:14px; left:14px; display:flex; gap:10px; z-index:5;
@@ -421,6 +435,11 @@
   <div id="line"></div>
   <div id="hook">🪝</div>
 
+  <!-- 터치 기기용 가상 조이스틱: 손가락으로 밀면 그 방향으로 배가 움직여요 -->
+  <div id="joystickBase" class="hidden">
+    <div id="joystickKnob"></div>
+  </div>
+
   <div id="levelUpBanner">🌟 2단계! 🌟</div>
   <div id="stormOverlay"></div>
   <div id="stormFog"></div>
@@ -430,7 +449,7 @@
   <!-- 시작 화면 -->
   <div class="overlay" id="startScreen">
     <h1>🐟 바다에서 물고기를 잡아라! 🐠</h1>
-    <p>물고기가 헤엄쳐 지나가면 <b>손가락(마우스)으로 콕!</b> 눌러서 잡아보세요.<br>60초 안에 최대한 많이 잡아봐요!</p>
+    <p>마우스(또는 화면 아래 조이스틱)로 낚싯바늘을 <b>물고기에 스치듯 갖다 대면</b> 저절로 잡혀요!<br>60초 안에 최대한 많이 잡아봐요!</p>
     <div class="nameRow">
       <input id="playerNameInput" placeholder="이름(별명)을 적어주세요" maxlength="10">
       <button class="smallBtn" id="randomNameBtn" title="이름 자동으로 짓기">🎲</button>
@@ -743,9 +762,104 @@ function moveRod(x, y){
   fog.style.setProperty('--fx', clampedX + 'px');
   fog.style.setProperty('--fy', clampedY + 'px');
 }
+// 바늘이 물고기 몸통에 닿았는지 확인해요 (탭/클릭 대신 이걸로 물고기를 잡아요)
+function isHookTouchingFish(fishEl){
+  const f = fishEl.getBoundingClientRect();
+  const h = hook.getBoundingClientRect();
+  return !(h.right < f.left || h.left > f.right || h.bottom < f.top || h.top > f.bottom);
+}
+
 scene.addEventListener('mousemove', e => moveRod(e.clientX, e.clientY));
-scene.addEventListener('touchmove', e => { moveRod(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); }, {passive:false});
+// 화면을 손가락으로 끌면 배가 그 자리로 순간이동하는 게 어색해서, 터치 기기는
+// 대신 화면 아래 가상 조이스틱으로 배를 "조종"하게 해요 (아래 조이스틱 코드 참고)
+scene.addEventListener('touchmove', e => e.preventDefault(), {passive:false});
 moveRod(window.innerWidth/2, 330);
+
+/* ------------------------------------------------------
+   터치 기기용 가상 조이스틱: 화면 아래 왼쪽 원을 손가락으로 밀면
+   그 방향으로 배가 계속 이동해요 (마우스는 그대로 커서를 따라가요)
+------------------------------------------------------ */
+const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+const joystickBase = document.getElementById('joystickBase');
+const joystickKnob = document.getElementById('joystickKnob');
+let joyDX = 0, joyDY = 0; // -1~1로 정규화된 방향
+let joyActive = false;
+let joyTouchId = null;
+
+if(isTouchDevice){
+  joystickBase.classList.remove('hidden');
+
+  const maxKnobOffset = 35; // 조이스틱 안에서 노브가 움직일 수 있는 최대 거리(px)
+  const deadZone = 6; // 이보다 작게 밀면 안 움직인 걸로 쳐요
+
+  function updateJoystick(touch){
+    const rect = joystickBase.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    let dx = touch.clientX - centerX;
+    let dy = touch.clientY - centerY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if(dist < deadZone){
+      joyDX = 0; joyDY = 0;
+      joystickKnob.style.transform = 'translate(0px, 0px)';
+      return;
+    }
+    if(dist > maxKnobOffset){
+      dx = (dx / dist) * maxKnobOffset;
+      dy = (dy / dist) * maxKnobOffset;
+    }
+    joystickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+    joyDX = dx / maxKnobOffset;
+    joyDY = dy / maxKnobOffset;
+  }
+
+  function resetJoystick(){
+    joyActive = false;
+    joyTouchId = null;
+    joyDX = 0; joyDY = 0;
+    joystickKnob.style.transform = 'translate(0px, 0px)';
+  }
+
+  joystickBase.addEventListener('touchstart', (e) => {
+    const t = e.changedTouches[0];
+    joyTouchId = t.identifier;
+    joyActive = true;
+    updateJoystick(t);
+    e.preventDefault();
+  }, { passive: false });
+
+  joystickBase.addEventListener('touchmove', (e) => {
+    if(!joyActive) return;
+    const t = Array.from(e.changedTouches).find(t => t.identifier === joyTouchId);
+    if(t) updateJoystick(t);
+    e.preventDefault();
+  }, { passive: false });
+
+  joystickBase.addEventListener('touchend', (e) => {
+    if(Array.from(e.changedTouches).some(t => t.identifier === joyTouchId)) resetJoystick();
+  });
+  joystickBase.addEventListener('touchcancel', resetJoystick);
+
+  const JOYSTICK_SPEED = 420; // 조이스틱을 끝까지 밀었을 때 배가 움직이는 속도(초당 px)
+  let lastSteerTime = null;
+
+  function steerLoop(now){
+    if(joyActive && (joyDX !== 0 || joyDY !== 0)){
+      if(lastSteerTime !== null){
+        const dt = Math.min((now - lastSteerTime) / 1000, 0.05);
+        const curX = parseFloat(hook.style.left) || window.innerWidth / 2;
+        const curY = parseFloat(hook.style.top) || 330;
+        moveRod(curX + joyDX * JOYSTICK_SPEED * dt, curY + joyDY * JOYSTICK_SPEED * dt);
+      }
+      lastSteerTime = now;
+    } else {
+      lastSteerTime = null;
+    }
+    requestAnimationFrame(steerLoop);
+  }
+  requestAnimationFrame(steerLoop);
+}
 
 function pickFishType(){
   const total = fishTypes.reduce((s,f)=>s+f.chance,0);
@@ -779,6 +893,12 @@ function spawnFish(){
   function animate(now){
     if(!fish.isConnected) return;
 
+    // 낚싯바늘이 물고기 몸에 닿으면 클릭/탭 없이도 바로 잡혀요
+    if(isHookTouchingFish(fish)){
+      catchFish(fish, type);
+      return;
+    }
+
     // 자석이 켜져 있으면 물고기가 낚싯바늘 쪽으로 저절로 끌려와요
     if(magnetActive && !type.isMagnet){
       const hookX = parseFloat(hook.style.left) || window.innerWidth/2;
@@ -787,10 +907,6 @@ function spawnFish(){
       const curY = parseFloat(fish.style.top) || 0;
       const dx = hookX - curX, dy = hookY - curY;
       const dist = Math.max(Math.sqrt(dx*dx + dy*dy), 0.01);
-      if(dist < 30){
-        catchFish(fish, type);
-        return;
-      }
       const step = 6;
       fish.style.left = (curX + (dx/dist) * step) + 'px';
       fish.style.top = (curY + (dy/dist) * step) + 'px';
@@ -808,9 +924,6 @@ function spawnFish(){
     requestAnimationFrame(animate);
   }
   requestAnimationFrame(animate);
-
-  fish.addEventListener('click', () => catchFish(fish, type));
-  fish.addEventListener('touchstart', (e) => { catchFish(fish, type); e.stopPropagation(); });
 }
 
 function catchFish(fish, type){
@@ -1063,6 +1176,13 @@ function spawnBoss(){
 
   function animate(now){
     if(!fish.isConnected) return;
+
+    // 낚싯바늘이 보스 몸에 닿으면 클릭/탭 없이도 바로 잡혀요
+    if(isHookTouchingFish(fish)){
+      catchBoss(fish, bossType);
+      return;
+    }
+
     const elapsed = (now - startTime) / 1000;
     const progress = elapsed / duration;
     if(progress >= 1){ fish.remove(); scheduleBoss(); return; }
@@ -1073,9 +1193,6 @@ function spawnBoss(){
     requestAnimationFrame(animate);
   }
   requestAnimationFrame(animate);
-
-  fish.addEventListener('click', () => catchBoss(fish, bossType));
-  fish.addEventListener('touchstart', (e) => { catchBoss(fish, bossType); e.stopPropagation(); });
 }
 
 function catchBoss(fish, bossType){
@@ -1607,24 +1724,18 @@ function spawnMpFish(data){
   const localStart = performance.now() - (data.elapsedMs || 0);
   let caughtSent = false;
 
-  function tryLocalCatch(){
+  function tryMagnetPull(){
     // 내가 자석을 켠 상태라면, 이 물고기를 내 낚싯바늘 쪽으로 끌어당겨서 보여줘요
-    if(!magnetActive || type.isMagnet || caughtSent) return false;
+    if(!magnetActive || type.isMagnet) return;
     const hookX = parseFloat(hook.style.left) || window.innerWidth/2;
     const hookY = parseFloat(hook.style.top) || 300;
     const curX = parseFloat(fish.style.left) || 0;
     const curY = parseFloat(fish.style.top) || 0;
     const dx = hookX - curX, dy = hookY - curY;
     const dist = Math.max(Math.sqrt(dx*dx + dy*dy), 0.01);
-    if(dist < 30){
-      caughtSent = true;
-      if(mpSocket) mpSocket.emit('catchAttempt', { fishId: data.id });
-      return true;
-    }
     const step = 6;
     fish.style.left = (curX + (dx/dist) * step) + 'px';
     fish.style.top = (curY + (dy/dist) * step) + 'px';
-    return true;
   }
 
   function animate(){
@@ -1632,7 +1743,21 @@ function spawnMpFish(data){
     // 캐치 요청을 이미 보냈다면, 서버 응답(fishCaught/fishExpire)이 올 때까지
     // 원래 유영 경로로 되돌아가지 않고 제자리에서 기다려요
     if(caughtSent){ requestAnimationFrame(animate); return; }
-    if(tryLocalCatch()){ requestAnimationFrame(animate); return; }
+
+    // 낚싯바늘이 물고기에 닿으면 클릭/탭 없이도 자동으로 캐치를 시도해요
+    if(isHookTouchingFish(fish)){
+      caughtSent = true;
+      if(mpSocket) mpSocket.emit('catchAttempt', { fishId: data.id });
+      requestAnimationFrame(animate);
+      return;
+    }
+
+    if(magnetActive && !type.isMagnet){
+      tryMagnetPull();
+      requestAnimationFrame(animate);
+      return;
+    }
+
     const elapsed = performance.now() - localStart;
     const progress = elapsed / duration;
     if(progress >= 1) return; // 서버의 fishExpire 이벤트가 제거를 처리해요
@@ -1643,14 +1768,6 @@ function spawnMpFish(data){
     requestAnimationFrame(animate);
   }
   requestAnimationFrame(animate);
-
-  fish.addEventListener('click', () => {
-    if(mpSocket) mpSocket.emit('catchAttempt', { fishId: data.id });
-  });
-  fish.addEventListener('touchstart', (e) => {
-    if(mpSocket) mpSocket.emit('catchAttempt', { fishId: data.id });
-    e.stopPropagation();
-  });
 }
 
 function renderMpPlayerList(players){
