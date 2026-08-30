@@ -402,6 +402,7 @@
     <div class="pill">🎣 <b id="score">0</b>점</div>
     <div class="pill">🌟 <b id="level">1</b>단계</div>
     <div class="pill" id="soundToggle" style="cursor:pointer;">🔊</div>
+    <div class="pill" id="quitBtn" style="cursor:pointer;" title="그만하고 메인 메뉴로">🏠</div>
   </div>
 
   <div id="boat" class="bob">
@@ -472,6 +473,7 @@
     <button class="bigBtn" id="retryBtn">다시하기</button>
     <button class="bigBtn" id="dexBtnEnd" style="background:#3b8f6b; box-shadow:0 6px 0 #2c6b50;">📖 도감 보기</button>
     <button class="bigBtn" id="leaderboardBtnEnd" style="background:#d98c2b; box-shadow:0 6px 0 #a8661a;">🏆 친구 순위 보기</button>
+    <button class="bigBtn" id="mainMenuBtn" style="background:#6c757d; box-shadow:0 6px 0 #4b5157;">🏠 메인 메뉴로</button>
   </div>
 
   <!-- 도감 화면 -->
@@ -1187,6 +1189,20 @@ function endGame(){
 document.getElementById('startBtn').addEventListener('click', startGame);
 document.getElementById('retryBtn').addEventListener('click', startGame);
 
+// 게임 중 어디서든 메인 메뉴로 빠져나갈 수 있는 버튼 (혼자하기/온라인 둘 다 동작)
+document.getElementById('quitBtn').addEventListener('click', () => {
+  if(mpActive){
+    if(confirm('정말 그만하고 메인 메뉴로 돌아갈까요?')) leaveMultiplayer();
+  } else if(running){
+    if(confirm('정말 그만하고 메인 메뉴로 돌아갈까요?')) endGame();
+  }
+});
+
+document.getElementById('mainMenuBtn').addEventListener('click', () => {
+  document.getElementById('endScreen').classList.add('hidden');
+  document.getElementById('startScreen').classList.remove('hidden');
+});
+
 function renderDex(){
   const grid = document.getElementById('dexGrid');
   grid.innerHTML = '';
@@ -1696,6 +1712,10 @@ document.getElementById('mpOpenBtn').addEventListener('click', () => {
   }
 });
 document.getElementById('mpCloseBtn').addEventListener('click', () => {
+  // 연결/입장 중이었다면 이 화면을 닫을 때 그 시도도 같이 취소해요
+  if(!mpActive && mpSocket){ mpSocket.disconnect(); mpSocket = null; }
+  mpConnecting = false;
+  document.getElementById('mpStatus').textContent = '';
   document.getElementById('mpScreen').classList.add('hidden');
 });
 document.getElementById('mpJoinBtn').addEventListener('click', joinMultiplayer);
