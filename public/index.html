@@ -295,13 +295,6 @@
   }
   .pill b{ color:var(--sun); }
 
-  /* 좁은 폰 화면에서는 알약 5개가 한 줄에 안 들어가 글자가 두 줄로 쪼개지던 문제를 막아요 */
-  @media (max-width: 480px){
-    #hud{ gap:6px; }
-    .pill{ font-size:14px; padding:6px 10px; }
-    #sun{ width:50px; height:50px; top:16px; right:16px; }
-  }
-
   /* 물고기 */
   .fish{
     position:absolute; font-size:38px; cursor:pointer;
@@ -401,6 +394,26 @@
   }
   .lbRow .lbRank{ color:var(--sun); min-width:34px; }
   .lbRow .lbName{ flex:1; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  /* 좁은 폰 화면용 조정: 반드시 스타일시트 맨 끝에 둬야 같은 우선순위의 위 규칙들을 확실히 덮어써요 */
+  @media (max-width: 480px){
+    #hud{ gap:6px; }
+    .pill{ font-size:14px; padding:6px 10px; }
+    #sun{ width:50px; height:50px; top:16px; right:16px; }
+
+    /* 시작/종료/도감/순위 화면의 제목·설명·버튼이 화면 폭을 넘어가 잘려 보이던 문제를 막아요 */
+    .overlay{ padding:16px; gap:10px; }
+    .overlay h1{ font-size:28px; max-width:92vw; }
+    .overlay p{ font-size:15px; max-width:92vw; }
+    .bigBtn{ font-size:18px; padding:12px 22px; max-width:88vw; white-space:normal; }
+    .smallBtn{ font-size:16px; padding:8px 12px; }
+    #playerNameInput{ width:140px; font-size:14px; }
+    .nameRow{ flex-wrap:wrap; }
+    #resultScore{ font-size:26px; }
+    #dexGrid{ max-width:92vw; }
+    #leaderboardList{ max-width:92vw; }
+    #mpServerUrl, #mpRoomCode{ max-width:82vw; }
+  }
 </style>
 </head>
 <body>
@@ -495,7 +508,7 @@
     <h1>🎉 게임 끝!</h1>
     <div id="resultScore"></div>
     <p id="resultMsg"></p>
-    <p id="lootResult" style="font-size:17px; max-width:420px; color:#ffe9b0;"></p>
+    <p id="lootResult" style="font-size:17px; color:#ffe9b0;"></p>
     <p id="bestScoreEnd" style="font-size:20px; color:var(--sun);"></p>
     <button class="bigBtn" id="retryBtn">다시하기</button>
     <button class="bigBtn" id="dexBtnEnd" style="background:#3b8f6b; box-shadow:0 6px 0 #2c6b50;">📖 도감 보기</button>
@@ -1346,7 +1359,19 @@ function renderDex(){
   });
 }
 
+// 도감/순위 화면을 열 때 시작/종료 화면을 안 가리면, 반투명 배경 너머로
+// "게임 끝!" 같은 글자가 겹쳐 비쳐 보여서 어디서 열었는지 기억해뒀다가
+// 닫을 때 그 화면으로 되돌려줘요
+let returnToScreenId = 'startScreen';
+function rememberReturnScreen(){
+  if(!document.getElementById('endScreen').classList.contains('hidden')) returnToScreenId = 'endScreen';
+  else if(!document.getElementById('startScreen').classList.contains('hidden')) returnToScreenId = 'startScreen';
+}
+
 function openDex(){
+  rememberReturnScreen();
+  document.getElementById('startScreen').classList.add('hidden');
+  document.getElementById('endScreen').classList.add('hidden');
   renderDex();
   document.getElementById('dexScreen').classList.remove('hidden');
 }
@@ -1354,6 +1379,7 @@ document.getElementById('dexBtnStart').addEventListener('click', openDex);
 document.getElementById('dexBtnEnd').addEventListener('click', openDex);
 document.getElementById('dexCloseBtn').addEventListener('click', () => {
   document.getElementById('dexScreen').classList.add('hidden');
+  document.getElementById(returnToScreenId).classList.remove('hidden');
 });
 
 /* ------------------------------------------------------
@@ -1433,6 +1459,9 @@ function escapeHtml(str){
 }
 
 function openLeaderboard(){
+  rememberReturnScreen();
+  document.getElementById('startScreen').classList.add('hidden');
+  document.getElementById('endScreen').classList.add('hidden');
   document.getElementById('leaderboardScreen').classList.remove('hidden');
   loadLeaderboard();
 }
@@ -1441,6 +1470,7 @@ document.getElementById('leaderboardBtnEnd').addEventListener('click', openLeade
 document.getElementById('leaderboardRefreshBtn').addEventListener('click', loadLeaderboard);
 document.getElementById('leaderboardCloseBtn').addEventListener('click', () => {
   document.getElementById('leaderboardScreen').classList.add('hidden');
+  document.getElementById(returnToScreenId).classList.remove('hidden');
 });
 
 /* ------------------------------------------------------
