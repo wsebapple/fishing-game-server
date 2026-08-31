@@ -594,7 +594,12 @@
 /* 배경을 더 생동감 있게 만드는 거품 + 반짝임 자동 생성 */
 function createBackgroundDecor(){
   const sceneEl = document.getElementById('scene');
-  for(let i = 0; i < 14; i++){
+  // 터치 기기(폰)는 계속 애니메이션되는 배경 장식 수를 줄여서, 오래 켜둘 때
+  // 발열로 성능이 떨어지는(스로틀링) 상황을 조금이라도 덜 만들어요
+  const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+  const bubbleCount = isTouch ? 7 : 14;
+  const sparkleCount = isTouch ? 8 : 16;
+  for(let i = 0; i < bubbleCount; i++){
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
     const size = 6 + Math.random() * 14;
@@ -605,7 +610,7 @@ function createBackgroundDecor(){
     bubble.style.animationDelay = (-Math.random() * 15) + 's';
     sceneEl.appendChild(bubble);
   }
-  for(let i = 0; i < 16; i++){
+  for(let i = 0; i < sparkleCount; i++){
     const sparkle = document.createElement('div');
     sparkle.className = 'sparkle';
     sparkle.style.left = Math.random() * 100 + '%';
