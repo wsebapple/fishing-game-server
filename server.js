@@ -425,6 +425,15 @@ io.on('connection', (socket) => {
     if(type.isBoss) scheduleBossForRoom(code); // 보스를 잡았으니 다음 보스를 예약해요
   });
 
+  socket.on('boatMove', (payload) => {
+    // 내 배가 어디 있는지 같은 방 친구들한테만 살짝 알려줘요 (나한테는 다시 안 보내요)
+    const code = socket.data.roomCode;
+    if(!code) return;
+    const xRatio = payload && typeof payload.xRatio === 'number' ? Math.max(0, Math.min(1, payload.xRatio)) : null;
+    if(xRatio === null) return;
+    socket.to(code).emit('boatMove', { id: socket.id, xRatio });
+  });
+
   socket.on('disconnect', () => {
     const code = socket.data.roomCode;
     const room = rooms[code];

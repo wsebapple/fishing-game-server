@@ -256,6 +256,24 @@
     50%{ transform:translateX(-50%) translateY(6px); }
   }
 
+  /* 온라인에서 같이 하는 친구들의 배(뿌옇게, 살짝 비치는 정도로만 보여줘요) */
+  .ghostBoat{
+    position:absolute; top:46px; width:140px; height:60px;
+    transform:translateX(-50%);
+    z-index:2; pointer-events:none; text-align:center;
+    transition:left .18s linear;
+  }
+  .ghostBoatIcon{
+    font-size:44px; line-height:60px;
+    opacity:0.4; filter:blur(1.2px);
+  }
+  .ghostBoatName{
+    position:absolute; top:-16px; left:50%; transform:translateX(-50%);
+    font-size:11px; color:#fff; background:rgba(0,0,0,0.4);
+    padding:1px 8px; border-radius:8px; white-space:nowrap;
+    font-family:'Jua','Baloo 2',sans-serif;
+  }
+
   /* 다른 배(경쟁자): 가끔 나타나서 물고기를 채가요 */
   #rivalBoat{
     position:absolute; top:40px; font-size:54px;
@@ -1733,6 +1751,11 @@ function joinMultiplayer(roomCodeOverride){
     });
 
     mpSocket.on('playerListUpdate', renderMpPlayerList);
+
+    mpSocket.on('boatMove', ({ id, xRatio }) => {
+      const el = mpGhostBoats[id];
+      if(el) el.style.left = (xRatio * window.innerWidth) + 'px';
+    });
   });
 }
 
@@ -1883,6 +1906,54 @@ function renderMpPlayerList(players){
   // 여기서도 내 점수를 바로 반영해줘요. (이름이 같은 친구가 있어도 안 헷갈리게 socket.id로 찾아요)
   const me = mpSocket && players[mpSocket.id];
   if(me) document.getElementById('score').textContent = me.score;
+
+  syncGhostBoatsFromPlayers(players);
+}
+
+/* ------------------------------------------------------
+   온라인 중에 다른 친구들의 배를 화면에 뿌옇게(반투명) 보여줘요.
+   실제 위치가 아니라, 서로 다른 화면 폭에도 맞도록 0~1 비율로 주고받아요.
+------------------------------------------------------ */
+let mpGhostBoats = {}; // socket.id -> 그 친구의 배 엘리먼트
+let mpBoatSendTimer = null;
+
+function ensureGhostBoat(id, name){
+  let el = mpGhostBoats[id];
+  if(!el){
+    el = document.createElement('div');
+    el.className = 'ghostBoat';
+    el.style.left = (window.innerWidth / 2) + 'px'; // 위치를 아직 모를 때는 가운데에 둬요
+    el.innerHTML = '<div class="ghostBoatIcon">⛵</div><div class="ghostBoatName"></div>';
+    scene.appendChild(el);
+    mpGhostBoats[id] = el;
+  }
+  el.querySelector('.ghostBoatName').textContent = name; // .textContent라 이름에 이상한 문자가 있어도 안전해요
+  return el;
+}
+
+function removeGhostBoat(id){
+  const el = mpGhostBoats[id];
+  if(el){ el.remove(); delete mpGhostBoats[id]; }
+}
+
+function syncGhostBoatsFromPlayers(players){
+  const myId = mpSocket ? mpSocket.id : null;
+  const activeIds = new Set();
+  Object.entries(players).forEach(([id, p]) => {
+    if(id === myId) return; // 내 배는 이미 진짜로 보이니 유령 배는 안 만들어요
+    activeIds.add(id);
+    ensureGhostBoat(id, p.name);
+  });
+  Object.keys(mpGhostBoats).forEach(id => { if(!activeIds.has(id)) removeGhostBoat(id); });
+}
+
+function clearGhostBoats(){
+  Object.keys(mpGhostBoats).forEach(removeGhostBoat);
+}
+
+function sendBoatPosition(){
+  if(!mpSocket || !mpActive) return;
+  mpSocket.emit('boatMove', { xRatio: hookX / window.innerWidth });
 }
 
 function startMultiplayerMode(){
@@ -1905,6 +1976,10 @@ function startMultiplayerMode(){
   mpFishEls = {};
   startBgMusic();
   setJoystickVisible(true);
+
+  // 내 배 위치를 주기적으로 친구들에게 알려줘요 (마우스 움직일 때마다 보내면 너무 잦으니 묶어서 보내요)
+  clearInterval(mpBoatSendTimer);
+  mpBoatSendTimer = setInterval(sendBoatPosition, 150);
 }
 
 function leaveMultiplayer(){
@@ -1916,6 +1991,8 @@ function leaveMultiplayer(){
   document.getElementById('rivalBoat').classList.remove('show');
   stopMpWeather();
   stopBgMusic();
+  clearInterval(mpBoatSendTimer); mpBoatSendTimer = null;
+  clearGhostBoats();
   document.querySelectorAll('.fish').forEach(f => f.remove());
   mpFishEls = {};
   document.getElementById('mpPanel').classList.add('hidden');
