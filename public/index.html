@@ -799,10 +799,17 @@ function updateHookIcon(){
   hook.textContent = frozen ? '🧊' : (magnetActive ? '🧲' : '🪝');
 }
 
+// 바늘의 현재 중심 좌표를 여기 저장해둬요. 물고기가 바늘에 닿았는지 확인할 때마다
+// getBoundingClientRect()로 DOM을 다시 읽으면 브라우저가 강제로 레이아웃을 다시 계산해야
+// 해서(reflow), 물고기가 많을수록 프레임마다 버벅이는 원인이 됐어요. 대신 우리가 이미
+// 계산해서 알고 있는 이 좌표만 숫자로 비교해요.
+let hookX = window.innerWidth / 2, hookY = 330;
+
 function moveRod(x, y){
   if(frozen) return; // 얼어있는 동안엔 낚싯줄을 움직일 수 없어요
   const clampedX = Math.max(80, Math.min(window.innerWidth - 80, x));
   const clampedY = Math.max(110, Math.min(window.innerHeight - 110, y || 330));
+  hookX = clampedX; hookY = clampedY;
 
   boat.style.left = clampedX + 'px';
   rodPole.style.left = (clampedX - 3) + 'px';
@@ -817,11 +824,15 @@ function moveRod(x, y){
   fog.style.setProperty('--fx', clampedX + 'px');
   fog.style.setProperty('--fy', clampedY + 'px');
 }
-// 바늘이 물고기 몸통에 닿았는지 확인해요 (탭/클릭 대신 이걸로 물고기를 잡아요)
-function isHookTouchingFish(fishEl){
-  const f = fishEl.getBoundingClientRect();
-  const h = hook.getBoundingClientRect();
-  return !(h.right < f.left || h.left > f.right || h.bottom < f.top || h.top > f.bottom);
+
+// 물고기 박스 크기의 절반(대략치) + 바늘이 닿았다고 쳐줄 반지름이에요
+const FISH_HALF = 35, FISH_CATCH_RADIUS = 42;
+const BOSS_HALF = 59, BOSS_CATCH_RADIUS = 70;
+
+// 바늘이 (centerX, centerY)에 있는 물고기에 닿았는지, DOM을 안 읽고 숫자로만 확인해요
+function isNearHook(centerX, centerY, catchRadius){
+  const dx = centerX - hookX, dy = centerY - hookY;
+  return (dx * dx + dy * dy) < catchRadius * catchRadius;
 }
 
 scene.addEventListener('mousemove', e => moveRod(e.clientX, e.clientY));
@@ -949,27 +960,28 @@ function spawnFish(){
   const distance = window.innerWidth + 100;
   const duration = distance / (type.speed * 40); // 초 단위 대략치
   const startTime = performance.now();
+  // 물고기의 지금 위치를 우리가 직접 계산해서 알고 있으니, DOM에서 다시 읽지 않아요
+  let curLeft = fromLeft ? -50 : window.innerWidth + 50;
+  let curTop = y;
 
   function animate(now){
     if(!fish.isConnected) return;
 
     // 낚싯바늘이 물고기 몸에 닿으면 클릭/탭 없이도 바로 잡혀요
-    if(isHookTouchingFish(fish)){
+    if(isNearHook(curLeft + FISH_HALF, curTop + FISH_HALF, FISH_CATCH_RADIUS)){
       catchFish(fish, type);
       return;
     }
 
     // 자석이 켜져 있으면 물고기가 낚싯바늘 쪽으로 저절로 끌려와요
     if(magnetActive && !type.isMagnet){
-      const hookX = parseFloat(hook.style.left) || window.innerWidth/2;
-      const hookY = parseFloat(hook.style.top) || 300;
-      const curX = parseFloat(fish.style.left) || 0;
-      const curY = parseFloat(fish.style.top) || 0;
-      const dx = hookX - curX, dy = hookY - curY;
+      const dx = hookX - curLeft, dy = hookY - curTop;
       const dist = Math.max(Math.sqrt(dx*dx + dy*dy), 0.01);
       const step = 6;
-      fish.style.left = (curX + (dx/dist) * step) + 'px';
-      fish.style.top = (curY + (dy/dist) * step) + 'px';
+      curLeft += (dx/dist) * step;
+      curTop += (dy/dist) * step;
+      fish.style.left = curLeft + 'px';
+      fish.style.top = curTop + 'px';
       requestAnimationFrame(animate);
       return;
     }
@@ -977,10 +989,10 @@ function spawnFish(){
     const elapsed = (now - startTime) / 1000;
     const progress = elapsed / duration;
     if(progress >= 1){ fish.remove(); return; }
-    const x = fromLeft
+    curLeft = fromLeft
       ? -50 + progress * distance
       : (window.innerWidth + 50) - progress * distance;
-    fish.style.left = x + 'px';
+    fish.style.left = curLeft + 'px';
     requestAnimationFrame(animate);
   }
   requestAnimationFrame(animate);
@@ -1233,12 +1245,13 @@ function spawnBoss(){
   const distance = window.innerWidth + 200;
   const duration = distance / (bossType.speed * 40);
   const startTime = performance.now();
+  let curLeft = fromLeft ? -100 : window.innerWidth + 100;
 
   function animate(now){
     if(!fish.isConnected) return;
 
     // 낚싯바늘이 보스 몸에 닿으면 클릭/탭 없이도 바로 잡혀요
-    if(isHookTouchingFish(fish)){
+    if(isNearHook(curLeft + BOSS_HALF, y + BOSS_HALF, BOSS_CATCH_RADIUS)){
       catchBoss(fish, bossType);
       return;
     }
@@ -1246,10 +1259,10 @@ function spawnBoss(){
     const elapsed = (now - startTime) / 1000;
     const progress = elapsed / duration;
     if(progress >= 1){ fish.remove(); scheduleBoss(); return; }
-    const x = fromLeft
+    curLeft = fromLeft
       ? -100 + progress * distance
       : (window.innerWidth + 100) - progress * distance;
-    fish.style.left = x + 'px';
+    fish.style.left = curLeft + 'px';
     requestAnimationFrame(animate);
   }
   requestAnimationFrame(animate);
@@ -1794,11 +1807,15 @@ function spawnMpFish(data){
   fish.dataset.name = type.name;
   const y = data.y * window.innerHeight;
   fish.style.top = y + 'px';
-  fish.style.left = (data.fromLeft ? -50 : window.innerWidth + 50) + 'px';
+  const startLeft = data.fromLeft ? -50 : window.innerWidth + 50;
+  fish.style.left = startLeft + 'px';
   if(!data.fromLeft) fish.style.transform = 'scaleX(-1)';
   if(type.isBoss) fish.style.fontSize = '86px';
   scene.appendChild(fish);
   mpFishEls[data.id] = fish;
+
+  const half = type.isBoss ? BOSS_HALF : FISH_HALF;
+  const catchRadius = type.isBoss ? BOSS_CATCH_RADIUS : FISH_CATCH_RADIUS;
 
   const distance = window.innerWidth + 100;
   const duration = data.durationMs; // 서버가 정해준 "화면을 가로지르는 시간"을 그대로 써서 서버 만료 시점과 맞춰요
@@ -1807,19 +1824,20 @@ function spawnMpFish(data){
   // 뒤늦게 방에 들어와서 이미 날아가고 있던 물고기라면(elapsedMs) 그만큼 앞에서 시작해요.
   const localStart = performance.now() - (data.elapsedMs || 0);
   let caughtSent = false;
+  // 물고기의 지금 위치를 우리가 직접 계산해서 알고 있으니, DOM에서 다시 읽지 않아요
+  let curLeft = startLeft;
+  let curTop = y;
 
   function tryMagnetPull(){
     // 내가 자석을 켠 상태라면, 이 물고기를 내 낚싯바늘 쪽으로 끌어당겨서 보여줘요
     if(!magnetActive || type.isMagnet) return;
-    const hookX = parseFloat(hook.style.left) || window.innerWidth/2;
-    const hookY = parseFloat(hook.style.top) || 300;
-    const curX = parseFloat(fish.style.left) || 0;
-    const curY = parseFloat(fish.style.top) || 0;
-    const dx = hookX - curX, dy = hookY - curY;
+    const dx = hookX - curLeft, dy = hookY - curTop;
     const dist = Math.max(Math.sqrt(dx*dx + dy*dy), 0.01);
     const step = 6;
-    fish.style.left = (curX + (dx/dist) * step) + 'px';
-    fish.style.top = (curY + (dy/dist) * step) + 'px';
+    curLeft += (dx/dist) * step;
+    curTop += (dy/dist) * step;
+    fish.style.left = curLeft + 'px';
+    fish.style.top = curTop + 'px';
   }
 
   function animate(){
@@ -1829,7 +1847,7 @@ function spawnMpFish(data){
     if(caughtSent){ requestAnimationFrame(animate); return; }
 
     // 낚싯바늘이 물고기에 닿으면 클릭/탭 없이도 자동으로 캐치를 시도해요
-    if(isHookTouchingFish(fish)){
+    if(isNearHook(curLeft + half, curTop + half, catchRadius)){
       caughtSent = true;
       if(mpSocket) mpSocket.emit('catchAttempt', { fishId: data.id });
       requestAnimationFrame(animate);
@@ -1845,10 +1863,10 @@ function spawnMpFish(data){
     const elapsed = performance.now() - localStart;
     const progress = elapsed / duration;
     if(progress >= 1) return; // 서버의 fishExpire 이벤트가 제거를 처리해요
-    const x = data.fromLeft
+    curLeft = data.fromLeft
       ? -50 + progress * distance
       : (window.innerWidth + 50) - progress * distance;
-    fish.style.left = x + 'px';
+    fish.style.left = curLeft + 'px';
     requestAnimationFrame(animate);
   }
   requestAnimationFrame(animate);
