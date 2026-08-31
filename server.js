@@ -16,6 +16,16 @@ const io = new Server(server, { cors: { origin: '*' } });
 // (어느 폴더에서 node server.js를 실행해도 항상 이 파일 옆의 public을 찾도록 절대경로를 써요)
 app.use(express.static(path.join(__dirname, 'public')));
 
+// 지금 열려있는(사람이 있는) 방 목록을 알려줘요. 온라인 접속 화면에서
+// "이미 만들어진 방 고르기"를 보여주는 데 써요.
+app.get('/rooms', (req, res) => {
+  const list = Object.keys(rooms)
+    .filter(code => Object.keys(rooms[code].players).length > 0)
+    .map(code => ({ code, players: Object.keys(rooms[code].players).length }))
+    .sort((a, b) => b.players - a.players);
+  res.json(list);
+});
+
 // 방(room) 하나마다: 참가자 목록, 현재 떠있는 물고기, 라운드 타이머 등을 저장해요
 const rooms = {};
 

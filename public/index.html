@@ -19,11 +19,15 @@
   *{box-sizing:border-box;}
   html,body{
     margin:0; padding:0; height:100%; overflow:hidden;
+    overscroll-behavior:none; /* 당겨서 새로고침 등으로 화면이 밀리는 것도 막아요 */
     font-family:'Jua','Baloo 2',sans-serif;
     -webkit-user-select:none; user-select:none;
   }
   #scene{
-    position:relative; width:100%; height:100vh;
+    /* 모바일 브라우저는 주소창이 접히고 펴지면서 100vh 기준이 흔들려, 화면을 스크롤하면
+       위/오른쪽 HUD가 다시 안 보이는 문제가 있었어요. position:fixed로 시야(viewport)에
+       직접 고정해서 절대 스크롤되지 않게 해요. */
+    position:fixed; inset:0; width:100%; height:100%;
     background:linear-gradient(180deg,
       #9be9ff 0%,
       #57d3ee 10%,
@@ -393,7 +397,25 @@
     border-radius:12px; margin-bottom:8px; font-size:18px;
   }
   .lbRow .lbRank{ color:var(--sun); min-width:34px; }
+
+  /* 열려있는 방 목록에서 한 방을 고르는 버튼 */
+  .roomRow{
+    display:flex; justify-content:space-between; align-items:center; gap:10px;
+    background:rgba(255,255,255,0.14); color:#fff; border:2px solid rgba(255,255,255,0.25);
+    padding:9px 16px; border-radius:999px; font-family:'Jua',sans-serif; font-size:16px;
+    cursor:pointer; text-align:left;
+  }
+  .roomRow:active{ background:rgba(255,255,255,0.26); }
+  .roomRow .roomPlayers{ color:var(--sun); font-size:14px; white-space:nowrap; }
   .lbRow .lbName{ flex:1; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  /* 온라인 플레이 중 "같이 하는 친구들" 패널 */
+  #mpPanel{
+    position:absolute; top:14px; right:14px; z-index:7;
+    background:rgba(4,59,92,0.7); border:2px solid rgba(255,255,255,0.3);
+    border-radius:14px; padding:10px 14px; color:#eafcff;
+    font-family:'Jua',sans-serif; min-width:150px;
+  }
 
   /* 좁은 폰 화면용 조정: 반드시 스타일시트 맨 끝에 둬야 같은 우선순위의 위 규칙들을 확실히 덮어써요 */
   @media (max-width: 480px){
@@ -412,7 +434,12 @@
     #resultScore{ font-size:26px; }
     #dexGrid{ max-width:92vw; }
     #leaderboardList{ max-width:92vw; }
-    #mpServerUrl, #mpRoomCode{ max-width:82vw; }
+    #mpRoomCode{ max-width:82vw; }
+
+    /* 좁은 화면에서는 HUD 알약들이 옆으로 거의 꽉 차서, 같은 자리(오른쪽 위)에 있던
+       "같이 하는 친구들" 패널과 겹쳐 HUD 버튼(소리/나가기)을 못 누르는 문제가 있었어요.
+       HUD 아래로 내려서 겹치지 않게 해요. */
+    #mpPanel{ top:56px; min-width:130px; padding:8px 10px; }
   }
 </style>
 </head>
@@ -485,10 +512,15 @@
   <!-- 온라인 접속 화면 -->
   <div class="overlay hidden" id="mpScreen">
     <h1>🌐 온라인 같이하기</h1>
-    <p style="font-size:15px; max-width:400px; opacity:0.85;">부모님이 만들어주신 서버 주소랑, 친구랑 똑같이 맞춘 방 코드를 입력하세요!</p>
+    <p style="font-size:15px; max-width:400px; opacity:0.85;">친구랑 똑같은 방 코드를 입력하거나, 아래에서 열려있는 방을 골라 바로 들어가요!</p>
+
+    <div id="mpRoomListWrap" style="width:100%; max-width:320px;">
+      <div id="mpRoomList" style="display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto;"></div>
+      <button class="smallBtn" id="mpRoomListRefreshBtn" style="margin-top:8px; font-size:14px; padding:6px 12px;">🔄 방 목록 새로고침</button>
+    </div>
+
     <div class="nameRow" style="flex-direction:column; gap:10px;">
-      <input id="mpServerUrl" placeholder="서버 주소 (https://...)" style="width:280px; padding:10px 16px; border-radius:999px; border:none; font-family:'Jua',sans-serif; text-align:center;">
-      <input id="mpRoomCode" placeholder="방 코드 (예: HOYA123)" style="width:280px; padding:10px 16px; border-radius:999px; border:none; font-family:'Jua',sans-serif; text-align:center;">
+      <input id="mpRoomCode" placeholder="방 코드 (예: HOYA123)" style="width:280px; max-width:82vw; padding:10px 16px; border-radius:999px; border:none; font-family:'Jua',sans-serif; text-align:center;">
     </div>
     <p id="mpStatus" style="font-size:15px; color:#ffd166; min-height:20px;"></p>
     <button class="bigBtn" id="mpJoinBtn" style="background:#3b6fc9; box-shadow:0 6px 0 #2a4f8f;">입장하기</button>
@@ -496,7 +528,7 @@
   </div>
 
   <!-- 온라인 플레이 중 점수판 -->
-  <div id="mpPanel" class="hidden" style="position:absolute; top:14px; right:14px; z-index:7; background:rgba(4,59,92,0.7); border:2px solid rgba(255,255,255,0.3); border-radius:14px; padding:10px 14px; color:#eafcff; font-family:'Jua',sans-serif; min-width:150px;">
+  <div id="mpPanel" class="hidden">
     <div style="font-size:15px; margin-bottom:2px;">🌐 같이 하는 친구들</div>
     <div id="mpRoomCodeDisplay" style="font-size:12px; opacity:0.8; margin-bottom:6px;"></div>
     <div id="mpPlayerList" style="font-size:14px; line-height:1.6;"></div>
@@ -1477,30 +1509,35 @@ document.getElementById('leaderboardCloseBtn').addEventListener('click', () => {
    온라인 같이하기: 부모님이 배포한 서버에 접속해서
    실시간으로 같은 물고기를 보고 서로 먼저 잡기 경쟁을 해요
 ------------------------------------------------------ */
+// 이 게임은 항상 지금 이 페이지를 보여준 서버로 온라인 접속을 해요
+// (부모님이 어디에 배포하든, 그 서버 주소를 따로 입력할 필요가 없어요)
+function getMpServerUrl(){
+  return window.location.protocol === 'file:' ? '' : window.location.origin;
+}
+
 function loadSocketIoScript(callback){
   if(window.io){ callback(); return; }
   const script = document.createElement('script');
   // socket.io 클라이언트 라이브러리는 접속할 서버에서 직접 제공해줘요
-  const url = document.getElementById('mpServerUrl').value.trim().replace(/\/$/, '');
-  script.src = url + '/socket.io/socket.io.js';
+  script.src = getMpServerUrl() + '/socket.io/socket.io.js';
   script.onload = callback;
   script.onerror = () => {
-    document.getElementById('mpStatus').textContent = '서버에 연결할 수 없어요. 주소를 확인해주세요!';
+    document.getElementById('mpStatus').textContent = '서버에 연결할 수 없어요.';
   };
   document.head.appendChild(script);
 }
 
-function joinMultiplayer(){
+function joinMultiplayer(roomCodeOverride){
   if(mpConnecting) return; // 입장하기를 여러 번 눌러도 소켓이 중복 생성되지 않게 해요
-  const url = document.getElementById('mpServerUrl').value.trim().replace(/\/$/, '');
-  const roomCode = document.getElementById('mpRoomCode').value.trim() || 'default';
+  const url = getMpServerUrl();
+  const roomCode = (roomCodeOverride || document.getElementById('mpRoomCode').value.trim() || 'default');
   // 서버도 이름을 12글자로 잘라서 저장하니, 우리도 똑같이 잘라야
   // 화면에 보이는 이름이 서버가 broadcast하는 이름과 어긋나지 않아요
   const name = (document.getElementById('playerNameInput').value.trim() || randomName()).slice(0, 12);
   playerName = name; // 싱글플레이를 안 거치고 바로 온라인으로 들어와도 화면에 내 이름이 정확히 보이게 해줘요
 
   if(!url){
-    document.getElementById('mpStatus').textContent = '서버 주소를 먼저 입력해주세요!';
+    document.getElementById('mpStatus').textContent = '파일로 직접 열면 온라인 기능을 쓸 수 없어요. 서버 주소로 접속해주세요.';
     return;
   }
 
@@ -1519,7 +1556,7 @@ function joinMultiplayer(){
 
     mpSocket.on('connect_error', () => {
       mpConnecting = false;
-      document.getElementById('mpStatus').textContent = '연결에 실패했어요. 서버 주소를 다시 확인해주세요.';
+      document.getElementById('mpStatus').textContent = '연결에 실패했어요. 잠시 후 다시 시도해주세요.';
     });
 
     mpSocket.on('joinError', ({ message }) => {
@@ -1860,12 +1897,40 @@ function leaveMultiplayer(){
 
 document.getElementById('mpOpenBtn').addEventListener('click', () => {
   document.getElementById('mpScreen').classList.remove('hidden');
-  // 이 게임 자체를 서버 주소에서 열었다면, 서버 주소를 자동으로 채워줘요
-  const urlInput = document.getElementById('mpServerUrl');
-  if(!urlInput.value && window.location.protocol !== 'file:'){
-    urlInput.value = window.location.origin;
-  }
+  loadRoomList();
 });
+document.getElementById('mpRoomListRefreshBtn').addEventListener('click', loadRoomList);
+
+async function loadRoomList(){
+  const listEl = document.getElementById('mpRoomList');
+  const url = getMpServerUrl();
+  if(!url){
+    listEl.innerHTML = '<p style="font-size:14px; opacity:0.8;">파일로 직접 열면 방 목록을 볼 수 없어요.</p>';
+    return;
+  }
+  listEl.innerHTML = '<p style="font-size:14px; opacity:0.8;">불러오는 중...</p>';
+  try {
+    const res = await fetch(url + '/rooms');
+    const rooms = await res.json();
+    if(!rooms.length){
+      listEl.innerHTML = '<p style="font-size:14px; opacity:0.8;">지금 열려있는 방이 없어요. 방 코드를 새로 만들어보세요!</p>';
+      return;
+    }
+    listEl.innerHTML = '';
+    rooms.forEach(r => {
+      const btn = document.createElement('div');
+      btn.className = 'roomRow';
+      btn.innerHTML = `<span>🚪 ${escapeHtml(r.code)}</span><span class="roomPlayers">${r.players}명</span>`;
+      btn.addEventListener('click', () => {
+        document.getElementById('mpRoomCode').value = r.code;
+        joinMultiplayer(r.code);
+      });
+      listEl.appendChild(btn);
+    });
+  } catch(e){
+    listEl.innerHTML = '<p style="font-size:14px; opacity:0.8;">방 목록을 불러오지 못했어요.</p>';
+  }
+}
 document.getElementById('mpCloseBtn').addEventListener('click', () => {
   // 연결/입장 중이었다면 이 화면을 닫을 때 그 시도도 같이 취소해요
   if(!mpActive && mpSocket){ mpSocket.disconnect(); mpSocket = null; }
@@ -1873,7 +1938,7 @@ document.getElementById('mpCloseBtn').addEventListener('click', () => {
   document.getElementById('mpStatus').textContent = '';
   document.getElementById('mpScreen').classList.add('hidden');
 });
-document.getElementById('mpJoinBtn').addEventListener('click', joinMultiplayer);
+document.getElementById('mpJoinBtn').addEventListener('click', () => joinMultiplayer());
 document.getElementById('mpLeaveBtn').addEventListener('click', leaveMultiplayer);
 </script>
 </body>
