@@ -429,7 +429,9 @@
     .overlay p{ font-size:15px; max-width:92vw; }
     .bigBtn{ font-size:18px; padding:12px 22px; max-width:88vw; white-space:normal; }
     .smallBtn{ font-size:16px; padding:8px 12px; }
-    #playerNameInput{ width:140px; font-size:14px; }
+    /* font-size는 16px 밑으로 내리지 않아요 - 그보다 작으면 아이폰이 입력창을 탭할 때마다
+       자동으로 확대해버리고, 확대된 채로 안 풀리는 문제가 있어요 */
+    #playerNameInput{ width:140px; }
     .nameRow{ flex-wrap:wrap; }
     #resultScore{ font-size:26px; }
     #dexGrid{ max-width:92vw; }
@@ -520,7 +522,7 @@
     </div>
 
     <div class="nameRow" style="flex-direction:column; gap:10px;">
-      <input id="mpRoomCode" placeholder="방 코드 (예: HOYA123)" style="width:280px; max-width:82vw; padding:10px 16px; border-radius:999px; border:none; font-family:'Jua',sans-serif; text-align:center;">
+      <input id="mpRoomCode" placeholder="방 코드 (예: HOYA123)" style="width:280px; max-width:82vw; padding:10px 16px; border-radius:999px; border:none; font-family:'Jua',sans-serif; font-size:16px; text-align:center;">
     </div>
     <p id="mpStatus" style="font-size:15px; color:#ffd166; min-height:20px;"></p>
     <button class="bigBtn" id="mpJoinBtn" style="background:#3b6fc9; box-shadow:0 6px 0 #2a4f8f;">입장하기</button>
@@ -839,9 +841,14 @@ let joyDX = 0, joyDY = 0; // -1~1로 정규화된 방향
 let joyActive = false;
 let joyTouchId = null;
 
-if(isTouchDevice){
-  joystickBase.classList.remove('hidden');
+// 조이스틱은 실제로 게임을 플레이하는 동안에만 보여줘요. 시작/종료/도감 같은
+// 메뉴 화면은 반투명 배경이라, z-index로만 가리면 하얀 원이 유령처럼 비쳐 보여요.
+function setJoystickVisible(visible){
+  if(!isTouchDevice) return;
+  joystickBase.classList.toggle('hidden', !visible);
+}
 
+if(isTouchDevice){
   const maxKnobOffset = 35; // 조이스틱 안에서 노브가 움직일 수 있는 최대 거리(px)
   const deadZone = 6; // 이보다 작게 밀면 안 움직인 걸로 쳐요
 
@@ -1293,6 +1300,7 @@ function startGame(){
   document.getElementById('endScreen').classList.add('hidden');
   document.getElementById('levelUpBanner').classList.remove('show');
   startBgMusic();
+  setJoystickVisible(true);
 
   document.querySelectorAll('.fish').forEach(f=>f.remove());
 
@@ -1316,6 +1324,7 @@ function startGame(){
 
 function endGame(){
   running = false;
+  setJoystickVisible(false);
   clearInterval(spawnTimer);
   clearInterval(gameTimer);
   clearTimeout(rivalTimeout);
@@ -1877,12 +1886,14 @@ function startMultiplayerMode(){
   document.querySelectorAll('.fish').forEach(f => f.remove());
   mpFishEls = {};
   startBgMusic();
+  setJoystickVisible(true);
 }
 
 function leaveMultiplayer(){
   if(mpSocket){ mpSocket.disconnect(); mpSocket = null; }
   mpConnecting = false;
   mpActive = false;
+  setJoystickVisible(false);
   magnetActive = false; clearTimeout(magnetTimer);
   document.getElementById('rivalBoat').classList.remove('show');
   stopMpWeather();
