@@ -158,15 +158,16 @@ function scheduleBossForRoom(code){
   room.bossTimer = setTimeout(() => spawnBossForRoom(code), delay);
 }
 
+const BOSS_ENCOUNTER_MS = 28000; // 이 시간 안에 다 못 잡으면 보스가 완전히 도망가요 (싱글플레이와 동일)
+
 function spawnBossForRoom(code){
   const room = rooms[code];
   if(!room) return;
 
   const id = 'boss' + (room.fishIdCounter++);
-  const fromLeft = Math.random() < 0.5;
-  const y = 0.25 + Math.random() * 0.5;
-  const durationMs = fishDurationMs(bossType.speed);
-  const fishData = { id, type: bossType, fromLeft, y, startTime: Date.now(), durationMs };
+  const seed = Math.random(); // 화면을 누비는 경로를 친구들 모두가 똑같이 그릴 수 있게 하는 값이에요
+  const hitsNeeded = 3 + Math.floor(Math.random() * 2); // 3~4번 낚싯바늘에 스쳐야 잡혀요
+  const fishData = { id, type: bossType, seed, startTime: Date.now(), durationMs: BOSS_ENCOUNTER_MS, hitsNeeded, hitsLanded: 0 };
   room.fish[id] = fishData;
   io.to(code).emit('fishSpawn', fishData);
 
@@ -174,9 +175,9 @@ function spawnBossForRoom(code){
     if(room.fish[id]){
       delete room.fish[id];
       io.to(code).emit('fishExpire', { id });
-      scheduleBossForRoom(code); // 보스가 도망가면 다음 보스를 또 예약해요
+      scheduleBossForRoom(code); // 보스가 완전히 도망가면 다음 보스를 또 예약해요
     }
-  }, durationMs);
+  }, BOSS_ENCOUNTER_MS);
 }
 
 // 지금 단계 + 날씨 상태에 맞는 스폰 속도로 물고기 생성 타이머를 다시 맞춰요
@@ -382,9 +383,19 @@ io.on('connection', (socket) => {
     const fish = room.fish[fishId];
     if(!fish) return;
 
+    const type = fish.type;
+
+    if(type.isBoss){
+      fish.hitsLanded = (fish.hitsLanded || 0) + 1;
+      if(fish.hitsLanded < fish.hitsNeeded){
+        // 아직 다 안 잡혔어요: 먹물을 뿌리고 도망가요. 물고기는 그대로 살아있어요.
+        io.to(code).emit('bossInked', { id: fishId, hitsLanded: fish.hitsLanded, hitsNeeded: fish.hitsNeeded });
+        return;
+      }
+    }
+
     delete room.fish[fishId];
     const player = room.players[socket.id];
-    const type = fish.type;
 
     let earnedPoints = type.points;
     let lootName = null;

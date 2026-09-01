@@ -349,6 +349,35 @@
     from{ transform:translateY(0); opacity:1; }
     to{ transform:translateY(-50px); opacity:0; }
   }
+
+  /* 보스 오징어가 뿌리는 먹물: 보스 주변만 잠깐 안 보이게 가려요 */
+  .inkCloud{
+    position:absolute; z-index:6; pointer-events:none;
+    width:340px; height:340px; margin-left:-170px; margin-top:-170px;
+    border-radius:50%;
+    background: radial-gradient(circle,
+      rgba(8,6,18,0.94) 0%,
+      rgba(8,6,18,0.78) 32%,
+      rgba(8,6,18,0.4) 62%,
+      rgba(8,6,18,0) 100%);
+    opacity:0;
+    animation:inkPuff 1.3s ease-out forwards;
+  }
+  @keyframes inkPuff{
+    0%{ opacity:0; transform:scale(0.25); }
+    18%{ opacity:1; transform:scale(1); }
+    70%{ opacity:0.85; transform:scale(1.05); }
+    100%{ opacity:0; transform:scale(1.15); }
+  }
+  .inkBlob{
+    position:absolute; z-index:6; pointer-events:none;
+    font-size:20px; color:#0b0716;
+    animation:inkDrip 0.85s ease-out forwards;
+  }
+  @keyframes inkDrip{
+    0%{ transform:translate(0,0) scale(1); opacity:0.9; }
+    100%{ transform:translate(var(--dx), var(--dy)) scale(0.3); opacity:0; }
+  }
   #levelUpBanner{
     position:absolute; top:40%; left:50%; transform:translate(-50%,-50%) scale(0.5);
     font-size:56px; color:var(--sun); text-shadow:3px 3px 0 var(--deep);
@@ -680,6 +709,8 @@ let mpSocket = null;
 let mpConnecting = false;
 let mpActive = false;
 let mpFishEls = {};
+let mpCaughtSent = {}; // fishId -> 캐치 요청을 보내고 서버 응답(fishCaught/fishExpire/bossInked)을 기다리는 중인지
+let mpBossInvulnUntil = {}; // fishId -> 먹물을 뿌리고 도망간 직후, 같은 스침이 연속으로 여러 번 잡히지 않게 잠깐 무적인 시각(performance.now() 기준)
 
 /* ------------------------------------------------------
    사운드 엔진: 소리 파일 없이 코드로 직접 소리를 만들어요
@@ -1241,6 +1272,36 @@ function playBossSound(){
   [220,277,330,415].forEach((f,i)=>playTone(f,0.22,'sawtooth',0.2,i*0.1));
 }
 
+function playInkSound(){
+  [180,140,100,70].forEach((f,i)=>playTone(f,0.18,'sawtooth',0.18,i*0.07));
+}
+
+// 보스가 먹물을 뿜을 때 시각/음향 효과: 주변이 먹물로 잠깐 뒤덮여요
+function spawnInkCloud(x, y){
+  const cloud = document.createElement('div');
+  cloud.className = 'inkCloud';
+  cloud.style.left = x + 'px';
+  cloud.style.top = y + 'px';
+  scene.appendChild(cloud);
+  setTimeout(() => cloud.remove(), 1300);
+
+  const blobCount = 6;
+  for(let i = 0; i < blobCount; i++){
+    const blob = document.createElement('div');
+    blob.className = 'inkBlob';
+    blob.textContent = '●';
+    blob.style.left = x + 'px';
+    blob.style.top = y + 'px';
+    const angle = (Math.PI * 2 * i) / blobCount + Math.random() * 0.5;
+    const dist = 40 + Math.random() * 70;
+    blob.style.setProperty('--dx', (Math.cos(angle) * dist) + 'px');
+    blob.style.setProperty('--dy', (Math.sin(angle) * dist) + 'px');
+    scene.appendChild(blob);
+    setTimeout(() => blob.remove(), 850);
+  }
+  playInkSound();
+}
+
 function scheduleBoss(){
   if(!running) return;
   const delay = 22000 + Math.random() * 15000; // 22~37초마다 랜덤하게 보스 등장
@@ -1254,38 +1315,72 @@ function spawnBoss(){
   playBossSound();
 
   const fromLeft = Math.random() < 0.5;
-  const y = 150 + Math.random() * (window.innerHeight - 320);
+  const startY = 150 + Math.random() * (window.innerHeight - 320);
   const fish = document.createElement('div');
   fish.className = 'fish boss-fish';
   fish.textContent = bossType.emoji;
   fish.dataset.name = bossType.name;
-  fish.style.top = y + 'px';
+  fish.style.top = startY + 'px';
   fish.style.left = (fromLeft ? -100 : window.innerWidth + 100) + 'px';
   fish.style.fontSize = '86px';
-  if(!fromLeft) fish.style.transform = 'scaleX(-1)';
   scene.appendChild(fish);
 
-  const distance = window.innerWidth + 200;
-  const duration = distance / (bossType.speed * 40);
-  const startTime = performance.now();
   let curLeft = fromLeft ? -100 : window.innerWidth + 100;
+  let curTop = startY;
+
+  // 3~4번 낚싯바늘에 스칠 때까지는 안 잡히고, 스칠 때마다 먹물을 뿌리며 도망가요
+  const hitsNeeded = 3 + Math.floor(Math.random() * 2); // 3 또는 4
+  let hitsLanded = 0;
+  let invulnerableUntil = 0;
+
+  const minX = -80, maxX = window.innerWidth + 80;
+  const minY = 130, maxY = window.innerHeight - 160;
+  function pickTarget(){
+    return { x: minX + Math.random() * (maxX - minX), y: minY + Math.random() * (maxY - minY) };
+  }
+  // 처음에는 화면 안쪽으로 헤엄쳐 들어와요
+  let target = { x: window.innerWidth * (0.3 + Math.random() * 0.4), y: startY };
+
+  const speedPxPerSec = bossType.speed * 90; // 화면을 이리저리 누비도록 이동 속도를 정해요
+  const encounterDeadline = performance.now() + 28000; // 28초 안에 다 못 잡으면 완전히 도망가요
+  let lastTime = performance.now();
 
   function animate(now){
     if(!fish.isConnected) return;
+    const dt = Math.min(now - lastTime, 60) / 1000;
+    lastTime = now;
 
-    // 낚싯바늘이 보스 몸에 닿으면 클릭/탭 없이도 바로 잡혀요
-    if(isNearHook(curLeft + BOSS_HALF, y + BOSS_HALF, BOSS_CATCH_RADIUS)){
-      catchBoss(fish, bossType);
+    if(now >= encounterDeadline){
+      spawnInkCloud(curLeft + BOSS_HALF, curTop + BOSS_HALF);
+      fish.remove();
+      scheduleBoss();
       return;
     }
 
-    const elapsed = (now - startTime) / 1000;
-    const progress = elapsed / duration;
-    if(progress >= 1){ fish.remove(); scheduleBoss(); return; }
-    curLeft = fromLeft
-      ? -100 + progress * distance
-      : (window.innerWidth + 100) - progress * distance;
+    if(now >= invulnerableUntil && isNearHook(curLeft + BOSS_HALF, curTop + BOSS_HALF, BOSS_CATCH_RADIUS)){
+      hitsLanded++;
+      if(hitsLanded >= hitsNeeded){
+        catchBoss(fish, bossType);
+        return;
+      }
+      // 아직 덜 잡혔어요: 먹물을 뿌리고 놀라서 다른 방향으로 도망가요
+      spawnInkCloud(curLeft + BOSS_HALF, curTop + BOSS_HALF);
+      target = pickTarget();
+      invulnerableUntil = now + 500;
+    }
+
+    const dx = target.x - curLeft, dy = target.y - curTop;
+    const dist = Math.hypot(dx, dy);
+    if(dist < 20){
+      target = pickTarget();
+    } else {
+      const step = speedPxPerSec * dt;
+      curLeft += (dx / dist) * step;
+      curTop += (dy / dist) * step;
+      fish.style.transform = dx < 0 ? 'scaleX(-1)' : 'scaleX(1)';
+    }
     fish.style.left = curLeft + 'px';
+    fish.style.top = curTop + 'px';
     requestAnimationFrame(animate);
   }
   requestAnimationFrame(animate);
@@ -1630,7 +1725,30 @@ function joinMultiplayer(roomCodeOverride){
 
     mpSocket.on('fishExpire', ({ id }) => {
       const el = mpFishEls[id];
-      if(el){ el.remove(); delete mpFishEls[id]; }
+      if(el){
+        // 보스가 끝내 못 잡히고 도망가는 경우, 마지막으로 먹물을 뿌리고 사라져요
+        if(el.dataset.name === '보스 오징어'){
+          const left = parseFloat(el.style.left) || 0;
+          const top = parseFloat(el.style.top) || 0;
+          spawnInkCloud(left + BOSS_HALF, top + BOSS_HALF);
+        }
+        el.remove();
+        delete mpFishEls[id];
+      }
+      delete mpCaughtSent[id];
+      delete mpBossInvulnUntil[id];
+    });
+
+    mpSocket.on('bossInked', ({ id }) => {
+      // 보스가 맞긴 했지만 아직 다 안 잡혀서, 먹물을 뿌리고 도망가요 (물고기는 그대로 살아있어요)
+      const el = mpFishEls[id];
+      if(el){
+        const left = parseFloat(el.style.left) || 0;
+        const top = parseFloat(el.style.top) || 0;
+        spawnInkCloud(left + BOSS_HALF, top + BOSS_HALF);
+      }
+      mpCaughtSent[id] = false; // 다시 낚싯바늘로 노려볼 수 있게 풀어줘요
+      mpBossInvulnUntil[id] = performance.now() + 500; // 잠깐은 무적: 한 번 지나간 걸로 여러 번 잡히지 않게 해요
     });
 
     mpSocket.on('timeUpdate', ({ timeLeft }) => updateMpTime(timeLeft));
@@ -1647,6 +1765,8 @@ function joinMultiplayer(roomCodeOverride){
       updateMpLevel(level || 1);
       document.querySelectorAll('.fish').forEach(f => f.remove());
       mpFishEls = {};
+      mpCaughtSent = {};
+      mpBossInvulnUntil = {};
       stopMpWeather();
       showBanner('🎣 새 라운드 시작!');
     });
@@ -1750,8 +1870,19 @@ function joinMultiplayer(roomCodeOverride){
         setTimeout(() => popText.remove(), 800);
 
         el.classList.add('caught');
-        setTimeout(() => el.remove(), 350);
+        // 잡히는 애니메이션이 재생되는 동안(350ms)에도 el은 아직 DOM에 남아있어서
+        // animate() 루프가 계속 돌아요. 그새 mpCaughtSent를 풀어버리면 이미 사라진
+        // 물고기에 대해 catchAttempt를 한 번 더 헛되이 보낼 수 있으니, 완전히 사라진
+        // 뒤에 정리해요.
+        setTimeout(() => {
+          el.remove();
+          delete mpCaughtSent[fishId];
+          delete mpBossInvulnUntil[fishId];
+        }, 350);
         delete mpFishEls[fishId];
+      } else {
+        delete mpCaughtSent[fishId];
+        delete mpBossInvulnUntil[fishId];
       }
     });
 
@@ -1827,34 +1958,55 @@ function updateMpTime(t){
   document.getElementById('timeLeft').textContent = timeLeft;
 }
 
+// 보스가 화면을 이리저리 누비는 경로를 "흐른 시간"만의 함수로 계산해요.
+// (프레임마다 조금씩 움직이는 방식이 아니라 절대 시간 기준으로 계산해서,
+// 친구마다 프레임 속도가 달라도 다들 거의 같은 위치에 보스가 보여요)
+function bossWanderPosition(seed, elapsedSec){
+  const fx = 0.16 + seed * 0.12;
+  const fy = 0.11 + (1 - seed) * 0.09;
+  const px = seed * Math.PI * 2;
+  const py = (1 - seed) * Math.PI * 2;
+  const xRatio = 0.5 + 0.42 * Math.sin(fx * elapsedSec + px) * Math.cos(0.29 * elapsedSec + py);
+  const yRatio = 0.5 + 0.33 * Math.sin(fy * elapsedSec + py);
+  return {
+    xRatio: Math.min(0.96, Math.max(0.04, xRatio)),
+    yRatio: Math.min(0.88, Math.max(0.12, yRatio)),
+  };
+}
+
 function spawnMpFish(data){
   const type = data.type;
   const fish = document.createElement('div');
   fish.className = 'fish';
   fish.textContent = type.emoji;
   fish.dataset.name = type.name;
-  const y = data.y * window.innerHeight;
-  fish.style.top = y + 'px';
-  const startLeft = data.fromLeft ? -50 : window.innerWidth + 50;
-  fish.style.left = startLeft + 'px';
-  if(!data.fromLeft) fish.style.transform = 'scaleX(-1)';
   if(type.isBoss) fish.style.fontSize = '86px';
   scene.appendChild(fish);
   mpFishEls[data.id] = fish;
+  mpCaughtSent[data.id] = false;
 
   const half = type.isBoss ? BOSS_HALF : FISH_HALF;
   const catchRadius = type.isBoss ? BOSS_CATCH_RADIUS : FISH_CATCH_RADIUS;
 
   const distance = window.innerWidth + 100;
-  const duration = data.durationMs; // 서버가 정해준 "화면을 가로지르는 시간"을 그대로 써서 서버 만료 시점과 맞춰요
+  const duration = data.durationMs; // 서버가 정해준 "화면을 가로지르는 시간"(또는 보스의 전체 등장 시간)을 그대로 써서 서버 만료 시점과 맞춰요
   // 내 기기 시계와 서버 시계가 어긋나 있어도 문제가 없도록, Date.now() 대신
   // "이 물고기를 화면에 그리기 시작한 내 브라우저 시각"을 기준으로 흐른 시간을 재요.
   // 뒤늦게 방에 들어와서 이미 날아가고 있던 물고기라면(elapsedMs) 그만큼 앞에서 시작해요.
   const localStart = performance.now() - (data.elapsedMs || 0);
-  let caughtSent = false;
   // 물고기의 지금 위치를 우리가 직접 계산해서 알고 있으니, DOM에서 다시 읽지 않아요
-  let curLeft = startLeft;
-  let curTop = y;
+  let curLeft, curTop;
+  if(type.isBoss){
+    const pos = bossWanderPosition(data.seed, (data.elapsedMs || 0) / 1000);
+    curLeft = pos.xRatio * window.innerWidth;
+    curTop = pos.yRatio * window.innerHeight;
+  } else {
+    curTop = data.y * window.innerHeight;
+    curLeft = data.fromLeft ? -50 : window.innerWidth + 50;
+    if(!data.fromLeft) fish.style.transform = 'scaleX(-1)';
+  }
+  fish.style.left = curLeft + 'px';
+  fish.style.top = curTop + 'px';
 
   function tryMagnetPull(){
     // 내가 자석을 켠 상태라면, 이 물고기를 내 낚싯바늘 쪽으로 끌어당겨서 보여줘요
@@ -1870,14 +2022,31 @@ function spawnMpFish(data){
 
   function animate(){
     if(!fish.isConnected) return;
-    // 캐치 요청을 이미 보냈다면, 서버 응답(fishCaught/fishExpire)이 올 때까지
+    // 캐치 요청을 이미 보냈다면, 서버 응답(fishCaught/fishExpire/bossInked)이 올 때까지
     // 원래 유영 경로로 되돌아가지 않고 제자리에서 기다려요
-    if(caughtSent){ requestAnimationFrame(animate); return; }
+    if(mpCaughtSent[data.id]){ requestAnimationFrame(animate); return; }
+
+    // 보스는 먹물을 뿌리고 도망간 직후 잠깐 무적이라, 낚싯바늘을 대고 있어도
+    // 그 순간에는 연속으로 여러 번 스친 것으로 처리되지 않아요
+    const bossInvulnerable = type.isBoss && performance.now() < (mpBossInvulnUntil[data.id] || 0);
 
     // 낚싯바늘이 물고기에 닿으면 클릭/탭 없이도 자동으로 캐치를 시도해요
-    if(isNearHook(curLeft + half, curTop + half, catchRadius)){
-      caughtSent = true;
+    if(!bossInvulnerable && isNearHook(curLeft + half, curTop + half, catchRadius)){
+      mpCaughtSent[data.id] = true;
       if(mpSocket) mpSocket.emit('catchAttempt', { fishId: data.id });
+      requestAnimationFrame(animate);
+      return;
+    }
+
+    if(type.isBoss){
+      const elapsedSec = (performance.now() - localStart) / 1000;
+      const pos = bossWanderPosition(data.seed, elapsedSec);
+      const nextLeft = pos.xRatio * window.innerWidth;
+      fish.style.transform = nextLeft < curLeft ? 'scaleX(-1)' : 'scaleX(1)';
+      curLeft = nextLeft;
+      curTop = pos.yRatio * window.innerHeight;
+      fish.style.left = curLeft + 'px';
+      fish.style.top = curTop + 'px';
       requestAnimationFrame(animate);
       return;
     }
@@ -1979,6 +2148,8 @@ function startMultiplayerMode(){
   document.getElementById('mpPanel').classList.remove('hidden');
   document.querySelectorAll('.fish').forEach(f => f.remove());
   mpFishEls = {};
+  mpCaughtSent = {};
+  mpBossInvulnUntil = {};
   startBgMusic();
   setJoystickVisible(true);
 
@@ -2000,6 +2171,8 @@ function leaveMultiplayer(){
   clearGhostBoats();
   document.querySelectorAll('.fish').forEach(f => f.remove());
   mpFishEls = {};
+  mpCaughtSent = {};
+  mpBossInvulnUntil = {};
   document.getElementById('mpPanel').classList.add('hidden');
   document.getElementById('mpStatus').textContent = '';
   document.getElementById('mpRoomCodeDisplay').textContent = '';
