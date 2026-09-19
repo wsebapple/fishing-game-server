@@ -736,6 +736,9 @@ let magnetTimer = null;
 let frozen = false;
 let freezeTimeout = null;
 let stormActive = false;
+// 'storm' | 'snow' | null - 레벨업 시에도 지금 날씨에 맞는 스폰 속도를 유지하려고 따로 기억해둬요
+// (멀티플레이 서버의 applySpawnRate와 같은 방식이에요)
+let activeWeatherKind = null;
 let stormTimeout = null;
 let stormFlashInterval = null; // 번개 번쩍임 반복 타이머 (게임 종료 시 반드시 정리해야 해요)
 let snowFlakeInterval = null; // 눈송이 생성 반복 타이머 (게임 종료 시 반드시 정리해야 해요)
@@ -864,15 +867,26 @@ function showBanner(text){
   banner.classList.add('show');
 }
 
+// 지금 단계 + 날씨 상태에 맞는 스폰 속도로 물고기 생성 타이머를 다시 맞춰요
+// (멀티플레이 서버의 applySpawnRate와 같은 방식: 폭풍우/눈이 오는 중에 레벨업해도
+// 날씨 효과가 사라지지 않게 해요)
+function applyLevelSpawnRate(){
+  if(!running) return;
+  let spawnMs = levelStages[currentLevel - 1].spawnMs;
+  if(activeWeatherKind === 'storm') spawnMs = Math.max(220, spawnMs * 0.55);
+  else if(activeWeatherKind === 'snow') spawnMs = spawnMs * 1.25;
+  clearInterval(spawnTimer);
+  spawnTimer = setInterval(spawnFish, spawnMs);
+}
+
 function checkLevelUp(){
   const stage = getLevelForScore(score);
   if(stage.level !== currentLevel){
     currentLevel = stage.level;
     document.getElementById('level').textContent = currentLevel;
 
-    // 물고기 스폰 속도를 새 단계에 맞게 조정
-    clearInterval(spawnTimer);
-    spawnTimer = setInterval(spawnFish, stage.spawnMs);
+    // 물고기 스폰 속도를 새 단계(+현재 날씨)에 맞게 조정
+    applyLevelSpawnRate();
 
     showBanner('🌟 ' + currentLevel + '단계! 🌟');
     playLevelUpSound();
@@ -1166,7 +1180,10 @@ function scheduleRival(){
 
 function tryStealFish(){
   if(!running) return;
-  const fishes = Array.from(document.querySelectorAll('.fish'));
+  // 보스는 친구들(여기선 나)이 직접 잡거나 도망가게 두고, 해적은 노리지 않아요 (멀티플레이와 동일)
+  // 그렇지 않으면 해적이 보스를 통째로 훔쳐가버려서, 잡는 도중 사라지고
+  // 다음 보스도 다시는 안 나오는 문제가 생겨요
+  const fishes = Array.from(document.querySelectorAll('.fish')).filter(f => !f.classList.contains('boss-fish'));
   if(fishes.length === 0){ scheduleRival(); return; }
 
   // 보물통이 화면에 있으면 그것부터 노려요!
@@ -1224,6 +1241,7 @@ function triggerWeatherEvent(){
 
 function triggerSnow(){
   if(!running) return;
+  activeWeatherKind = 'snow';
   document.getElementById('snowTint').classList.add('active');
   showBanner('❄️ 눈이 내려요! 낚싯줄이 얼었어요 🥶');
 
@@ -1237,9 +1255,7 @@ function triggerSnow(){
   }, 5000);
 
   // 눈 오는 동안은 조금 더 느긋하게
-  clearInterval(spawnTimer);
-  const snowSpawnMs = levelStages[currentLevel - 1].spawnMs * 1.25;
-  spawnTimer = setInterval(spawnFish, snowSpawnMs);
+  applyLevelSpawnRate();
 
   clearInterval(snowFlakeInterval);
   snowFlakeInterval = setInterval(() => {
@@ -1258,10 +1274,8 @@ function triggerSnow(){
     clearInterval(snowFlakeInterval); snowFlakeInterval = null;
     document.getElementById('snowTint').classList.remove('active');
     showBanner('☀️ 눈이 그쳤어요!');
-    if(running){
-      clearInterval(spawnTimer);
-      spawnTimer = setInterval(spawnFish, levelStages[currentLevel - 1].spawnMs);
-    }
+    activeWeatherKind = null;
+    applyLevelSpawnRate();
     scheduleWeather();
   }, duration);
 }
@@ -1269,15 +1283,14 @@ function triggerSnow(){
 function triggerStorm(){
   if(!running) return;
   stormActive = true;
+  activeWeatherKind = 'storm';
   document.getElementById('stormOverlay').classList.add('active');
   document.getElementById('stormFog').classList.add('active');
   showBanner('⛈️ 폭풍우가 몰아쳐요!');
   playThunderSound();
 
   // 폭풍우 동안 물고기가 더 빨리, 자주 나와요
-  clearInterval(spawnTimer);
-  const stormSpawnMs = Math.max(220, levelStages[currentLevel - 1].spawnMs * 0.55);
-  spawnTimer = setInterval(spawnFish, stormSpawnMs);
+  applyLevelSpawnRate();
 
   // 가끔 번개가 번쩍여요
   clearInterval(stormFlashInterval);
@@ -1296,10 +1309,8 @@ function triggerStorm(){
     document.getElementById('stormOverlay').classList.remove('active');
     document.getElementById('stormFog').classList.remove('active');
     showBanner('🌤️ 폭풍우가 지나갔어요!');
-    if(running){
-      clearInterval(spawnTimer);
-      spawnTimer = setInterval(spawnFish, levelStages[currentLevel - 1].spawnMs);
-    }
+    activeWeatherKind = null;
+    applyLevelSpawnRate();
     scheduleWeather();
   }, stormDuration);
 }
@@ -1477,6 +1488,7 @@ function startGame(){
   frozen = false;
   updateHookIcon();
   stormActive = false;
+  activeWeatherKind = null;
   document.getElementById('stormOverlay').classList.remove('active');
   document.getElementById('stormFog').classList.remove('active');
   document.getElementById('snowTint').classList.remove('active');
@@ -1504,6 +1516,7 @@ function endGame(){
   magnetActive = false;
   frozen = false;
   stormActive = false;
+  activeWeatherKind = null;
   document.getElementById('stormOverlay').classList.remove('active');
   document.getElementById('stormFog').classList.remove('active');
   document.getElementById('snowTint').classList.remove('active');
