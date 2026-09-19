@@ -80,8 +80,23 @@ const fishTypes = [
   { emoji: "🗑️", points: 0, speed: 2.0, chance: 6, label: "꽝! 쓰레기예요 🙈", name: "쓰레기" },
 ];
 
-// 보스는 평소엔 나오지 않고, scheduleBossForRoom이 따로 등장시켜요
-const bossType = { emoji: "🦑", points: 40, speed: 1.2, chance: 0, label: "", name: "보스 오징어", isBoss: true };
+// 보스들은 평소엔 나오지 않고, scheduleBossForRoom이 그중 하나를 랜덤으로 골라 등장시켜요
+// (index.html의 bossTypes와 맞춰뒀어요)
+const bossTypes = [
+  { emoji: "🦑", points: 40, speed: 1.2, chance: 0, label: "", name: "보스 오징어", isBoss: true,
+    half: 59, catchRadius: 70, hitsMin: 3, hitsMax: 4, speedMul: 1, escape: "ink" },
+  { emoji: "🦈", points: 45, speed: 1.5, chance: 0, label: "", name: "보스 상어", isBoss: true,
+    half: 62, catchRadius: 74, hitsMin: 3, hitsMax: 3, speedMul: 1.5, escape: "splash", dash: true,
+    tint: "hue-rotate(200deg) saturate(1.6)" },
+  { emoji: "🐋", points: 55, speed: 0.5, chance: 0, label: "", name: "보스 고래", isBoss: true,
+    half: 76, catchRadius: 90, hitsMin: 5, hitsMax: 6, speedMul: 0.5, escape: "wave", knockback: true },
+  { emoji: "🐉", points: 42, speed: 1.8, chance: 0, label: "", name: "보스 바다용", isBoss: true,
+    half: 58, catchRadius: 68, hitsMin: 3, hitsMax: 3, speedMul: 1.8, escape: "shock", jitter: true, freeze: true,
+    tint: "hue-rotate(70deg) saturate(1.8)" },
+  { emoji: "🦀", points: 48, speed: 0.8, chance: 0, label: "", name: "보스 대왕게", isBoss: true,
+    half: 60, catchRadius: 70, hitsMin: 4, hitsMax: 4, speedMul: 0.8, escape: "sand", stealth: true,
+    tint: "hue-rotate(300deg) saturate(1.5)" },
+];
 
 function pickFishType(){
   const total = fishTypes.reduce((s, f) => s + f.chance, 0);
@@ -165,8 +180,9 @@ function spawnBossForRoom(code){
   if(!room) return;
 
   const id = 'boss' + (room.fishIdCounter++);
+  const bossType = bossTypes[Math.floor(Math.random() * bossTypes.length)];
   const seed = Math.random(); // 화면을 누비는 경로를 친구들 모두가 똑같이 그릴 수 있게 하는 값이에요
-  const hitsNeeded = 3 + Math.floor(Math.random() * 2); // 3~4번 낚싯바늘에 스쳐야 잡혀요
+  const hitsNeeded = bossType.hitsMin + Math.floor(Math.random() * (bossType.hitsMax - bossType.hitsMin + 1));
   const fishData = { id, type: bossType, seed, startTime: Date.now(), durationMs: BOSS_ENCOUNTER_MS, hitsNeeded, hitsLanded: 0 };
   room.fish[id] = fishData;
   io.to(code).emit('fishSpawn', fishData);
@@ -388,8 +404,10 @@ io.on('connection', (socket) => {
     if(type.isBoss){
       fish.hitsLanded = (fish.hitsLanded || 0) + 1;
       if(fish.hitsLanded < fish.hitsNeeded){
-        // 아직 다 안 잡혔어요: 먹물을 뿌리고 도망가요. 물고기는 그대로 살아있어요.
-        io.to(code).emit('bossInked', { id: fishId, hitsLanded: fish.hitsLanded, hitsNeeded: fish.hitsNeeded });
+        // 아직 다 안 잡혔어요: 도망 연출을 내고 도망가요. 물고기는 그대로 살아있어요.
+        // byId를 같이 보내서, 고래의 넉백이나 바다용의 감전 같은 "때린 사람에게만" 적용되는
+        // 효과를 클라이언트가 정확히 나인지 구분할 수 있게 해요.
+        io.to(code).emit('bossInked', { id: fishId, byId: socket.id, hitsLanded: fish.hitsLanded, hitsNeeded: fish.hitsNeeded });
         return;
       }
     }
