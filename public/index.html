@@ -273,6 +273,20 @@
     padding:1px 8px; border-radius:8px; white-space:nowrap;
     font-family:'Jua','Baloo 2',sans-serif;
   }
+  /* 친구 배에서 내려간 낚싯줄/바늘도 같이 보여줘서, 어디를 노리고 있는지 알 수 있게 해요.
+     (#line/#hook과 같은 계산식을 쓰되, 보트 자신의 top:46px 기준 상대 좌표로 그려요) */
+  .ghostLine{
+    position:absolute; top:24px; left:50%; width:2px; height:0;
+    background:rgba(255,255,255,0.5);
+    transform:translateX(-50%);
+    transition:height .18s linear;
+  }
+  .ghostHook{
+    position:absolute; top:24px; left:50%; width:20px; height:20px; font-size:16px;
+    text-align:center; line-height:20px; transform:translate(-50%,-50%);
+    opacity:0.55;
+    transition:top .18s linear;
+  }
 
   /* 다른 배(경쟁자): 가끔 나타나서 물고기를 채가요 */
   #rivalBoat{
@@ -409,6 +423,21 @@
   .bigBtn:active{ box-shadow:0 2px 0 #c94747; transform:translateY(4px); }
   .hidden{ display:none; }
   #resultScore{ font-size:32px; color:var(--sun); }
+
+  /* 온라인 라운드 종료 순위 */
+  #mpRoundEndRanking{
+    display:flex; flex-direction:column; gap:8px;
+    width:100%; max-width:360px;
+  }
+  .mpRankRow{
+    display:flex; align-items:center; gap:10px;
+    background:rgba(255,255,255,0.08); border-radius:12px;
+    padding:8px 16px; font-size:18px;
+  }
+  .mpRankRow.me{ background:rgba(255,201,60,0.22); border:2px solid var(--sun); }
+  .mpRankMedal{ font-size:22px; width:28px; text-align:center; }
+  .mpRankName{ flex:1; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mpRankScore{ font-family:'Baloo 2',sans-serif; font-weight:700; color:var(--sun); }
 
   #dexGrid{
     display:grid; grid-template-columns:repeat(auto-fit, minmax(100px,1fr));
@@ -582,6 +611,13 @@
     <div id="mpRoomCodeDisplay" style="font-size:12px; opacity:0.8; margin-bottom:6px;"></div>
     <div id="mpPlayerList" style="font-size:14px; line-height:1.6;"></div>
     <button id="mpLeaveBtn" style="margin-top:8px; font-family:'Jua',sans-serif; font-size:13px; padding:4px 10px; border-radius:999px; border:none; background:var(--coral); color:#fff; cursor:pointer;">나가기</button>
+  </div>
+
+  <!-- 온라인 라운드 종료 화면 (친구들 순위 + 다음 라운드 카운트다운) -->
+  <div class="overlay hidden" id="mpRoundEndScreen">
+    <h1>⏰ 라운드 종료!</h1>
+    <div id="mpRoundEndRanking"></div>
+    <p id="mpRoundEndCountdown" style="font-size:17px; color:#ffe9b0;"></p>
   </div>
 
   <!-- 종료 화면 -->
@@ -1760,6 +1796,9 @@ function joinMultiplayer(roomCodeOverride){
     });
 
     mpSocket.on('roundReset', ({ players, timeLeft, level }) => {
+      clearInterval(mpRoundEndCountdownTimer);
+      document.getElementById('mpRoundEndScreen').classList.add('hidden');
+      setJoystickVisible(true);
       renderMpPlayerList(players);
       updateMpTime(timeLeft);
       updateMpLevel(level || 1);
@@ -1774,7 +1813,7 @@ function joinMultiplayer(roomCodeOverride){
     mpSocket.on('roundEnded', ({ players }) => {
       renderMpPlayerList(players);
       stopMpWeather();
-      showBanner('⏰ 라운드 종료!');
+      setJoystickVisible(false); // 라운드 결과를 보는 동안엔 조종할 게 없으니 숨겨요
       const me = players[mpSocket.id];
       const isNewRecord = !!me && me.score > bestScore;
       if(me){
@@ -1784,6 +1823,12 @@ function joinMultiplayer(roomCodeOverride){
         document.getElementById('bestScoreEnd').textContent = '🏅 최고점수: ' + bestScore + '점';
       }
       playGameOverSound(isNewRecord);
+
+      // 싱글플레이처럼 점수만 반짝 보이고 사라지는 대신, 방 친구들 순위와
+      // 다음 라운드까지 남은 시간을 화면 가득 보여줘서 "뭐가 어떻게 된 건지" 알 수 있게 해요
+      renderMpRoundEndRanking(players);
+      document.getElementById('mpRoundEndScreen').classList.remove('hidden');
+      startMpRoundEndCountdown(6); // 서버의 RESET_DELAY_MS(6초)와 맞춰뒀어요
     });
 
     mpSocket.on('weatherEvent', ({ kind, durationMs }) => {
@@ -1888,9 +1933,18 @@ function joinMultiplayer(roomCodeOverride){
 
     mpSocket.on('playerListUpdate', renderMpPlayerList);
 
-    mpSocket.on('boatMove', ({ id, xRatio }) => {
+    mpSocket.on('boatMove', ({ id, xRatio, yRatio }) => {
       const el = mpGhostBoats[id];
-      if(el) el.style.left = (xRatio * window.innerWidth) + 'px';
+      if(!el) return;
+      el.style.left = (xRatio * window.innerWidth) + 'px';
+      // 낚싯줄/바늘 위치도 같이 갱신해요 (#line/#hook과 같은 기준: 낚싯줄은 70px 높이에서 시작해요)
+      if(typeof yRatio === 'number'){
+        const y = yRatio * window.innerHeight;
+        const ghostLine = el.querySelector('.ghostLine');
+        const ghostHook = el.querySelector('.ghostHook');
+        ghostLine.style.height = Math.max(0, y - 70) + 'px';
+        ghostHook.style.top = (y - 46) + 'px';
+      }
     });
   });
 }
@@ -2085,6 +2139,43 @@ function renderMpPlayerList(players){
 }
 
 /* ------------------------------------------------------
+   온라인 라운드가 끝나면, 싱글플레이의 종료화면처럼 방 친구들
+   순위와 다음 라운드까지 남은 시간을 화면 가득 보여줘요.
+------------------------------------------------------ */
+let mpRoundEndCountdownTimer = null;
+
+function renderMpRoundEndRanking(players){
+  const list = Object.entries(players)
+    .map(([id, p]) => ({ id, name: p.name, score: p.score }))
+    .sort((a, b) => b.score - a.score);
+  const myId = mpSocket ? mpSocket.id : null;
+  const medals = ['🥇', '🥈', '🥉'];
+  // 친구 이름은 다른 사람이 입력한 텍스트라, HTML로 그대로 넣으면 위험할 수 있어요(escapeHtml 필수)
+  document.getElementById('mpRoundEndRanking').innerHTML = list.map((p, i) => `
+    <div class="mpRankRow${p.id === myId ? ' me' : ''}">
+      <span class="mpRankMedal">${medals[i] || (i + 1) + '.'}</span>
+      <span class="mpRankName">${escapeHtml(p.name)}</span>
+      <span class="mpRankScore">${p.score}점</span>
+    </div>
+  `).join('');
+}
+
+function startMpRoundEndCountdown(seconds){
+  clearInterval(mpRoundEndCountdownTimer);
+  let left = seconds;
+  const el = document.getElementById('mpRoundEndCountdown');
+  const tick = () => {
+    el.textContent = left > 0 ? `${left}초 후 새 라운드가 시작돼요...` : '곧 시작해요...';
+    left--;
+  };
+  tick();
+  mpRoundEndCountdownTimer = setInterval(() => {
+    if(left < -1){ clearInterval(mpRoundEndCountdownTimer); return; }
+    tick();
+  }, 1000);
+}
+
+/* ------------------------------------------------------
    온라인 중에 다른 친구들의 배를 화면에 뿌옇게(반투명) 보여줘요.
    실제 위치가 아니라, 서로 다른 화면 폭에도 맞도록 0~1 비율로 주고받아요.
 ------------------------------------------------------ */
@@ -2097,7 +2188,7 @@ function ensureGhostBoat(id, name){
     el = document.createElement('div');
     el.className = 'ghostBoat';
     el.style.left = (window.innerWidth / 2) + 'px'; // 위치를 아직 모를 때는 가운데에 둬요
-    el.innerHTML = '<div class="ghostBoatIcon">⛵</div><div class="ghostBoatName"></div>';
+    el.innerHTML = '<div class="ghostBoatIcon">⛵</div><div class="ghostBoatName"></div><div class="ghostLine"></div><div class="ghostHook">🪝</div>';
     scene.appendChild(el);
     mpGhostBoats[id] = el;
   }
@@ -2127,7 +2218,7 @@ function clearGhostBoats(){
 
 function sendBoatPosition(){
   if(!mpSocket || !mpActive) return;
-  mpSocket.emit('boatMove', { xRatio: hookX / window.innerWidth });
+  mpSocket.emit('boatMove', { xRatio: hookX / window.innerWidth, yRatio: hookY / window.innerHeight });
 }
 
 function startMultiplayerMode(){
@@ -2145,6 +2236,8 @@ function startMultiplayerMode(){
   document.getElementById('mpScreen').classList.add('hidden');
   document.getElementById('startScreen').classList.add('hidden');
   document.getElementById('endScreen').classList.add('hidden');
+  document.getElementById('mpRoundEndScreen').classList.add('hidden');
+  clearInterval(mpRoundEndCountdownTimer);
   document.getElementById('mpPanel').classList.remove('hidden');
   document.querySelectorAll('.fish').forEach(f => f.remove());
   mpFishEls = {};
@@ -2168,12 +2261,14 @@ function leaveMultiplayer(){
   stopMpWeather();
   stopBgMusic();
   clearInterval(mpBoatSendTimer); mpBoatSendTimer = null;
+  clearInterval(mpRoundEndCountdownTimer);
   clearGhostBoats();
   document.querySelectorAll('.fish').forEach(f => f.remove());
   mpFishEls = {};
   mpCaughtSent = {};
   mpBossInvulnUntil = {};
   document.getElementById('mpPanel').classList.add('hidden');
+  document.getElementById('mpRoundEndScreen').classList.add('hidden');
   document.getElementById('mpStatus').textContent = '';
   document.getElementById('mpRoomCodeDisplay').textContent = '';
   document.getElementById('startScreen').classList.remove('hidden');
