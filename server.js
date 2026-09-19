@@ -442,7 +442,9 @@ io.on('connection', (socket) => {
     if(!code) return;
     const xRatio = payload && typeof payload.xRatio === 'number' ? Math.max(0, Math.min(1, payload.xRatio)) : null;
     if(xRatio === null) return;
-    socket.to(code).emit('boatMove', { id: socket.id, xRatio });
+    // yRatio(낚싯바늘이 얼마나 내려가 있는지)도 같이 알려줘서, 친구들 화면에 낚싯줄까지 보이게 해요
+    const yRatio = payload && typeof payload.yRatio === 'number' ? Math.max(0, Math.min(1, payload.yRatio)) : null;
+    socket.to(code).emit('boatMove', { id: socket.id, xRatio, yRatio });
   });
 
   socket.on('disconnect', () => {

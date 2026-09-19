@@ -273,6 +273,20 @@
     padding:1px 8px; border-radius:8px; white-space:nowrap;
     font-family:'Jua','Baloo 2',sans-serif;
   }
+  /* 친구 배에서 내려간 낚싯줄/바늘도 같이 보여줘서, 어디를 노리고 있는지 알 수 있게 해요.
+     (#line/#hook과 같은 계산식을 쓰되, 보트 자신의 top:46px 기준 상대 좌표로 그려요) */
+  .ghostLine{
+    position:absolute; top:24px; left:50%; width:2px; height:0;
+    background:rgba(255,255,255,0.5);
+    transform:translateX(-50%);
+    transition:height .18s linear;
+  }
+  .ghostHook{
+    position:absolute; top:24px; left:50%; width:20px; height:20px; font-size:16px;
+    text-align:center; line-height:20px; transform:translate(-50%,-50%);
+    opacity:0.55;
+    transition:top .18s linear;
+  }
 
   /* 다른 배(경쟁자): 가끔 나타나서 물고기를 채가요 */
   #rivalBoat{
@@ -409,6 +423,21 @@
   .bigBtn:active{ box-shadow:0 2px 0 #c94747; transform:translateY(4px); }
   .hidden{ display:none; }
   #resultScore{ font-size:32px; color:var(--sun); }
+
+  /* 온라인 라운드 종료 순위 */
+  #mpRoundEndRanking{
+    display:flex; flex-direction:column; gap:8px;
+    width:100%; max-width:360px;
+  }
+  .mpRankRow{
+    display:flex; align-items:center; gap:10px;
+    background:rgba(255,255,255,0.08); border-radius:12px;
+    padding:8px 16px; font-size:18px;
+  }
+  .mpRankRow.me{ background:rgba(255,201,60,0.22); border:2px solid var(--sun); }
+  .mpRankMedal{ font-size:22px; width:28px; text-align:center; }
+  .mpRankName{ flex:1; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mpRankScore{ font-family:'Baloo 2',sans-serif; font-weight:700; color:var(--sun); }
 
   #dexGrid{
     display:grid; grid-template-columns:repeat(auto-fit, minmax(100px,1fr));
@@ -584,6 +613,13 @@
     <button id="mpLeaveBtn" style="margin-top:8px; font-family:'Jua',sans-serif; font-size:13px; padding:4px 10px; border-radius:999px; border:none; background:var(--coral); color:#fff; cursor:pointer;">나가기</button>
   </div>
 
+  <!-- 온라인 라운드 종료 화면 (친구들 순위 + 다음 라운드 카운트다운) -->
+  <div class="overlay hidden" id="mpRoundEndScreen">
+    <h1>⏰ 라운드 종료!</h1>
+    <div id="mpRoundEndRanking"></div>
+    <p id="mpRoundEndCountdown" style="font-size:17px; color:#ffe9b0;"></p>
+  </div>
+
   <!-- 종료 화면 -->
   <div class="overlay hidden" id="endScreen">
     <h1>🎉 게임 끝!</h1>
@@ -700,6 +736,9 @@ let magnetTimer = null;
 let frozen = false;
 let freezeTimeout = null;
 let stormActive = false;
+// 'storm' | 'snow' | null - 레벨업 시에도 지금 날씨에 맞는 스폰 속도를 유지하려고 따로 기억해둬요
+// (멀티플레이 서버의 applySpawnRate와 같은 방식이에요)
+let activeWeatherKind = null;
 let stormTimeout = null;
 let stormFlashInterval = null; // 번개 번쩍임 반복 타이머 (게임 종료 시 반드시 정리해야 해요)
 let snowFlakeInterval = null; // 눈송이 생성 반복 타이머 (게임 종료 시 반드시 정리해야 해요)
@@ -828,15 +867,26 @@ function showBanner(text){
   banner.classList.add('show');
 }
 
+// 지금 단계 + 날씨 상태에 맞는 스폰 속도로 물고기 생성 타이머를 다시 맞춰요
+// (멀티플레이 서버의 applySpawnRate와 같은 방식: 폭풍우/눈이 오는 중에 레벨업해도
+// 날씨 효과가 사라지지 않게 해요)
+function applyLevelSpawnRate(){
+  if(!running) return;
+  let spawnMs = levelStages[currentLevel - 1].spawnMs;
+  if(activeWeatherKind === 'storm') spawnMs = Math.max(220, spawnMs * 0.55);
+  else if(activeWeatherKind === 'snow') spawnMs = spawnMs * 1.25;
+  clearInterval(spawnTimer);
+  spawnTimer = setInterval(spawnFish, spawnMs);
+}
+
 function checkLevelUp(){
   const stage = getLevelForScore(score);
   if(stage.level !== currentLevel){
     currentLevel = stage.level;
     document.getElementById('level').textContent = currentLevel;
 
-    // 물고기 스폰 속도를 새 단계에 맞게 조정
-    clearInterval(spawnTimer);
-    spawnTimer = setInterval(spawnFish, stage.spawnMs);
+    // 물고기 스폰 속도를 새 단계(+현재 날씨)에 맞게 조정
+    applyLevelSpawnRate();
 
     showBanner('🌟 ' + currentLevel + '단계! 🌟');
     playLevelUpSound();
@@ -1130,7 +1180,10 @@ function scheduleRival(){
 
 function tryStealFish(){
   if(!running) return;
-  const fishes = Array.from(document.querySelectorAll('.fish'));
+  // 보스는 친구들(여기선 나)이 직접 잡거나 도망가게 두고, 해적은 노리지 않아요 (멀티플레이와 동일)
+  // 그렇지 않으면 해적이 보스를 통째로 훔쳐가버려서, 잡는 도중 사라지고
+  // 다음 보스도 다시는 안 나오는 문제가 생겨요
+  const fishes = Array.from(document.querySelectorAll('.fish')).filter(f => !f.classList.contains('boss-fish'));
   if(fishes.length === 0){ scheduleRival(); return; }
 
   // 보물통이 화면에 있으면 그것부터 노려요!
@@ -1188,6 +1241,7 @@ function triggerWeatherEvent(){
 
 function triggerSnow(){
   if(!running) return;
+  activeWeatherKind = 'snow';
   document.getElementById('snowTint').classList.add('active');
   showBanner('❄️ 눈이 내려요! 낚싯줄이 얼었어요 🥶');
 
@@ -1201,9 +1255,7 @@ function triggerSnow(){
   }, 5000);
 
   // 눈 오는 동안은 조금 더 느긋하게
-  clearInterval(spawnTimer);
-  const snowSpawnMs = levelStages[currentLevel - 1].spawnMs * 1.25;
-  spawnTimer = setInterval(spawnFish, snowSpawnMs);
+  applyLevelSpawnRate();
 
   clearInterval(snowFlakeInterval);
   snowFlakeInterval = setInterval(() => {
@@ -1222,10 +1274,8 @@ function triggerSnow(){
     clearInterval(snowFlakeInterval); snowFlakeInterval = null;
     document.getElementById('snowTint').classList.remove('active');
     showBanner('☀️ 눈이 그쳤어요!');
-    if(running){
-      clearInterval(spawnTimer);
-      spawnTimer = setInterval(spawnFish, levelStages[currentLevel - 1].spawnMs);
-    }
+    activeWeatherKind = null;
+    applyLevelSpawnRate();
     scheduleWeather();
   }, duration);
 }
@@ -1233,15 +1283,14 @@ function triggerSnow(){
 function triggerStorm(){
   if(!running) return;
   stormActive = true;
+  activeWeatherKind = 'storm';
   document.getElementById('stormOverlay').classList.add('active');
   document.getElementById('stormFog').classList.add('active');
   showBanner('⛈️ 폭풍우가 몰아쳐요!');
   playThunderSound();
 
   // 폭풍우 동안 물고기가 더 빨리, 자주 나와요
-  clearInterval(spawnTimer);
-  const stormSpawnMs = Math.max(220, levelStages[currentLevel - 1].spawnMs * 0.55);
-  spawnTimer = setInterval(spawnFish, stormSpawnMs);
+  applyLevelSpawnRate();
 
   // 가끔 번개가 번쩍여요
   clearInterval(stormFlashInterval);
@@ -1260,10 +1309,8 @@ function triggerStorm(){
     document.getElementById('stormOverlay').classList.remove('active');
     document.getElementById('stormFog').classList.remove('active');
     showBanner('🌤️ 폭풍우가 지나갔어요!');
-    if(running){
-      clearInterval(spawnTimer);
-      spawnTimer = setInterval(spawnFish, levelStages[currentLevel - 1].spawnMs);
-    }
+    activeWeatherKind = null;
+    applyLevelSpawnRate();
     scheduleWeather();
   }, stormDuration);
 }
@@ -1441,6 +1488,7 @@ function startGame(){
   frozen = false;
   updateHookIcon();
   stormActive = false;
+  activeWeatherKind = null;
   document.getElementById('stormOverlay').classList.remove('active');
   document.getElementById('stormFog').classList.remove('active');
   document.getElementById('snowTint').classList.remove('active');
@@ -1468,6 +1516,7 @@ function endGame(){
   magnetActive = false;
   frozen = false;
   stormActive = false;
+  activeWeatherKind = null;
   document.getElementById('stormOverlay').classList.remove('active');
   document.getElementById('stormFog').classList.remove('active');
   document.getElementById('snowTint').classList.remove('active');
@@ -1760,6 +1809,9 @@ function joinMultiplayer(roomCodeOverride){
     });
 
     mpSocket.on('roundReset', ({ players, timeLeft, level }) => {
+      clearInterval(mpRoundEndCountdownTimer);
+      document.getElementById('mpRoundEndScreen').classList.add('hidden');
+      setJoystickVisible(true);
       renderMpPlayerList(players);
       updateMpTime(timeLeft);
       updateMpLevel(level || 1);
@@ -1774,7 +1826,7 @@ function joinMultiplayer(roomCodeOverride){
     mpSocket.on('roundEnded', ({ players }) => {
       renderMpPlayerList(players);
       stopMpWeather();
-      showBanner('⏰ 라운드 종료!');
+      setJoystickVisible(false); // 라운드 결과를 보는 동안엔 조종할 게 없으니 숨겨요
       const me = players[mpSocket.id];
       const isNewRecord = !!me && me.score > bestScore;
       if(me){
@@ -1784,6 +1836,12 @@ function joinMultiplayer(roomCodeOverride){
         document.getElementById('bestScoreEnd').textContent = '🏅 최고점수: ' + bestScore + '점';
       }
       playGameOverSound(isNewRecord);
+
+      // 싱글플레이처럼 점수만 반짝 보이고 사라지는 대신, 방 친구들 순위와
+      // 다음 라운드까지 남은 시간을 화면 가득 보여줘서 "뭐가 어떻게 된 건지" 알 수 있게 해요
+      renderMpRoundEndRanking(players);
+      document.getElementById('mpRoundEndScreen').classList.remove('hidden');
+      startMpRoundEndCountdown(6); // 서버의 RESET_DELAY_MS(6초)와 맞춰뒀어요
     });
 
     mpSocket.on('weatherEvent', ({ kind, durationMs }) => {
@@ -1888,9 +1946,18 @@ function joinMultiplayer(roomCodeOverride){
 
     mpSocket.on('playerListUpdate', renderMpPlayerList);
 
-    mpSocket.on('boatMove', ({ id, xRatio }) => {
+    mpSocket.on('boatMove', ({ id, xRatio, yRatio }) => {
       const el = mpGhostBoats[id];
-      if(el) el.style.left = (xRatio * window.innerWidth) + 'px';
+      if(!el) return;
+      el.style.left = (xRatio * window.innerWidth) + 'px';
+      // 낚싯줄/바늘 위치도 같이 갱신해요 (#line/#hook과 같은 기준: 낚싯줄은 70px 높이에서 시작해요)
+      if(typeof yRatio === 'number'){
+        const y = yRatio * window.innerHeight;
+        const ghostLine = el.querySelector('.ghostLine');
+        const ghostHook = el.querySelector('.ghostHook');
+        ghostLine.style.height = Math.max(0, y - 70) + 'px';
+        ghostHook.style.top = (y - 46) + 'px';
+      }
     });
   });
 }
@@ -2085,6 +2152,43 @@ function renderMpPlayerList(players){
 }
 
 /* ------------------------------------------------------
+   온라인 라운드가 끝나면, 싱글플레이의 종료화면처럼 방 친구들
+   순위와 다음 라운드까지 남은 시간을 화면 가득 보여줘요.
+------------------------------------------------------ */
+let mpRoundEndCountdownTimer = null;
+
+function renderMpRoundEndRanking(players){
+  const list = Object.entries(players)
+    .map(([id, p]) => ({ id, name: p.name, score: p.score }))
+    .sort((a, b) => b.score - a.score);
+  const myId = mpSocket ? mpSocket.id : null;
+  const medals = ['🥇', '🥈', '🥉'];
+  // 친구 이름은 다른 사람이 입력한 텍스트라, HTML로 그대로 넣으면 위험할 수 있어요(escapeHtml 필수)
+  document.getElementById('mpRoundEndRanking').innerHTML = list.map((p, i) => `
+    <div class="mpRankRow${p.id === myId ? ' me' : ''}">
+      <span class="mpRankMedal">${medals[i] || (i + 1) + '.'}</span>
+      <span class="mpRankName">${escapeHtml(p.name)}</span>
+      <span class="mpRankScore">${p.score}점</span>
+    </div>
+  `).join('');
+}
+
+function startMpRoundEndCountdown(seconds){
+  clearInterval(mpRoundEndCountdownTimer);
+  let left = seconds;
+  const el = document.getElementById('mpRoundEndCountdown');
+  const tick = () => {
+    el.textContent = left > 0 ? `${left}초 후 새 라운드가 시작돼요...` : '곧 시작해요...';
+    left--;
+  };
+  tick();
+  mpRoundEndCountdownTimer = setInterval(() => {
+    if(left < -1){ clearInterval(mpRoundEndCountdownTimer); return; }
+    tick();
+  }, 1000);
+}
+
+/* ------------------------------------------------------
    온라인 중에 다른 친구들의 배를 화면에 뿌옇게(반투명) 보여줘요.
    실제 위치가 아니라, 서로 다른 화면 폭에도 맞도록 0~1 비율로 주고받아요.
 ------------------------------------------------------ */
@@ -2097,7 +2201,7 @@ function ensureGhostBoat(id, name){
     el = document.createElement('div');
     el.className = 'ghostBoat';
     el.style.left = (window.innerWidth / 2) + 'px'; // 위치를 아직 모를 때는 가운데에 둬요
-    el.innerHTML = '<div class="ghostBoatIcon">⛵</div><div class="ghostBoatName"></div>';
+    el.innerHTML = '<div class="ghostBoatIcon">⛵</div><div class="ghostBoatName"></div><div class="ghostLine"></div><div class="ghostHook">🪝</div>';
     scene.appendChild(el);
     mpGhostBoats[id] = el;
   }
@@ -2127,7 +2231,7 @@ function clearGhostBoats(){
 
 function sendBoatPosition(){
   if(!mpSocket || !mpActive) return;
-  mpSocket.emit('boatMove', { xRatio: hookX / window.innerWidth });
+  mpSocket.emit('boatMove', { xRatio: hookX / window.innerWidth, yRatio: hookY / window.innerHeight });
 }
 
 function startMultiplayerMode(){
@@ -2145,6 +2249,8 @@ function startMultiplayerMode(){
   document.getElementById('mpScreen').classList.add('hidden');
   document.getElementById('startScreen').classList.add('hidden');
   document.getElementById('endScreen').classList.add('hidden');
+  document.getElementById('mpRoundEndScreen').classList.add('hidden');
+  clearInterval(mpRoundEndCountdownTimer);
   document.getElementById('mpPanel').classList.remove('hidden');
   document.querySelectorAll('.fish').forEach(f => f.remove());
   mpFishEls = {};
@@ -2168,12 +2274,14 @@ function leaveMultiplayer(){
   stopMpWeather();
   stopBgMusic();
   clearInterval(mpBoatSendTimer); mpBoatSendTimer = null;
+  clearInterval(mpRoundEndCountdownTimer);
   clearGhostBoats();
   document.querySelectorAll('.fish').forEach(f => f.remove());
   mpFishEls = {};
   mpCaughtSent = {};
   mpBossInvulnUntil = {};
   document.getElementById('mpPanel').classList.add('hidden');
+  document.getElementById('mpRoundEndScreen').classList.add('hidden');
   document.getElementById('mpStatus').textContent = '';
   document.getElementById('mpRoomCodeDisplay').textContent = '';
   document.getElementById('startScreen').classList.remove('hidden');
