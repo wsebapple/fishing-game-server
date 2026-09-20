@@ -1,0 +1,251 @@
+{
+  "levelStages": [
+    {
+      "level": 1,
+      "upTo": 30,
+      "spawnMs": 700
+    },
+    {
+      "level": 2,
+      "upTo": 60,
+      "spawnMs": 550
+    },
+    {
+      "level": 3,
+      "upTo": 100,
+      "spawnMs": 420
+    }
+  ],
+  "lootItems": [
+    "반짝이는 진주",
+    "오래된 금화",
+    "인어의 머리핀",
+    "신비한 조개껍질",
+    "작은 다이아몬드",
+    "보물지도 조각",
+    "산호 장식품",
+    "용왕님의 반지"
+  ],
+  "fishTypes": [
+    {
+      "emoji": "🐳",
+      "points": 15,
+      "speed": 1.6,
+      "chance": 5,
+      "label": "",
+      "name": "고래"
+    },
+    {
+      "emoji": "🦈",
+      "points": 10,
+      "speed": 4.2,
+      "chance": 8,
+      "label": "",
+      "name": "상어"
+    },
+    {
+      "emoji": "🐡",
+      "points": 7,
+      "speed": 3,
+      "chance": 6,
+      "label": "",
+      "name": "가오리"
+    },
+    {
+      "emoji": "🐙",
+      "points": 6,
+      "speed": 2.6,
+      "chance": 7,
+      "label": "",
+      "name": "문어"
+    },
+    {
+      "emoji": "🐟",
+      "points": 5,
+      "speed": 3.2,
+      "chance": 9,
+      "label": "",
+      "name": "참치"
+    },
+    {
+      "emoji": "🦀",
+      "points": 2,
+      "speed": 2,
+      "chance": 6,
+      "label": "",
+      "name": "게"
+    },
+    {
+      "emoji": "🐚",
+      "points": 3,
+      "speed": 1.8,
+      "chance": 7,
+      "label": "",
+      "name": "조개"
+    },
+    {
+      "emoji": "⭐",
+      "points": 1,
+      "speed": 1.4,
+      "chance": 5,
+      "label": "",
+      "name": "불가사리"
+    },
+    {
+      "emoji": "🦐",
+      "points": 1,
+      "speed": 2.4,
+      "chance": 8,
+      "label": "",
+      "name": "새우"
+    },
+    {
+      "emoji": "📦",
+      "points": 0,
+      "speed": 2.2,
+      "chance": 6,
+      "label": "",
+      "name": "보물통",
+      "isTreasure": true,
+      "minBonus": 5,
+      "maxBonus": 15
+    },
+    {
+      "emoji": "🧲",
+      "points": 0,
+      "speed": 2.2,
+      "chance": 5,
+      "label": "",
+      "name": "자석",
+      "isMagnet": true,
+      "magnetMs": 6000
+    },
+    {
+      "emoji": "⏰",
+      "points": 0,
+      "speed": 2.2,
+      "chance": 5,
+      "label": "",
+      "name": "시계",
+      "isTimeBonus": true,
+      "timeBonus": 5
+    },
+    {
+      "emoji": "🪼",
+      "points": -4,
+      "speed": 2.6,
+      "chance": 6,
+      "label": "",
+      "name": "해파리"
+    },
+    {
+      "emoji": "🦠",
+      "points": -6,
+      "speed": 1.8,
+      "chance": 5,
+      "label": "",
+      "name": "오염물"
+    },
+    {
+      "emoji": "🥾",
+      "points": 0,
+      "speed": 2,
+      "chance": 6,
+      "label": "꽝! 헌 신발이에요 😅",
+      "name": "헌 신발"
+    },
+    {
+      "emoji": "🗑️",
+      "points": 0,
+      "speed": 2,
+      "chance": 6,
+      "label": "꽝! 쓰레기예요 🙈",
+      "name": "쓰레기"
+    }
+  ],
+  "bossTypes": [
+    {
+      "emoji": "🦑",
+      "points": 40,
+      "speed": 1.2,
+      "chance": 0,
+      "label": "",
+      "name": "보스 오징어",
+      "isBoss": true,
+      "half": 59,
+      "catchRadius": 70,
+      "hitsMin": 3,
+      "hitsMax": 4,
+      "speedMul": 1,
+      "escape": "ink"
+    },
+    {
+      "emoji": "🦈",
+      "points": 45,
+      "speed": 1.5,
+      "chance": 0,
+      "label": "",
+      "name": "보스 상어",
+      "isBoss": true,
+      "half": 62,
+      "catchRadius": 74,
+      "hitsMin": 3,
+      "hitsMax": 3,
+      "speedMul": 1.5,
+      "escape": "splash",
+      "dash": true,
+      "tint": "hue-rotate(200deg) saturate(1.6)"
+    },
+    {
+      "emoji": "🐋",
+      "points": 55,
+      "speed": 0.5,
+      "chance": 0,
+      "label": "",
+      "name": "보스 고래",
+      "isBoss": true,
+      "half": 76,
+      "catchRadius": 90,
+      "hitsMin": 5,
+      "hitsMax": 6,
+      "speedMul": 0.5,
+      "escape": "wave",
+      "knockback": true
+    },
+    {
+      "emoji": "🐉",
+      "points": 42,
+      "speed": 1.8,
+      "chance": 0,
+      "label": "",
+      "name": "보스 바다용",
+      "isBoss": true,
+      "half": 58,
+      "catchRadius": 68,
+      "hitsMin": 3,
+      "hitsMax": 3,
+      "speedMul": 1.8,
+      "escape": "shock",
+      "jitter": true,
+      "freeze": true,
+      "tint": "hue-rotate(70deg) saturate(1.8)"
+    },
+    {
+      "emoji": "🦀",
+      "points": 48,
+      "speed": 0.8,
+      "chance": 0,
+      "label": "",
+      "name": "보스 대왕게",
+      "isBoss": true,
+      "half": 60,
+      "catchRadius": 70,
+      "hitsMin": 4,
+      "hitsMax": 4,
+      "speedMul": 0.8,
+      "escape": "sand",
+      "stealth": true,
+      "tint": "hue-rotate(300deg) saturate(1.5)"
+    }
+  ]
+}
