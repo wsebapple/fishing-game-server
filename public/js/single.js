@@ -110,7 +110,8 @@ function isNearHook(centerX, centerY, catchRadius){
 scene.addEventListener('mousemove', e => moveRod(e.clientX, e.clientY));
 // 화면을 손가락으로 끌면 배가 그 자리로 순간이동하는 게 어색해서, 터치 기기는
 // 대신 화면 아래 가상 조이스틱으로 배를 "조종"하게 해요 (아래 조이스틱 코드 참고)
-scene.addEventListener('touchmove', e => e.preventDefault(), {passive:false});
+// 한 손가락 끌기로 화면이 스크롤되는 건 막고, 두 손가락 확대(핀치줌)는 막지 않아요
+scene.addEventListener('touchmove', e => { if(e.touches.length < 2) e.preventDefault(); }, {passive:false});
 moveRod(window.innerWidth/2, 330);
 
 /* ------------------------------------------------------

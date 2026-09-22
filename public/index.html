@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>바다에서 물고기를 잡아라!</title>
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Jua&family=Baloo+2:wght@500;700&display=swap" rel="stylesheet">
 <style>
@@ -22,6 +22,9 @@
     overscroll-behavior:none; /* 당겨서 새로고침 등으로 화면이 밀리는 것도 막아요 */
     font-family:'Jua','Baloo 2',sans-serif;
     -webkit-user-select:none; user-select:none;
+    /* 두 손가락 확대(핀치줌)는 허용하되, 빠르게 두 번 탭할 때 화면이 확대되는 건 막아요.
+       아이폰은 글자가 16px보다 작은 입력창을 누를 때 자동 확대하므로, 입력창은 모두 16px 이상으로 둬요. */
+    touch-action:manipulation;
   }
   #scene{
     /* 모바일 브라우저는 주소창이 접히고 펴지면서 100vh 기준이 흔들려, 화면을 스크롤하면
