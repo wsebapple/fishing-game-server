@@ -128,9 +128,10 @@ requestAnimationFrame(updateBoatAndLine);
 // 경쟁 배(해적)도 내 배 그림을 복제해서 써요 (색은 CSS에서 바꿔요)
 document.getElementById('rivalBoat').appendChild(boat.querySelector('.boatBody').cloneNode(true));
 
-// 자석이 물고기를 바늘로 끌어오는 속도(초당 px). 조이스틱 최고 속도(420px/s)보다 확실히 빨라야
-// 바늘을 움직이는 중에도 끌려오던 물고기가 따라잡아서 잡혀요. 프레임 수와 상관없이 같은 속도로 움직여요.
-const MAGNET_PULL_SPEED = 1100;
+// 자석이 물고기를 바늘로 끌어오는 속도(초당 px). 끌려오는 모습이 보이도록 천천히 하되,
+// 조이스틱 최고 속도(420px/s)보다는 빨라야 바늘을 움직이는 중에도 끌려오던 물고기가 결국 따라잡아서 잡혀요.
+// (이보다 느리면 물고기가 바늘 뒤에 쌓였다가 점수 없이 사라지던 버그가 다시 생겨요) 프레임 수와 상관없이 같은 속도예요.
+const MAGNET_PULL_SPEED = 500;
 // pos(왼쪽 위 모서리 {left, top})를 중심이 바늘에 겹치도록 dt초만큼 끌어와요
 function magnetPull(pos, half, dt){
   const dx = (Game.hook.x - half) - pos.left, dy = (Game.hook.y - half) - pos.top;
