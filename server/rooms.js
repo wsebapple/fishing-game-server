@@ -279,6 +279,6 @@ function removePlayer(code, id) {
   room.fishTimers.clear();
   delete rooms[code];
 }
-return { rooms, getRoom, startRound, endRound, removePlayer, checkLevelUpForRoom, broadcastTime, normalizeRoomCode, normalizeName, MAX_ROOMS, MAX_PLAYERS_PER_ROOM, ROUND_SECONDS };
+return { rooms, getRoom, startRound, endRound, removePlayer, checkLevelUpForRoom, scheduleBossForRoom, broadcastTime, normalizeRoomCode, normalizeName, MAX_ROOMS, MAX_PLAYERS_PER_ROOM, ROUND_SECONDS };
 }
 module.exports = { createRooms };

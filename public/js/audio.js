@@ -2,29 +2,26 @@
    사운드 엔진: 소리 파일 없이 코드로 직접 소리를 만들어요
    (오실레이터로 음을 연주하는 방식 - 저작권 걱정 없어요!)
 ------------------------------------------------------ */
-let audioCtx = null;
-let soundOn = true;
-let bgMusicTimer = null;
-let bgMusicStep = 0;
+Game.audio = { ctx: null, soundOn: true, musicTimer: null, musicStep: 0 };
 
 function ensureAudio(){
-  if(!audioCtx){
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if(!Game.audio.ctx){
+    Game.audio.ctx = new (window.AudioContext || window.webkitAudioContext)();
   }
-  if(audioCtx.state === 'suspended') audioCtx.resume();
+  if(Game.audio.ctx.state === 'suspended') Game.audio.ctx.resume();
 }
 
 function playTone(freq, duration=0.15, type='sine', volume=0.2, when=0){
-  if(!soundOn || !audioCtx) return;
-  const t0 = audioCtx.currentTime + when;
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
+  if(!Game.audio.soundOn || !Game.audio.ctx) return;
+  const t0 = Game.audio.ctx.currentTime + when;
+  const osc = Game.audio.ctx.createOscillator();
+  const gain = Game.audio.ctx.createGain();
   osc.type = type;
   osc.frequency.setValueAtTime(freq, t0);
   gain.gain.setValueAtTime(0, t0);
   gain.gain.linearRampToValueAtTime(volume, t0 + 0.01);
   gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
-  osc.connect(gain).connect(audioCtx.destination);
+  osc.connect(gain).connect(Game.audio.ctx.destination);
   osc.start(t0);
   osc.stop(t0 + duration + 0.03);
 }
@@ -78,24 +75,24 @@ const bgMelody = [523,0,659,0,784,0,659,0, 587,0,698,0,880,0,698,0];
 
 function startBgMusic(){
   stopBgMusic();
-  if(!soundOn) return;
-  bgMusicStep = 0;
-  bgMusicTimer = setInterval(() => {
-    const note = bgMelody[bgMusicStep % bgMelody.length];
+  if(!Game.audio.soundOn) return;
+  Game.audio.musicStep = 0;
+  Game.audio.musicTimer = setInterval(() => {
+    const note = bgMelody[Game.audio.musicStep % bgMelody.length];
     if(note) playTone(note, 0.18, 'triangle', 0.05);
-    bgMusicStep++;
+    Game.audio.musicStep++;
   }, 260);
 }
 
 function stopBgMusic(){
-  if(bgMusicTimer){ clearInterval(bgMusicTimer); bgMusicTimer = null; }
+  if(Game.audio.musicTimer){ clearInterval(Game.audio.musicTimer); Game.audio.musicTimer = null; }
 }
 
 document.getElementById('soundToggle').addEventListener('click', () => {
   ensureAudio();
-  soundOn = !soundOn;
-  document.getElementById('soundToggle').innerHTML = soundOn ? '🔊' : '🔇';
-  if(soundOn && running) startBgMusic();
+  Game.audio.soundOn = !Game.audio.soundOn;
+  document.getElementById('soundToggle').innerHTML = Game.audio.soundOn ? '🔊' : '🔇';
+  if(Game.audio.soundOn && Game.state.running) startBgMusic();
   else stopBgMusic();
 });
 

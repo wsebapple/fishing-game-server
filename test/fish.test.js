@@ -37,3 +37,23 @@ test('boss hit cooldown and stealth are enforced on the server', () => {
   fish.startTime = now;
   assert.equal(canCatch(fish, position, now), false);
 });
+
+test('the browser and the server use the exact same boss math file', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const vm = require('node:vm');
+  const file = path.join(__dirname, '../public/js/shared/boss-math.js');
+  const browser = {};
+  vm.runInNewContext(fs.readFileSync(file, 'utf8'), browser);
+  const server = require('../public/js/shared/boss-math');
+  for (const type of bossTypes) {
+    for (const [seed, t] of [[0.1, 0.5], [0.5, 3.3], [0.93, 12.7], [0.37, 25.1]]) {
+      assert.deepEqual({ ...browser.bossWanderPosition(seed, t, type) }, server.bossWanderPosition(seed, t, type));
+      assert.equal(browser.isBossStealthed(seed, t, type), server.isBossStealthed(seed, t, type));
+    }
+  }
+  for (const client of ['multiplayer.js', 'single.js', 'core.js']) {
+    const source = fs.readFileSync(path.join(__dirname, '../public/js', client), 'utf8');
+    assert.doesNotMatch(source, /function\s+(bossWanderPosition|isBossStealthed)\b/, client + ' must not redefine shared boss math');
+  }
+});
