@@ -1,8 +1,8 @@
 function getLevelForScore(s){
-  for(const stage of levelStages){
+  for(const stage of Game.config.levelStages){
     if(s < stage.upTo) return stage;
   }
-  return levelStages[levelStages.length - 1]; // 100점 넘으면 3단계 유지(최고 난이도)
+  return Game.config.levelStages[Game.config.levelStages.length - 1]; // 100점 넘으면 3단계 유지(최고 난이도)
 }
 
 function showBanner(text){
@@ -17,24 +17,24 @@ function showBanner(text){
 // (멀티플레이 서버의 applySpawnRate와 같은 방식: 폭풍우/눈이 오는 중에 레벨업해도
 // 날씨 효과가 사라지지 않게 해요)
 function applyLevelSpawnRate(){
-  if(!running) return;
-  let spawnMs = levelStages[currentLevel - 1].spawnMs;
-  if(activeWeatherKind === 'storm') spawnMs = Math.max(220, spawnMs * 0.55);
-  else if(activeWeatherKind === 'snow') spawnMs = spawnMs * 1.25;
-  clearInterval(spawnTimer);
-  spawnTimer = setInterval(spawnFish, spawnMs);
+  if(!Game.state.running) return;
+  let spawnMs = Game.config.levelStages[Game.state.currentLevel - 1].spawnMs;
+  if(Game.effects.activeWeatherKind === 'storm') spawnMs = Math.max(220, spawnMs * 0.55);
+  else if(Game.effects.activeWeatherKind === 'snow') spawnMs = spawnMs * 1.25;
+  clearInterval(Game.timers.spawnTimer);
+  Game.timers.spawnTimer = setInterval(spawnFish, spawnMs);
 }
 
 function checkLevelUp(){
-  const stage = getLevelForScore(score);
-  if(stage.level !== currentLevel){
-    currentLevel = stage.level;
-    document.getElementById('level').textContent = currentLevel;
+  const stage = getLevelForScore(Game.state.score);
+  if(stage.level !== Game.state.currentLevel){
+    Game.state.currentLevel = stage.level;
+    document.getElementById('level').textContent = Game.state.currentLevel;
 
     // 물고기 스폰 속도를 새 단계(+현재 날씨)에 맞게 조정
     applyLevelSpawnRate();
 
-    showBanner('🌟 ' + currentLevel + '단계! 🌟');
+    showBanner('🌟 ' + Game.state.currentLevel + '단계! 🌟');
     playLevelUpSound();
   }
 }
@@ -46,24 +46,16 @@ const hook = document.getElementById('hook');
 const boat = document.getElementById('boat');
 
 function updateHookIcon(){
-  hook.textContent = frozen ? '🧊' : (magnetActive ? '🧲' : '🪝');
+  hook.textContent = Game.effects.frozen ? '🧊' : (Game.effects.magnetActive ? '🧲' : '🪝');
 }
 
-// 바늘의 현재 중심 좌표를 여기 저장해둬요. 물고기가 바늘에 닿았는지 확인할 때마다
-// getBoundingClientRect()로 DOM을 다시 읽으면 브라우저가 강제로 레이아웃을 다시 계산해야
-// 해서(reflow), 물고기가 많을수록 프레임마다 버벅이는 원인이 됐어요. 대신 우리가 이미
-// 계산해서 알고 있는 이 좌표만 숫자로 비교해요.
-let hookX = window.innerWidth / 2, hookY = 330;
-// 배는 낚싯바늘을 곧장 따라가지 않고 뒤늦게 쫓아가요 (아래 updateBoatAndLine 루프가 매 프레임 당겨줘요)
-let boatX = hookX;
-
 function moveRod(x, y){
-  if(frozen) return; // 얼어있는 동안엔 낚싯줄을 움직일 수 없어요
+  if(Game.effects.frozen) return; // 얼어있는 동안엔 낚싯줄을 움직일 수 없어요
   const clampedX = Math.max(80, Math.min(window.innerWidth - 80, x));
   const clampedY = Math.max(110, Math.min(window.innerHeight - 110, y || 330));
   // 바늘(잡는 판정 기준)은 커서를 그대로 따라가야 정확하니 즉시 움직여요.
   // 배/낚싯줄의 "뒤늦게 따라오는" 연출은 updateBoatAndLine()이 따로 매 프레임 처리해요.
-  hookX = clampedX; hookY = clampedY;
+  Game.hook.x = clampedX; Game.hook.y = clampedY;
   hook.style.left = clampedX + 'px';
   hook.style.top = clampedY + 'px';
 
@@ -74,22 +66,21 @@ function moveRod(x, y){
 }
 
 // 배가 바늘 쪽으로 서서히 따라가고, 그 사이 낚싯줄은 팽팽하게 당겨지며 살짝 휘어요
-let lastDrawnLine = '';
 function updateBoatAndLine(){
   // 시작/종료/도감 화면에서는 아무것도 안 움직이니 계산을 쉬어요(루프는 살려둬서 게임이 시작되면 바로 이어져요)
-  if(running || mpActive || !lastDrawnLine){ // 첫 프레임은 시작 화면 뒤에 배를 그려두려고 항상 그려요
-    boatX += (hookX - boatX) * 0.1;
-    if(Math.abs(hookX - boatX) < 0.3) boatX = hookX;
+  if(Game.state.running || Game.mp.active || !Game.hook.lastDrawnLine){ // 첫 프레임은 시작 화면 뒤에 배를 그려두려고 항상 그려요
+    Game.hook.boatX += (Game.hook.x - Game.hook.boatX) * 0.1;
+    if(Math.abs(Game.hook.x - Game.hook.boatX) < 0.3) Game.hook.boatX = Game.hook.x;
 
-    const startX = boatX, startY = 70;
-    const midX = (startX + hookX) / 2, midY = (startY + hookY) / 2;
-    const bend = (hookX - boatX) * 0.3; // 배가 뒤처진 만큼 줄도 그만큼 뒤로 처져요
+    const startX = Game.hook.boatX, startY = 70;
+    const midX = (startX + Game.hook.x) / 2, midY = (startY + Game.hook.y) / 2;
+    const bend = (Game.hook.x - Game.hook.boatX) * 0.3; // 배가 뒤처진 만큼 줄도 그만큼 뒤로 처져요
     const controlX = midX - bend, controlY = midY - 15;
-    const d = `M ${startX} ${startY} Q ${controlX} ${controlY} ${hookX} ${hookY}`;
-    if(d !== lastDrawnLine){ // 배가 멈춰 있으면 DOM을 다시 쓰지 않아요
-      lastDrawnLine = d;
-      boat.style.left = boatX + 'px';
-      rodPole.style.left = (boatX - 3) + 'px';
+    const d = `M ${startX} ${startY} Q ${controlX} ${controlY} ${Game.hook.x} ${Game.hook.y}`;
+    if(d !== Game.hook.lastDrawnLine){ // 배가 멈춰 있으면 DOM을 다시 쓰지 않아요
+      Game.hook.lastDrawnLine = d;
+      boat.style.left = Game.hook.boatX + 'px';
+      rodPole.style.left = (Game.hook.boatX - 3) + 'px';
       linePath.setAttribute('d', d);
     }
   }
@@ -97,21 +88,17 @@ function updateBoatAndLine(){
 }
 requestAnimationFrame(updateBoatAndLine);
 
-// 물고기 박스 크기의 절반(대략치) + 바늘이 닿았다고 쳐줄 반지름이에요
-const FISH_HALF = gameConfig.hitbox.fishHalf, FISH_CATCH_RADIUS = gameConfig.hitbox.fishCatchRadius;
-const BOSS_HALF = gameConfig.hitbox.bossHalf, BOSS_CATCH_RADIUS = gameConfig.hitbox.bossCatchRadius;
-
 // 바늘이 (centerX, centerY)에 있는 물고기에 닿았는지, DOM을 안 읽고 숫자로만 확인해요
 function isNearHook(centerX, centerY, catchRadius){
-  const dx = centerX - hookX, dy = centerY - hookY;
+  const dx = centerX - Game.hook.x, dy = centerY - Game.hook.y;
   return (dx * dx + dy * dy) < catchRadius * catchRadius;
 }
 
-scene.addEventListener('mousemove', e => moveRod(e.clientX, e.clientY));
+Game.dom.scene.addEventListener('mousemove', e => moveRod(e.clientX, e.clientY));
 // 화면을 손가락으로 끌면 배가 그 자리로 순간이동하는 게 어색해서, 터치 기기는
 // 대신 화면 아래 가상 조이스틱으로 배를 "조종"하게 해요 (아래 조이스틱 코드 참고)
 // 한 손가락 끌기로 화면이 스크롤되는 건 막고, 두 손가락 확대(핀치줌)는 막지 않아요
-scene.addEventListener('touchmove', e => { if(e.touches.length < 2) e.preventDefault(); }, {passive:false});
+Game.dom.scene.addEventListener('touchmove', e => { if(e.touches.length < 2) e.preventDefault(); }, {passive:false});
 moveRod(window.innerWidth/2, 330);
 
 /* ------------------------------------------------------
@@ -121,9 +108,7 @@ moveRod(window.innerWidth/2, 330);
 const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 const joystickBase = document.getElementById('joystickBase');
 const joystickKnob = document.getElementById('joystickKnob');
-let joyDX = 0, joyDY = 0; // -1~1로 정규화된 방향
-let joyActive = false;
-let joyTouchId = null;
+Game.joystick = { dx: 0, dy: 0, active: false, touchId: null }; // dx/dy: -1~1로 정규화된 방향
 
 // 조이스틱은 실제로 게임을 플레이하는 동안에만 보여줘요. 시작/종료/도감 같은
 // 메뉴 화면은 반투명 배경이라, z-index로만 가리면 하얀 원이 유령처럼 비쳐 보여요.
@@ -145,7 +130,7 @@ if(isTouchDevice){
     const dist = Math.sqrt(dx * dx + dy * dy);
 
     if(dist < deadZone){
-      joyDX = 0; joyDY = 0;
+      Game.joystick.dx = 0; Game.joystick.dy = 0;
       joystickKnob.style.transform = 'translate(0px, 0px)';
       return;
     }
@@ -154,34 +139,34 @@ if(isTouchDevice){
       dy = (dy / dist) * maxKnobOffset;
     }
     joystickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
-    joyDX = dx / maxKnobOffset;
-    joyDY = dy / maxKnobOffset;
+    Game.joystick.dx = dx / maxKnobOffset;
+    Game.joystick.dy = dy / maxKnobOffset;
   }
 
   function resetJoystick(){
-    joyActive = false;
-    joyTouchId = null;
-    joyDX = 0; joyDY = 0;
+    Game.joystick.active = false;
+    Game.joystick.touchId = null;
+    Game.joystick.dx = 0; Game.joystick.dy = 0;
     joystickKnob.style.transform = 'translate(0px, 0px)';
   }
 
   joystickBase.addEventListener('touchstart', (e) => {
     const t = e.changedTouches[0];
-    joyTouchId = t.identifier;
-    joyActive = true;
+    Game.joystick.touchId = t.identifier;
+    Game.joystick.active = true;
     updateJoystick(t);
     e.preventDefault();
   }, { passive: false });
 
   joystickBase.addEventListener('touchmove', (e) => {
-    if(!joyActive) return;
-    const t = Array.from(e.changedTouches).find(t => t.identifier === joyTouchId);
+    if(!Game.joystick.active) return;
+    const t = Array.from(e.changedTouches).find(t => t.identifier === Game.joystick.touchId);
     if(t) updateJoystick(t);
     e.preventDefault();
   }, { passive: false });
 
   joystickBase.addEventListener('touchend', (e) => {
-    if(Array.from(e.changedTouches).some(t => t.identifier === joyTouchId)) resetJoystick();
+    if(Array.from(e.changedTouches).some(t => t.identifier === Game.joystick.touchId)) resetJoystick();
   });
   joystickBase.addEventListener('touchcancel', resetJoystick);
 
@@ -189,12 +174,12 @@ if(isTouchDevice){
   let lastSteerTime = null;
 
   function steerLoop(now){
-    if(joyActive && (joyDX !== 0 || joyDY !== 0)){
+    if(Game.joystick.active && (Game.joystick.dx !== 0 || Game.joystick.dy !== 0)){
       if(lastSteerTime !== null){
         const dt = Math.min((now - lastSteerTime) / 1000, 0.05);
         const curX = parseFloat(hook.style.left) || window.innerWidth / 2;
         const curY = parseFloat(hook.style.top) || 330;
-        moveRod(curX + joyDX * JOYSTICK_SPEED * dt, curY + joyDY * JOYSTICK_SPEED * dt);
+        moveRod(curX + Game.joystick.dx * JOYSTICK_SPEED * dt, curY + Game.joystick.dy * JOYSTICK_SPEED * dt);
       }
       lastSteerTime = now;
     } else {
@@ -206,17 +191,17 @@ if(isTouchDevice){
 }
 
 function pickFishType(){
-  const total = fishTypes.reduce((s,f)=>s+f.chance,0);
+  const total = Game.config.fishTypes.reduce((s,f)=>s+f.chance,0);
   let r = Math.random()*total;
-  for(const f of fishTypes){
+  for(const f of Game.config.fishTypes){
     if(r < f.chance) return f;
     r -= f.chance;
   }
-  return fishTypes[0];
+  return Game.config.fishTypes[0];
 }
 
 function spawnFish(){
-  if(!running) return;
+  if(!Game.state.running) return;
   const type = pickFishType();
   const fish = document.createElement('div');
   fish.className = 'fish';
@@ -229,7 +214,7 @@ function spawnFish(){
   fish.style.left = (fromLeft ? -50 : window.innerWidth + 50) + 'px';
   // 물고기 이모지는 기본적으로 왼쪽을 보므로, 왼쪽에서 오른쪽으로 갈 때 뒤집어요.
   if(fromLeft) fish.style.transform = 'scaleX(-1)';
-  scene.appendChild(fish);
+  Game.dom.scene.appendChild(fish);
 
   const distance = window.innerWidth + 100;
   const duration = distance / (type.speed * 40); // 초 단위 대략치
@@ -242,7 +227,7 @@ function spawnFish(){
     if(!fish.isConnected) return;
 
     // 낚싯바늘이 물고기 몸에 닿으면 클릭/탭 없이도 바로 잡혀요
-    if(isNearHook(curLeft + FISH_HALF, curTop + FISH_HALF, FISH_CATCH_RADIUS)){
+    if(isNearHook(curLeft + Game.config.hitbox.fishHalf, curTop + Game.config.hitbox.fishHalf, Game.config.hitbox.fishCatchRadius)){
       catchFish(fish, type);
       return;
     }
@@ -251,8 +236,8 @@ function spawnFish(){
     // (curLeft/curTop은 물고기의 왼쪽위 모서리라, 목표점도 FISH_HALF만큼 당겨줘야
     // 물고기의 "중심"이 바늘 중심에 겹쳐요. 안 그러면 중심끼리 대각선으로 어긋나서
     // isNearHook 판정 반경(42px) 밖에서 맴돌다가 못 잡히고 사라져버려요)
-    if(magnetActive && !type.isMagnet){
-      const dx = (hookX - FISH_HALF) - curLeft, dy = (hookY - FISH_HALF) - curTop;
+    if(Game.effects.magnetActive && !type.isMagnet){
+      const dx = (Game.hook.x - Game.config.hitbox.fishHalf) - curLeft, dy = (Game.hook.y - Game.config.hitbox.fishHalf) - curTop;
       const dist = Math.max(Math.sqrt(dx*dx + dy*dy), 0.01);
       const step = 6;
       curLeft += (dx/dist) * step;
@@ -276,39 +261,39 @@ function spawnFish(){
 }
 
 function catchFish(fish, type){
-  if(!running || !fish.isConnected) return;
+  if(!Game.state.running || !fish.isConnected) return;
 
   // 보물통은 잡을 때마다 랜덤 보너스 점수 + 랜덤 보물 아이템을 줘요
   let earnedPoints = type.points;
   let lootName = '';
   if(type.isTreasure){
     earnedPoints = Math.floor(Math.random() * (type.maxBonus - type.minBonus + 1)) + type.minBonus;
-    lootName = lootItems[Math.floor(Math.random() * lootItems.length)];
-    treasureLoot.push(lootName);
+    lootName = Game.config.lootItems[Math.floor(Math.random() * Game.config.lootItems.length)];
+    Game.state.treasureLoot.push(lootName);
   }
 
   // 자석: 잠깐동안 물고기들이 낚싯바늘로 저절로 끌려와요
   if(type.isMagnet){
-    magnetActive = true;
+    Game.effects.magnetActive = true;
     updateHookIcon();
-    clearTimeout(magnetTimer);
-    magnetTimer = setTimeout(() => {
-      magnetActive = false;
+    clearTimeout(Game.effects.magnetTimer);
+    Game.effects.magnetTimer = setTimeout(() => {
+      Game.effects.magnetActive = false;
       updateHookIcon();
     }, type.magnetMs);
   }
 
   // 시계: 시간이 늘어나요
   if(type.isTimeBonus){
-    timeLeft += type.timeBonus;
-    document.getElementById('timeLeft').textContent = timeLeft;
+    Game.state.timeLeft += type.timeBonus;
+    document.getElementById('timeLeft').textContent = Game.state.timeLeft;
   }
 
-  score += earnedPoints;
-  if(score < 0) score = 0;
-  document.getElementById('score').textContent = score;
+  Game.state.score += earnedPoints;
+  if(Game.state.score < 0) Game.state.score = 0;
+  document.getElementById('score').textContent = Game.state.score;
   checkLevelUp();
-  caughtLog[type.name]++;
+  Game.state.caughtLog[type.name]++;
   playCatchSound(earnedPoints, type.isTreasure, type.isMagnet, type.isTimeBonus);
 
   document.getElementById('sun').classList.add('bounce');
@@ -338,7 +323,7 @@ function catchFish(fish, type){
   }
   pop.style.left = fish.style.left;
   pop.style.top = fish.style.top;
-  scene.appendChild(pop);
+  Game.dom.scene.appendChild(pop);
   setTimeout(()=>pop.remove(), 700);
 
   fish.classList.add('caught');
@@ -346,13 +331,13 @@ function catchFish(fish, type){
 }
 
 function scheduleRival(){
-  if(!running) return;
+  if(!Game.state.running) return;
   const delay = 6000 + Math.random() * 6000; // 6~12초마다 랜덤하게 등장
-  rivalTimeout = setTimeout(tryStealFish, delay);
+  Game.timers.rivalTimeout = setTimeout(tryStealFish, delay);
 }
 
 function tryStealFish(){
-  if(!running) return;
+  if(!Game.state.running) return;
   // 보스는 친구들(여기선 나)이 직접 잡거나 도망가게 두고, 해적은 노리지 않아요 (멀티플레이와 동일)
   // 그렇지 않으면 해적이 보스를 통째로 훔쳐가버려서, 잡는 도중 사라지고
   // 다음 보스도 다시는 안 나오는 문제가 생겨요
@@ -385,7 +370,7 @@ function tryStealFish(){
       steal.style.fontSize = '16px';
       steal.style.left = target.style.left;
       steal.style.top = target.style.top;
-      scene.appendChild(steal);
+      Game.dom.scene.appendChild(steal);
       setTimeout(() => steal.remove(), 900);
       setTimeout(() => target.remove(), 300);
     }
@@ -398,62 +383,62 @@ function tryStealFish(){
 
 
 function scheduleWeather(){
-  if(!running) return;
+  if(!Game.state.running) return;
   const delay = 18000 + Math.random() * 15000; // 18~33초마다 랜덤하게 날씨 이벤트
-  stormTimeout = setTimeout(triggerWeatherEvent, delay);
+  Game.timers.stormTimeout = setTimeout(triggerWeatherEvent, delay);
 }
 
 function triggerWeatherEvent(){
-  if(!running) return;
+  if(!Game.state.running) return;
   if(Math.random() < 0.5) triggerStorm();
   else triggerSnow();
 }
 
 function triggerSnow(){
-  if(!running) return;
-  activeWeatherKind = 'snow';
+  if(!Game.state.running) return;
+  Game.effects.activeWeatherKind = 'snow';
   document.getElementById('snowTint').classList.add('active');
   showBanner('❄️ 눈이 내려요! 낚싯줄이 얼었어요 🥶');
 
   // 눈이 내리기 시작하면 5초 동안 낚싯줄이 얼어서 움직일 수 없어요
-  frozen = true;
+  Game.effects.frozen = true;
   updateHookIcon();
-  clearTimeout(freezeTimeout);
-  freezeTimeout = setTimeout(() => {
-    frozen = false;
+  clearTimeout(Game.effects.freezeTimeout);
+  Game.effects.freezeTimeout = setTimeout(() => {
+    Game.effects.frozen = false;
     updateHookIcon();
   }, 5000);
 
   // 눈 오는 동안은 조금 더 느긋하게
   applyLevelSpawnRate();
 
-  clearInterval(snowFlakeInterval);
-  snowFlakeInterval = setInterval(() => {
+  clearInterval(Game.timers.snowFlakeInterval);
+  Game.timers.snowFlakeInterval = setInterval(() => {
     const flake = document.createElement('div');
     flake.className = 'snowflake';
     flake.textContent = '❄️';
     flake.style.left = Math.random() * 100 + '%';
     flake.style.fontSize = (10 + Math.random() * 14) + 'px';
     flake.style.animationDuration = (4 + Math.random() * 3) + 's';
-    scene.appendChild(flake);
+    Game.dom.scene.appendChild(flake);
     setTimeout(() => flake.remove(), 8000);
   }, 220);
 
   const duration = 7000 + Math.random() * 3000;
   setTimeout(() => {
-    clearInterval(snowFlakeInterval); snowFlakeInterval = null;
+    clearInterval(Game.timers.snowFlakeInterval); Game.timers.snowFlakeInterval = null;
     document.getElementById('snowTint').classList.remove('active');
     showBanner('☀️ 눈이 그쳤어요!');
-    activeWeatherKind = null;
+    Game.effects.activeWeatherKind = null;
     applyLevelSpawnRate();
     scheduleWeather();
   }, duration);
 }
 
 function triggerStorm(){
-  if(!running) return;
-  stormActive = true;
-  activeWeatherKind = 'storm';
+  if(!Game.state.running) return;
+  Game.effects.stormActive = true;
+  Game.effects.activeWeatherKind = 'storm';
   document.getElementById('stormOverlay').classList.add('active');
   document.getElementById('stormFog').classList.add('active');
   showBanner('⛈️ 폭풍우가 몰아쳐요!');
@@ -463,8 +448,8 @@ function triggerStorm(){
   applyLevelSpawnRate();
 
   // 가끔 번개가 번쩍여요
-  clearInterval(stormFlashInterval);
-  stormFlashInterval = setInterval(() => {
+  clearInterval(Game.timers.stormFlashInterval);
+  Game.timers.stormFlashInterval = setInterval(() => {
     const flash = document.getElementById('lightningFlash');
     flash.classList.remove('flash');
     void flash.offsetWidth;
@@ -474,12 +459,12 @@ function triggerStorm(){
 
   const stormDuration = 6000 + Math.random() * 3000;
   setTimeout(() => {
-    clearInterval(stormFlashInterval); stormFlashInterval = null;
-    stormActive = false;
+    clearInterval(Game.timers.stormFlashInterval); Game.timers.stormFlashInterval = null;
+    Game.effects.stormActive = false;
     document.getElementById('stormOverlay').classList.remove('active');
     document.getElementById('stormFog').classList.remove('active');
     showBanner('🌤️ 폭풍우가 지나갔어요!');
-    activeWeatherKind = null;
+    Game.effects.activeWeatherKind = null;
     applyLevelSpawnRate();
     scheduleWeather();
   }, stormDuration);
@@ -509,7 +494,7 @@ function spawnBossEscapeEffect(x, y, kind){
   cloud.style.setProperty('--ec2', style.c2);
   cloud.style.setProperty('--ec3', style.c3);
   cloud.style.setProperty('--ec4', style.c4);
-  scene.appendChild(cloud);
+  Game.dom.scene.appendChild(cloud);
   setTimeout(() => cloud.remove(), 1300);
 
   const blobCount = 6;
@@ -524,7 +509,7 @@ function spawnBossEscapeEffect(x, y, kind){
     const dist = 40 + Math.random() * 70;
     blob.style.setProperty('--dx', (Math.cos(angle) * dist) + 'px');
     blob.style.setProperty('--dy', (Math.sin(angle) * dist) + 'px');
-    scene.appendChild(blob);
+    Game.dom.scene.appendChild(blob);
     setTimeout(() => blob.remove(), 850);
   }
   playBossEscapeSound(kind);
@@ -545,14 +530,14 @@ function pickBossFleeTarget(curLeft, curTop, minX, maxX, minY, maxY){
 }
 
 function scheduleBoss(){
-  if(!running) return;
+  if(!Game.state.running) return;
   const delay = 22000 + Math.random() * 15000; // 22~37초마다 랜덤하게 보스 등장
-  bossTimeout = setTimeout(spawnBoss, delay);
+  Game.timers.bossTimeout = setTimeout(spawnBoss, delay);
 }
 
 function spawnBoss(){
-  if(!running) return;
-  const bossType = bossTypes[Math.floor(Math.random() * bossTypes.length)];
+  if(!Game.state.running) return;
+  const bossType = Game.config.bossTypes[Math.floor(Math.random() * Game.config.bossTypes.length)];
   const half = bossType.half, catchRadius = bossType.catchRadius;
   showBanner(bossType.emoji + ' ' + bossType.name + ' 출현!');
   playBossSound();
@@ -567,7 +552,7 @@ function spawnBoss(){
   fish.style.left = (fromLeft ? -100 : window.innerWidth + 100) + 'px';
   fish.style.fontSize = '86px';
   if(bossType.tint) fish.style.filter = bossType.tint + ' drop-shadow(0 3px 3px rgba(0,0,0,0.25))';
-  scene.appendChild(fish);
+  Game.dom.scene.appendChild(fish);
 
   let curLeft = fromLeft ? -100 : window.innerWidth + 100;
   let curTop = startY;
@@ -629,16 +614,16 @@ function spawnBoss(){
 
       if(bossType.knockback){
         // 고래: 물보라로 내 낚싯바늘을 확 밀쳐내요
-        const kdx = hookX - (curLeft + half), kdy = hookY - (curTop + half);
+        const kdx = Game.hook.x - (curLeft + half), kdy = Game.hook.y - (curTop + half);
         const kdist = Math.max(Math.hypot(kdx, kdy), 0.01);
-        moveRod(hookX + (kdx / kdist) * 90, hookY + (kdy / kdist) * 90);
+        moveRod(Game.hook.x + (kdx / kdist) * 90, Game.hook.y + (kdy / kdist) * 90);
       }
       if(bossType.freeze){
         // 바다용: 감전돼서 낚싯줄이 1초간 얼어붙어요
-        frozen = true;
+        Game.effects.frozen = true;
         updateHookIcon();
-        clearTimeout(freezeTimeout);
-        freezeTimeout = setTimeout(() => { frozen = false; updateHookIcon(); }, 1000);
+        clearTimeout(Game.effects.freezeTimeout);
+        Game.effects.freezeTimeout = setTimeout(() => { Game.effects.frozen = false; updateHookIcon(); }, 1000);
       }
       if(bossType.dash){
         // 상어는 맞고 도망갈 때도 곧장 돌진하듯 빠르게 빠져나가요
@@ -675,13 +660,13 @@ function spawnBoss(){
 }
 
 function catchBoss(fish, bossType){
-  if(!running || !fish.isConnected) return;
+  if(!Game.state.running || !fish.isConnected) return;
   fish.classList.add('caught');
   setTimeout(() => fish.remove(), 350);
-  score += bossType.points;
-  document.getElementById('score').textContent = score;
+  Game.state.score += bossType.points;
+  document.getElementById('score').textContent = Game.state.score;
   checkLevelUp();
-  caughtLog[bossType.name] = (caughtLog[bossType.name] || 0) + 1;
+  Game.state.caughtLog[bossType.name] = (Game.state.caughtLog[bossType.name] || 0) + 1;
   playCatchSound(bossType.points, false, false, false);
 
   const pop = document.createElement('div');
@@ -691,7 +676,7 @@ function catchBoss(fish, bossType){
   pop.style.fontSize = '22px';
   pop.style.left = fish.style.left;
   pop.style.top = fish.style.top;
-  scene.appendChild(pop);
+  Game.dom.scene.appendChild(pop);
   setTimeout(() => pop.remove(), 900);
 
   scheduleBoss();
@@ -701,20 +686,20 @@ function startGame(){
   ensureAudio();
   // 이전 판(특히 폭풍우/눈이 오던 도중 다시하기를 누른 경우)의 타이머가 남아있을 수 있으니
   // 새 판을 시작하기 전에 전부 확실히 정리해요
-  clearInterval(spawnTimer); clearInterval(gameTimer);
-  clearTimeout(rivalTimeout); clearTimeout(stormTimeout); clearTimeout(bossTimeout);
-  clearTimeout(magnetTimer); clearTimeout(freezeTimeout);
-  clearInterval(stormFlashInterval); stormFlashInterval = null;
-  clearInterval(snowFlakeInterval); snowFlakeInterval = null;
+  clearInterval(Game.timers.spawnTimer); clearInterval(Game.timers.gameTimer);
+  clearTimeout(Game.timers.rivalTimeout); clearTimeout(Game.timers.stormTimeout); clearTimeout(Game.timers.bossTimeout);
+  clearTimeout(Game.effects.magnetTimer); clearTimeout(Game.effects.freezeTimeout);
+  clearInterval(Game.timers.stormFlashInterval); Game.timers.stormFlashInterval = null;
+  clearInterval(Game.timers.snowFlakeInterval); Game.timers.snowFlakeInterval = null;
   document.querySelectorAll('.snowflake').forEach(f => f.remove());
 
-  score = 0; timeLeft = 60; running = true;
-  currentLevel = 1;
-  treasureLoot = [];
-  playerName = document.getElementById('playerNameInput').value.trim();
-  document.getElementById('score').textContent = score;
-  document.getElementById('timeLeft').textContent = timeLeft;
-  document.getElementById('level').textContent = currentLevel;
+  Game.state.score = 0; Game.state.timeLeft = 60; Game.state.running = true;
+  Game.state.currentLevel = 1;
+  Game.state.treasureLoot = [];
+  Game.state.playerName = document.getElementById('playerNameInput').value.trim();
+  document.getElementById('score').textContent = Game.state.score;
+  document.getElementById('timeLeft').textContent = Game.state.timeLeft;
+  document.getElementById('level').textContent = Game.state.currentLevel;
   document.getElementById('startScreen').classList.add('hidden');
   document.getElementById('endScreen').classList.add('hidden');
   document.getElementById('levelUpBanner').classList.remove('show');
@@ -723,41 +708,41 @@ function startGame(){
 
   document.querySelectorAll('.fish').forEach(f=>f.remove());
 
-  spawnTimer = setInterval(spawnFish, levelStages[0].spawnMs);
+  Game.timers.spawnTimer = setInterval(spawnFish, Game.config.levelStages[0].spawnMs);
   scheduleRival();
-  magnetActive = false;
-  frozen = false;
+  Game.effects.magnetActive = false;
+  Game.effects.frozen = false;
   updateHookIcon();
-  stormActive = false;
-  activeWeatherKind = null;
+  Game.effects.stormActive = false;
+  Game.effects.activeWeatherKind = null;
   document.getElementById('stormOverlay').classList.remove('active');
   document.getElementById('stormFog').classList.remove('active');
   document.getElementById('snowTint').classList.remove('active');
   scheduleWeather();
   scheduleBoss();
-  gameTimer = setInterval(()=>{
-    timeLeft--;
-    document.getElementById('timeLeft').textContent = timeLeft;
-    if(timeLeft <= 0) endGame();
+  Game.timers.gameTimer = setInterval(()=>{
+    Game.state.timeLeft--;
+    document.getElementById('timeLeft').textContent = Game.state.timeLeft;
+    if(Game.state.timeLeft <= 0) endGame();
   }, 1000);
 }
 
 function endGame(){
-  running = false;
+  Game.state.running = false;
   setJoystickVisible(false);
-  clearInterval(spawnTimer);
-  clearInterval(gameTimer);
-  clearTimeout(rivalTimeout);
-  clearTimeout(stormTimeout);
-  clearTimeout(magnetTimer);
-  clearTimeout(bossTimeout);
-  clearTimeout(freezeTimeout);
-  clearInterval(stormFlashInterval); stormFlashInterval = null;
-  clearInterval(snowFlakeInterval); snowFlakeInterval = null;
-  magnetActive = false;
-  frozen = false;
-  stormActive = false;
-  activeWeatherKind = null;
+  clearInterval(Game.timers.spawnTimer);
+  clearInterval(Game.timers.gameTimer);
+  clearTimeout(Game.timers.rivalTimeout);
+  clearTimeout(Game.timers.stormTimeout);
+  clearTimeout(Game.effects.magnetTimer);
+  clearTimeout(Game.timers.bossTimeout);
+  clearTimeout(Game.effects.freezeTimeout);
+  clearInterval(Game.timers.stormFlashInterval); Game.timers.stormFlashInterval = null;
+  clearInterval(Game.timers.snowFlakeInterval); Game.timers.snowFlakeInterval = null;
+  Game.effects.magnetActive = false;
+  Game.effects.frozen = false;
+  Game.effects.stormActive = false;
+  Game.effects.activeWeatherKind = null;
   document.getElementById('stormOverlay').classList.remove('active');
   document.getElementById('stormFog').classList.remove('active');
   document.getElementById('snowTint').classList.remove('active');
@@ -766,23 +751,23 @@ function endGame(){
   document.querySelectorAll('.fish').forEach(f=>f.remove());
   document.querySelectorAll('.snowflake').forEach(f=>f.remove());
 
-  const isNewRecord = score > bestScore;
-  if(isNewRecord) bestScore = score;
+  const isNewRecord = Game.state.score > Game.state.bestScore;
+  if(isNewRecord) Game.state.bestScore = Game.state.score;
   stopBgMusic();
   playGameOverSound(isNewRecord);
 
 
-  document.getElementById('resultScore').textContent = score + '점';
+  document.getElementById('resultScore').textContent = Game.state.score + '점';
   const msg = isNewRecord ? '🎉 신기록이에요! 최고점수를 경신했어요!'
-            : score >= 25 ? '와, 진짜 낚시왕이에요! 🏆'
-            : score >= 12 ? '아주 잘했어요! 👍'
+            : Game.state.score >= 25 ? '와, 진짜 낚시왕이에요! 🏆'
+            : Game.state.score >= 12 ? '아주 잘했어요! 👍'
             : '다음엔 더 잘할 수 있어요! 🐟';
   document.getElementById('resultMsg').textContent = msg;
-  document.getElementById('lootResult').textContent = treasureLoot.length > 0
-    ? '📦 보물함 전리품: ' + treasureLoot.join(', ')
+  document.getElementById('lootResult').textContent = Game.state.treasureLoot.length > 0
+    ? '📦 보물함 전리품: ' + Game.state.treasureLoot.join(', ')
     : '이번 판엔 보물통을 못 열었어요. 다음엔 찾아봐요!';
-  document.getElementById('bestScoreEnd').textContent = '🏅 최고점수: ' + bestScore + '점';
-  document.getElementById('bestScoreStart').textContent = bestScore > 0 ? ('🏅 최고점수: ' + bestScore + '점') : '';
+  document.getElementById('bestScoreEnd').textContent = '🏅 최고점수: ' + Game.state.bestScore + '점';
+  document.getElementById('bestScoreStart').textContent = Game.state.bestScore > 0 ? ('🏅 최고점수: ' + Game.state.bestScore + '점') : '';
   document.getElementById('endScreen').classList.remove('hidden');
 }
 
@@ -791,9 +776,9 @@ document.getElementById('retryBtn').addEventListener('click', startGame);
 
 // 게임 중 어디서든 메인 메뉴로 빠져나갈 수 있는 버튼 (혼자하기/온라인 둘 다 동작)
 document.getElementById('quitBtn').addEventListener('click', () => {
-  if(mpActive){
+  if(Game.mp.active){
     if(confirm('정말 그만하고 메인 메뉴로 돌아갈까요?')) leaveMultiplayer();
-  } else if(running){
+  } else if(Game.state.running){
     if(confirm('정말 그만하고 메인 메뉴로 돌아갈까요?')) endGame();
   }
 });

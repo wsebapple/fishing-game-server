@@ -1,8 +1,8 @@
 function renderDex(){
   const grid = document.getElementById('dexGrid');
   grid.innerHTML = '';
-  fishTypes.forEach(f => {
-    const caught = caughtLog[f.name] > 0;
+  Game.config.fishTypes.forEach(f => {
+    const caught = Game.state.caughtLog[f.name] > 0;
     const card = document.createElement('div');
     card.className = 'dexCard' + (caught ? '' : ' locked');
     const pointsText = f.isTreasure ? `${f.minBonus}~${f.maxBonus}점 랜덤`
@@ -10,7 +10,7 @@ function renderDex(){
       : f.isTimeBonus ? `시간 +${f.timeBonus}초`
       : `${f.points}점`;
     card.innerHTML = caught
-      ? `<div class="icon">${f.emoji}</div><div class="name">${f.name}</div><div class="count">${caughtLog[f.name]}번 · ${pointsText}</div>`
+      ? `<div class="icon">${f.emoji}</div><div class="name">${f.name}</div><div class="count">${Game.state.caughtLog[f.name]}번 · ${pointsText}</div>`
       : `<div class="icon">❔</div><div class="name">???</div><div class="count">아직 못 잡음</div>`;
     grid.appendChild(card);
   });
@@ -19,10 +19,10 @@ function renderDex(){
 // 도감/순위 화면을 열 때 시작/종료 화면을 안 가리면, 반투명 배경 너머로
 // "게임 끝!" 같은 글자가 겹쳐 비쳐 보여서 어디서 열었는지 기억해뒀다가
 // 닫을 때 그 화면으로 되돌려줘요
-let returnToScreenId = 'startScreen';
+Game.ui = { returnToScreenId: 'startScreen' };
 function rememberReturnScreen(){
-  if(!document.getElementById('endScreen').classList.contains('hidden')) returnToScreenId = 'endScreen';
-  else if(!document.getElementById('startScreen').classList.contains('hidden')) returnToScreenId = 'startScreen';
+  if(!document.getElementById('endScreen').classList.contains('hidden')) Game.ui.returnToScreenId = 'endScreen';
+  else if(!document.getElementById('startScreen').classList.contains('hidden')) Game.ui.returnToScreenId = 'startScreen';
 }
 
 function openDex(){
@@ -36,7 +36,7 @@ document.getElementById('dexBtnStart').addEventListener('click', openDex);
 document.getElementById('dexBtnEnd').addEventListener('click', openDex);
 document.getElementById('dexCloseBtn').addEventListener('click', () => {
   document.getElementById('dexScreen').classList.add('hidden');
-  document.getElementById(returnToScreenId).classList.remove('hidden');
+  document.getElementById(Game.ui.returnToScreenId).classList.remove('hidden');
 });
 
 /* ------------------------------------------------------
@@ -96,5 +96,5 @@ document.getElementById('leaderboardBtnEnd').addEventListener('click', openLeade
 document.getElementById('leaderboardRefreshBtn').addEventListener('click', loadLeaderboard);
 document.getElementById('leaderboardCloseBtn').addEventListener('click', () => {
   document.getElementById('leaderboardScreen').classList.add('hidden');
-  document.getElementById(returnToScreenId).classList.remove('hidden');
+  document.getElementById(Game.ui.returnToScreenId).classList.remove('hidden');
 });
