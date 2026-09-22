@@ -228,3 +228,24 @@ test('fierce bosses eat only point fish, and the king crab throws trash that cos
     await fs.rm(directory, { recursive: true, force: true });
   }
 });
+
+test('index.html asks for versioned scripts so a stale cached file can never mix with a new one', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-test-'));
+  const { server, io } = createApp({ leaderboardFile: path.join(directory, 'scores.json') });
+  await new Promise(resolve => server.listen(0, resolve));
+  try {
+    const base = 'http://127.0.0.1:' + server.address().port;
+    const res = await fetch(base + '/');
+    assert.equal(res.headers.get('cache-control'), 'no-cache');
+    const html = await res.text();
+    assert.doesNotMatch(html, /__BUILD_ID__/);
+    const version = html.match(/const version = "([0-9a-f]{10})"/);
+    assert.ok(version, 'build id injected');
+    const js = await fetch(base + '/js/core.js?v=' + version[1]);
+    assert.equal(js.status, 200);
+    assert.equal(js.headers.get('cache-control'), 'no-cache');
+  } finally {
+    await new Promise(resolve => io.close(resolve));
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});

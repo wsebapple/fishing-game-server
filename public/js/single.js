@@ -70,7 +70,7 @@ function moveRod(x, y){
 function stepBoat(b, hookX, bobY){
   const s = Game.boat.scale();
   const reach = Game.boat.tipDX * s;
-  b.hookVel = (b.hookVel || 0) * 0.9 + (hookX - (b.prevHookX ?? hookX)) * 0.1; // 바늘이 움직이는 속도(프레임당 px, 부드럽게)
+  b.hookVel = (b.hookVel || 0) * 0.9 + (hookX - (typeof b.prevHookX === 'number' ? b.prevHookX : hookX)) * 0.1; // 바늘이 움직이는 속도(프레임당 px, 부드럽게)
   b.prevHookX = hookX;
   const behind = (hookX - b.x) * b.facing < -Game.boat.turnSlack;
   if(behind || b.hookVel * b.facing < -Game.boat.turnSpeed) b.facing = -b.facing;
@@ -107,6 +107,9 @@ function fishingLinePath(tip, hookX, hookY){
 }
 
 function updateBoatAndLine(now){
+  // 다음 프레임 예약을 맨 먼저 해요. 그리는 도중 오류가 한 번 나도 배·줄 그리기가 영영 멈추지 않게요
+  // (예전엔 오류가 나면 배가 왼쪽 구석에 멈추고 줄이 사라진 채로 남았어요).
+  requestAnimationFrame(updateBoatAndLine);
   // 시작/종료/도감 화면에서는 아무것도 안 움직이니 계산을 쉬어요(루프는 살려둬서 게임이 시작되면 바로 이어져요)
   if(Game.state.running || Game.mp.active || !Game.hook.lastDrawnLine){ // 첫 프레임은 시작 화면 뒤에 배를 그려두려고 항상 그려요
     const bobY = boatBob(now || 0);
@@ -119,7 +122,6 @@ function updateBoatAndLine(now){
     }
     if(Game.mp.active) updateGhostBoats(now || 0);
   }
-  requestAnimationFrame(updateBoatAndLine);
 }
 requestAnimationFrame(updateBoatAndLine);
 
