@@ -503,6 +503,14 @@
     border-radius:14px; padding:10px 14px; color:#eafcff;
     font-family:'Jua',sans-serif; min-width:150px;
   }
+  #mpLeaveBtn{ margin-top:8px; font-size:16px; padding:6px 14px; background:var(--coral); box-shadow:0 4px 0 #c94747; }
+  #mpRoomListRefreshBtn{ margin-top:8px; }
+  /* 온라인 중 서버 연결이 끊기면 게임 화면 위에 바로 보이게 알려줘요 */
+  #mpConnBanner{
+    position:absolute; top:118px; left:50%; transform:translateX(-50%); z-index:12;
+    background:rgba(140,32,32,0.88); border-color:rgba(255,255,255,0.5);
+    font-size:17px; pointer-events:none;
+  }
 
   /* 좁은 폰 화면용 조정: 반드시 스타일시트 맨 끝에 둬야 같은 우선순위의 위 규칙들을 확실히 덮어써요 */
   @media (max-width: 480px){
@@ -515,7 +523,7 @@
     .overlay h1{ font-size:28px; max-width:92vw; }
     .overlay p{ font-size:15px; max-width:92vw; }
     .bigBtn{ font-size:18px; padding:12px 22px; max-width:88vw; white-space:normal; }
-    .smallBtn{ font-size:16px; padding:8px 12px; }
+    .smallBtn{ font-size:16px; padding:8px 12px; min-height:44px; }
     /* font-size는 16px 밑으로 내리지 않아요 - 그보다 작으면 아이폰이 입력창을 탭할 때마다
        자동으로 확대해버리고, 확대된 채로 안 풀리는 문제가 있어요 */
     #playerNameInput{ width:140px; }
@@ -529,6 +537,8 @@
        "같이 하는 친구들" 패널과 겹쳐 HUD 버튼(소리/나가기)을 못 누르는 문제가 있었어요.
        HUD 아래로 내려서 겹치지 않게 해요. */
     #mpPanel{ top:56px; min-width:130px; padding:8px 10px; }
+    /* 폰에서는 오른쪽 위 점수판(사람 수만큼 길어짐)과 왼쪽 아래 조이스틱을 피해 조이스틱 위쪽에 띄워요 */
+    #mpConnBanner{ top:auto; bottom:150px; font-size:15px; white-space:normal; max-width:90vw; text-align:center; }
   }
 </style>
 </head>
@@ -605,7 +615,7 @@
 
     <div id="mpRoomListWrap" style="width:100%; max-width:320px;">
       <div id="mpRoomList" style="display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto;"></div>
-      <button class="smallBtn" id="mpRoomListRefreshBtn" style="margin-top:8px; font-size:14px; padding:6px 12px;">🔄 방 목록 새로고침</button>
+      <button class="smallBtn" id="mpRoomListRefreshBtn">🔄 방 목록 새로고침</button>
     </div>
 
     <div class="nameRow" style="flex-direction:column; gap:10px;">
@@ -621,8 +631,9 @@
     <div style="font-size:15px; margin-bottom:2px;">🌐 같이 하는 친구들</div>
     <div id="mpRoomCodeDisplay" style="font-size:12px; opacity:0.8; margin-bottom:6px;"></div>
     <div id="mpPlayerList" style="font-size:14px; line-height:1.6;"></div>
-    <button id="mpLeaveBtn" style="margin-top:8px; font-family:'Jua',sans-serif; font-size:13px; padding:4px 10px; border-radius:999px; border:none; background:var(--coral); color:#fff; cursor:pointer;">나가기</button>
+    <button id="mpLeaveBtn" class="smallBtn">나가기</button>
   </div>
+  <div id="mpConnBanner" class="pill hidden" role="status" aria-live="polite">📡 연결이 끊겼어요. 다시 연결하는 중...</div>
 
   <!-- 온라인 라운드 종료 화면 (친구들 순위 + 다음 라운드 카운트다운) -->
   <div class="overlay hidden" id="mpRoundEndScreen">

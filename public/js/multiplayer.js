@@ -70,7 +70,9 @@ function joinMultiplayer(roomCodeOverride){
       renderMpPlayerList(state.players);
       if(typeof state.timeLeft === 'number') updateMpTime(state.timeLeft);
       if(typeof state.level === 'number') updateMpLevel(state.level);
+      document.getElementById('mpConnBanner').classList.add('hidden');
       document.getElementById('mpRoundEndScreen').classList.toggle('hidden', !!state.started);
+      document.getElementById('mpPanel').classList.toggle('hidden', !state.started); // 순위 화면과 점수가 겹쳐 보이지 않게
       setJoystickVisible(!!state.started);
       if (!state.started) {
         renderMpRoundEndRanking(state.players);
@@ -80,7 +82,10 @@ function joinMultiplayer(roomCodeOverride){
     });
 
     mpSocket.on('disconnect', () => {
-      if (mpActive) document.getElementById('mpStatus').textContent = '연결이 끊겼어요. 다시 연결하는 중...';
+      if (!mpActive) return;
+      document.getElementById('mpStatus').textContent = '연결이 끊겼어요. 다시 연결하는 중...';
+      // #mpStatus는 입장 화면 안에 있어서 게임 중엔 안 보여요. 게임 화면 위 배너로 알려줘요.
+      document.getElementById('mpConnBanner').classList.remove('hidden');
     });
     mpSocket.on('catchRejected', ({ fishId }) => {
       clearTimeout(mpCatchResetTimers[fishId]); delete mpCatchResetTimers[fishId];
@@ -167,6 +172,7 @@ function joinMultiplayer(roomCodeOverride){
       clearInterval(mpRoundEndCountdownTimer);
       magnetActive = false; clearTimeout(magnetTimer); updateHookIcon();
       document.getElementById('mpRoundEndScreen').classList.add('hidden');
+      document.getElementById('mpPanel').classList.remove('hidden');
       setJoystickVisible(true);
       renderMpPlayerList(players);
       updateMpTime(timeLeft);
@@ -196,6 +202,7 @@ function joinMultiplayer(roomCodeOverride){
       // 싱글플레이처럼 점수만 반짝 보이고 사라지는 대신, 방 친구들 순위와
       // 다음 라운드까지 남은 시간을 화면 가득 보여줘서 "뭐가 어떻게 된 건지" 알 수 있게 해요
       renderMpRoundEndRanking(players);
+      document.getElementById('mpPanel').classList.add('hidden'); // 순위 화면에 같은 점수가 두 번 보이지 않게
       document.getElementById('mpRoundEndScreen').classList.remove('hidden');
       startMpRoundEndCountdown(6); // 서버의 RESET_DELAY_MS(6초)와 맞춰뒀어요
     });
@@ -678,6 +685,7 @@ function leaveMultiplayer(){
   Object.values(mpCatchResetTimers).forEach(clearTimeout); mpCatchResetTimers = {};
   document.getElementById('mpPanel').classList.add('hidden');
   document.getElementById('mpRoundEndScreen').classList.add('hidden');
+  document.getElementById('mpConnBanner').classList.add('hidden');
   document.getElementById('mpStatus').textContent = '';
   document.getElementById('mpRoomCodeDisplay').textContent = '';
   document.getElementById('startScreen').classList.remove('hidden');
