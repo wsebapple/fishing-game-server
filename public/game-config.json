@@ -6,7 +6,11 @@
     "bossCatchRadius": 70,
     "fishServerTolerance": 45,
     "bossServerTolerance": 10,
-    "maxLagCompensationMs": 800
+    "maxLagCompensationMs": 800,
+    "eatRefWidth": 1000,
+    "eatRefHeight": 700,
+    "trashHalf": 22,
+    "trashCatchRadius": 34
   },
   "levelStages": [
     {
@@ -170,6 +174,33 @@
       "chance": 6,
       "label": "꽝! 쓰레기예요 🙈",
       "name": "쓰레기"
+    },
+    {
+      "emoji": "🥫",
+      "points": -3,
+      "speed": 1,
+      "chance": 0,
+      "label": "",
+      "name": "깡통",
+      "isBossTrash": true
+    },
+    {
+      "emoji": "🛍️",
+      "points": -4,
+      "speed": 1,
+      "chance": 0,
+      "label": "",
+      "name": "비닐봉지",
+      "isBossTrash": true
+    },
+    {
+      "emoji": "🛢️",
+      "points": -5,
+      "speed": 1,
+      "chance": 0,
+      "label": "",
+      "name": "기름통",
+      "isBossTrash": true
     }
   ],
   "bossTypes": [
@@ -186,7 +217,9 @@
       "hitsMin": 3,
       "hitsMax": 4,
       "speedMul": 1,
-      "escape": "ink"
+      "escape": "ink",
+      "eats": true,
+      "eatCooldownMs": 1800
     },
     {
       "emoji": "🦈",
@@ -203,11 +236,13 @@
       "speedMul": 1.5,
       "escape": "splash",
       "dash": true,
-      "tint": "hue-rotate(200deg) saturate(1.6)"
+      "tint": "hue-rotate(200deg) saturate(1.6)",
+      "eats": true,
+      "eatCooldownMs": 1200
     },
     {
       "emoji": "🐋",
-      "points": 55,
+      "points": 100,
       "speed": 0.5,
       "chance": 0,
       "label": "",
@@ -237,7 +272,9 @@
       "escape": "shock",
       "jitter": true,
       "freeze": true,
-      "tint": "hue-rotate(70deg) saturate(1.8)"
+      "tint": "hue-rotate(70deg) saturate(1.8)",
+      "eats": true,
+      "eatCooldownMs": 1500
     },
     {
       "emoji": "🦀",
@@ -254,7 +291,11 @@
       "speedMul": 0.8,
       "escape": "sand",
       "stealth": true,
-      "tint": "hue-rotate(300deg) saturate(1.5)"
+      "tint": "hue-rotate(300deg) saturate(1.5)",
+      "throwsTrash": {
+        "everyMs": 2600,
+        "count": 2
+      }
     }
   ]
 }
