@@ -214,8 +214,8 @@
       "isBoss": true,
       "half": 76,
       "catchRadius": 90,
-      "hitsMin": 5,
-      "hitsMax": 6,
+      "hitsMin": 10,
+      "hitsMax": 12,
       "speedMul": 0.5,
       "escape": "wave",
       "knockback": true
