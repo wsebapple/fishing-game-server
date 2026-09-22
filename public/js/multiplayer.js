@@ -317,17 +317,12 @@ function joinMultiplayer(roomCodeOverride){
     Game.mp.socket.on('playerListUpdate', renderMpPlayerList);
 
     Game.mp.socket.on('boatMove', ({ id, xRatio, yRatio }) => {
-      const el = Game.mp.ghostBoats[id];
-      if(!el) return;
-      el.style.left = (xRatio * window.innerWidth) + 'px';
-      // 낚싯줄/바늘 위치도 같이 갱신해요 (#line/#hook과 같은 기준: 낚싯줄은 70px 높이에서 시작해요)
-      if(typeof yRatio === 'number'){
-        const y = yRatio * window.innerHeight;
-        const ghostLine = el.querySelector('.ghostLine');
-        const ghostHook = el.querySelector('.ghostHook');
-        ghostLine.style.height = Math.max(0, y - 70) + 'px';
-        ghostHook.style.top = (y - 46) + 'px';
-      }
+      const g = Game.mp.ghostBoats[id];
+      if(!g) return;
+      // 바늘 목표 위치만 기억하고, 배·줄·바늘은 updateGhostBoats()가 매 프레임 부드럽게 따라가게 해요
+      g.hookX = xRatio * window.innerWidth;
+      if(typeof yRatio === 'number') g.hookY = yRatio * window.innerHeight;
+      if(!g.seen){ g.seen = true; g.shownX = g.hookX; g.shownY = g.hookY; g.hookEl.hidden = false; }
     });
   });
 }
@@ -486,7 +481,9 @@ function spawnMpFish(data){
       // 서버는 마지막으로 받은 바늘 위치로 판정해요. 150ms마다 보내는 위치는 그새 낡았을 수 있어서
       // 판정 요청 직전에 지금 위치를 먼저 보내요(같은 소켓이라 순서가 보장돼요).
       sendBoatPosition();
-      if(Game.mp.socket) Game.mp.socket.emit('catchAttempt', { fishId: data.id });
+      // 화면은 네트워크 지연만큼 과거 모습이에요. 내가 보고 있던 시점을 같이 보내면
+      // 서버가 그 시점의 위치로 판정해줘요(빠른 보스가 닿아 보이는데 안 잡히던 문제).
+      if(Game.mp.socket) Game.mp.socket.emit('catchAttempt', { fishId: data.id, viewElapsedMs: Math.max(0, Math.round(performance.now() - localStart)) });
       requestAnimationFrame(animate);
       return;
     }
@@ -582,22 +579,52 @@ function startMpRoundEndCountdown(seconds){
 ------------------------------------------------------ */
 
 function ensureGhostBoat(id, name){
-  let el = Game.mp.ghostBoats[id];
-  if(!el){
-    el = document.createElement('div');
+  let g = Game.mp.ghostBoats[id];
+  if(!g){
+    const el = document.createElement('div');
     el.className = 'ghostBoat';
-    el.style.left = (window.innerWidth / 2) + 'px'; // 위치를 아직 모를 때는 가운데에 둬요
-    el.innerHTML = '<div class="ghostBoatIcon">⛵</div><div class="ghostBoatName"></div><div class="ghostLine"></div><div class="ghostHook">🪝</div>';
+    el.appendChild(document.querySelector('#boat .boatBody').cloneNode(true)); // 내 배 그림을 복제해요 (색은 CSS에서)
+    const label = document.createElement('div');
+    label.className = 'ghostBoatName';
+    el.appendChild(label);
+    const hookEl = document.createElement('div');
+    hookEl.className = 'ghostHook';
+    hookEl.textContent = '🪝';
+    hookEl.hidden = true; // 친구 바늘 위치를 받기 전에는 줄/바늘을 안 그려요
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('class', 'ghostLinePath');
     Game.dom.scene.appendChild(el);
-    Game.mp.ghostBoats[id] = el;
+    Game.dom.scene.appendChild(hookEl);
+    const lineSvg = document.getElementById('lineSvg');
+    lineSvg.insertBefore(path, lineSvg.firstChild); // 내 줄(#linePath)보다 아래 겹에 그려요
+    const x = window.innerWidth / 2; // 위치를 아직 모를 때는 가운데에 둬요
+    g = { el, label, hookEl, path, seen: false, hookX: x, hookY: 330, shownX: x, shownY: 330,
+      boat: { x, facing: 1, turn: 1 }, phase: Math.random() * Math.PI * 2 };
+    Game.mp.ghostBoats[id] = g;
   }
-  el.querySelector('.ghostBoatName').textContent = name; // .textContent라 이름에 이상한 문자가 있어도 안전해요
-  return el;
+  g.label.textContent = name; // .textContent라 이름에 이상한 문자가 있어도 안전해요
+  return g;
+}
+
+// 친구 배도 내 배와 같은 계산(stepBoat)으로 움직여요. 서버에서 오는 바늘 위치는 띄엄띄엄이라
+// 화면에 보이는 바늘(shownX/Y)이 그 위치를 부드럽게 쫓아가게 해요.
+function updateGhostBoats(now){
+  Object.values(Game.mp.ghostBoats).forEach(g => {
+    g.shownX += (g.hookX - g.shownX) * 0.25;
+    g.shownY += (g.hookY - g.shownY) * 0.25;
+    const bobY = boatBob(now, g.phase);
+    const tip = stepBoat(g.boat, g.shownX, bobY);
+    placeBoat(g.el, g.boat, bobY, tip.s);
+    if(!g.seen) return;
+    g.path.setAttribute('d', fishingLinePath(tip, g.shownX, g.shownY));
+    g.hookEl.style.left = g.shownX.toFixed(1) + 'px';
+    g.hookEl.style.top = g.shownY.toFixed(1) + 'px';
+  });
 }
 
 function removeGhostBoat(id){
-  const el = Game.mp.ghostBoats[id];
-  if(el){ el.remove(); delete Game.mp.ghostBoats[id]; }
+  const g = Game.mp.ghostBoats[id];
+  if(g){ g.el.remove(); g.hookEl.remove(); g.path.remove(); delete Game.mp.ghostBoats[id]; }
 }
 
 function syncGhostBoatsFromPlayers(players){

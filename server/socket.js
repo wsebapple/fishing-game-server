@@ -60,7 +60,8 @@ io.on('connection', (socket) => {
     const fish = Object.hasOwn(room.fish, fishId) ? room.fish[fishId] : null;
     if (!fish) { socket.emit('catchRejected', { fishId }); return; }
     const now = Date.now();
-    if (!canCatch(fish, socket.data.position, now, socket.data.magnetUntil)) {
+    const viewElapsedMs = Number.isFinite(payload.viewElapsedMs) ? payload.viewElapsedMs : undefined;
+    if (!canCatch(fish, socket.data.position, now, socket.data.magnetUntil, viewElapsedMs)) {
       socket.emit('catchRejected', { fishId });
       return;
     }

@@ -30,7 +30,7 @@
      2  해(#sun)
      3  물고기·보스(.fish), 다른 친구 배(.ghostBoat)
      4  내 배(#boat), 눈 올 때 하얀 막(#snowTint)
-     5  낚싯줄(#lineSvg), 경쟁 배(#rivalBoat), 폭풍우 비·안개, 눈송이
+     5  낚싯줄(#lineSvg, 친구 줄 포함), 친구 바늘(.ghostHook), 경쟁 배(#rivalBoat), 폭풍우 비·안개, 눈송이
      6  바늘(#hook), 번개(#lightningFlash)
      7  잡았을 때 뜨는 점수 글자(.caughtPop)
      8  보스가 도망갈 때 연출(.bossEscapeCloud/.bossEscapeBlob)
@@ -199,129 +199,93 @@
 
   /* 물결 */
 
-  /* 낚싯대 & 줄 */
-  #rodPole{
-    position:absolute; top:0; width:6px; height:70px; background:#7a4a2b;
-    border-radius:3px; transform-origin:top center;
-  }
+  /* 배(내 배·친구 배·경쟁 배가 같은 그림을 써요) */
   #boat{
-    position:absolute; top:46px; width:140px; height:60px;
+    position:absolute; top:6px; width:160px; height:100px;
     transform:translateX(-50%);
-     z-index:4; pointer-events:none;
+    z-index:4; pointer-events:none;
   }
-  #boat .hull{
-    position:absolute; bottom:0; left:0; width:140px; height:36px;
-    background:
-      repeating-linear-gradient(180deg, rgba(0,0,0,0.1) 0 3px, rgba(0,0,0,0) 3px 9px),
-      linear-gradient(180deg, #dd9a5c, #a85c2c);
-    clip-path: polygon(2% 25%, 10% 100%, 90% 100%, 98% 25%, 85% 0%, 15% 0%);
-    box-shadow: inset 0 -8px 10px rgba(0,0,0,0.25);
-  }
-  #boat .porthole{
-    position:absolute; bottom:11px; width:11px; height:11px; border-radius:50%;
-    background:radial-gradient(circle at 35% 35%, #eaf9ff, #8fd8ff);
-    border:2px solid #5c3418;
-  }
-  #boat .porthole.p1{ left:38px; }
-  #boat .porthole.p2{ left:92px; }
-  #boat .cabin{
-    position:absolute; bottom:32px; left:42px; width:56px; height:26px;
-    background:linear-gradient(180deg,#ffffff,#dfe9ee);
-    border:3px solid #6b4224;
-    border-radius:8px 8px 2px 2px;
-  }
-  #boat .window{
-    position:absolute; bottom:38px; left:56px; width:22px; height:14px;
-    background:linear-gradient(180deg,#bdeeff,#6fc4e8);
-    border:2px solid #5c3418; border-radius:3px;
-  }
-  #boat .mast{
-    position:absolute; bottom:56px; left:68px; width:4px; height:44px;
-    background:linear-gradient(180deg,#a5754a,#5c3418);
-    border-radius:2px;
-  }
-  #boat .sail{
-    position:absolute; bottom:62px; left:71px; width:0; height:0;
-    border-style:solid; border-width:0 0 36px 32px;
-    border-color:transparent transparent #fffdf6 transparent;
-    transform-origin:bottom left;
-    filter:drop-shadow(1px 1px 2px rgba(0,0,0,0.18));
+  /* 방향 전환(좌우 뒤집기)과 폰 화면 축소는 JS가 이 안쪽 상자에 transform으로 걸어요.
+     바닥 가운데를 기준으로 줄여야 배가 물 위 같은 높이에 계속 떠 있어요. */
+  .boatBody{ position:absolute; inset:0; transform-origin:50% 100%; }
+  .boatSvg{ position:absolute; inset:0; display:block; overflow:visible;
+    filter:drop-shadow(0 2px 2px rgba(0,0,0,0.18)); }
+  .boatSvg .hullBody{ fill:var(--hull, #d58c52); }
+  .boatSvg .hullBottom{ fill:var(--hull-dark, #8f4f27); }
+  .boatSvg .hullStripe{ fill:#fffdf6; }
+  .boatSvg .hullRail{ fill:none; stroke:var(--hull-dark, #8f4f27); stroke-width:3; stroke-linecap:round; }
+  .boatSvg .porthole{ fill:#bfeeff; stroke:#5c3418; stroke-width:1.6; }
+  .boatSvg .cabin{ fill:#f7fbfd; stroke:#6b4224; stroke-width:2.5; stroke-linejoin:round; }
+  .boatSvg .cabinWin{ fill:#8fd8ff; stroke:#5c3418; stroke-width:1.5; }
+  .boatSvg .roof{ fill:var(--roof, var(--coral)); }
+  .boatSvg .mast{ fill:#6b4224; }
+  .boatSvg .sail{
+    fill:#fffdf6; stroke:rgba(0,0,0,0.12); stroke-width:1;
+    transform-box:fill-box; transform-origin:left bottom;
     animation:sailFlap 2.6s ease-in-out infinite;
   }
   @keyframes sailFlap{
     0%,100%{ transform:skewY(0deg); }
     50%{ transform:skewY(5deg); }
   }
-  #boat .pennant{
-    position:absolute; bottom:96px; left:70px; width:0; height:0;
-    border-style:solid; border-width:6px 0 6px 13px;
-    border-color:transparent transparent transparent var(--coral);
-    transform-origin:left center;
+  .boatSvg .pennant{
+    fill:var(--flag, var(--coral));
+    transform-box:fill-box; transform-origin:right center;
     animation:pennantWave 1.5s ease-in-out infinite;
   }
   @keyframes pennantWave{
     0%,100%{ transform:skewY(0deg); }
     50%{ transform:skewY(-14deg); }
   }
-  #boat .wake{
-    position:absolute; bottom:-6px; left:18px; width:104px; height:10px;
+  .boatSvg .rod{ fill:none; stroke:#3b2a1d; stroke-width:2.2; stroke-linecap:round; }
+  .boatSvg .reel{ fill:#6d7a82; stroke:#3b2a1d; stroke-width:1; }
+  /* 배가 물에 닿는 자리(물 높이 84px)의 하얀 물거품 */
+  .boatBody .wake{
+    position:absolute; bottom:17px; left:4px; width:152px; height:10px;
     background:rgba(255,255,255,0.4); border-radius:50%;
     filter:blur(2px);
-     animation:wakePulse 2s ease-in-out infinite;
+    animation:wakePulse 2s ease-in-out infinite;
   }
   @keyframes wakePulse{
     0%,100%{ transform:scaleX(1); opacity:0.45; }
-    50%{ transform:scaleX(1.18); opacity:0.75; }
-  }
-  #boat.bob{
-    animation:bob 2.2s ease-in-out infinite;
-  }
-  @keyframes bob{
-    0%,100%{ transform:translateX(-50%) translateY(0); }
-    50%{ transform:translateX(-50%) translateY(6px); }
+    50%{ transform:scaleX(1.12); opacity:0.75; }
   }
 
-  /* 온라인에서 같이 하는 친구들의 배(뿌옇게, 살짝 비치는 정도로만 보여줘요) */
+  /* 온라인에서 같이 하는 친구들의 배: 내 배와 같은 그림을 청록색으로, 살짝 비치게 보여줘요.
+     위치·방향·출렁임은 내 배와 같은 계산(stepBoat)으로 매 프레임 JS가 정해요. */
   .ghostBoat{
-    position:absolute; top:46px; width:140px; height:60px;
+    position:absolute; top:6px; width:160px; height:100px;
     transform:translateX(-50%);
-     z-index:3; pointer-events:none; text-align:center;
-    transition:left .18s linear;
+    z-index:3; pointer-events:none;
+    --hull:#4fb3a9; --hull-dark:#2f7f78; --roof:#2f7f78; --flag:#2f7f78;
   }
-  .ghostBoatIcon{
-    font-size:44px; line-height:60px;
-    opacity:0.4; filter:blur(1.2px);
-  }
+  .ghostBoat .boatBody{ opacity:0.5; } /* 배만 비치게 하고 이름표는 또렷하게 둬요 */
+  /* 이름표는 배 밑(물속)에 달아요 — 배 위쪽은 HUD 알약에 가려지기 쉬워요 */
   .ghostBoatName{
-    position:absolute; top:-16px; left:50%; transform:translateX(-50%);
-    font-size:11px; color:#fff; background:rgba(0,0,0,0.4);
+    position:absolute; top:102px; left:50%; transform:translateX(-50%);
+    font-size:11px; color:#fff; background:rgba(0,0,0,0.55);
     padding:1px 8px; border-radius:8px; white-space:nowrap;
     font-family:'Jua','Baloo 2',sans-serif;
   }
-  /* 친구 배에서 내려간 낚싯줄/바늘도 같이 보여줘서, 어디를 노리고 있는지 알 수 있게 해요.
-     (#line/#hook과 같은 계산식을 쓰되, 보트 자신의 top:46px 기준 상대 좌표로 그려요) */
-  .ghostLine{
-    position:absolute; top:24px; left:50%; width:2px; height:0;
-    background:rgba(255,255,255,0.5);
-    transform:translateX(-50%);
-    transition:height .18s linear;
-  }
+  /* 친구 낚싯줄은 #lineSvg 안에 내 줄보다 아래 겹으로 넣어요 */
+  .ghostLinePath{ fill:none; stroke:rgba(255,255,255,0.5); stroke-width:2; stroke-linecap:round; }
   .ghostHook{
-    position:absolute; top:24px; left:50%; width:20px; height:20px; font-size:16px;
+    position:absolute; width:20px; height:20px; font-size:16px;
     text-align:center; line-height:20px; transform:translate(-50%,-50%);
-    opacity:0.55;
-    transition:top .18s linear;
+    opacity:0.55; z-index:5; pointer-events:none;
   }
 
-  /* 다른 배(경쟁자): 가끔 나타나서 물고기를 채가요 */
+  /* 다른 배(경쟁자): 가끔 나타나서 물고기를 채가요. 내 배 그림을 복제해 보라색 해적선으로 칠해요 */
   #rivalBoat{
-    position:absolute; top:40px; font-size:54px;
-    transform:translate(-50%,-14px) scaleX(-1);
-    filter:hue-rotate(200deg) saturate(1.5);
+    position:absolute; top:6px; width:160px; height:100px;
+    transform-origin:50% 100%;
+    transform:translate(-50%,-14px) scale(-0.75,0.75);
     opacity:0; transition:opacity .4s ease, transform .4s ease;
-     z-index:5; pointer-events:none;
+    z-index:5; pointer-events:none;
+    --hull:#6a5a8c; --hull-dark:#3b2f52; --roof:#3b2f52; --flag:#222;
   }
-  #rivalBoat.show{ opacity:1; transform:translate(-50%,0) scaleX(-1); }
+  #rivalBoat.show{ opacity:1; transform:translate(-50%,0) scale(-0.75,0.75); }
+  #rivalBoat .rod, #rivalBoat .reel{ display:none; }
   /* 낚싯줄: 바늘이 움직이면 곧장 따라가지 않고 살짝 휘어지면서 배가 뒤늦게 쫓아가요 */
   #lineSvg{
     position:absolute; inset:0; width:100%; height:100%;
@@ -569,6 +533,11 @@
     /* 폰에서는 오른쪽 위 점수판(사람 수만큼 길어짐)과 왼쪽 아래 조이스틱을 피해 조이스틱 위쪽에 띄워요 */
     #mpConnBanner{ top:auto; bottom:150px; font-size:15px; white-space:normal; max-width:90vw; text-align:center; }
   }
+  /* HUD 알약이 화면 폭을 거의 다 차지하는 크기에서는 돛대·돛·깃발이 알약 뒤로 숨어 잘려 보이니 빼요.
+     폰(480px 이하)에서는 배 자체도 0.8배로 줄여요 — 그 배율은 core.js의 Game.boat.scale()이 정해요. */
+  @media (max-width: 820px){
+    .boatRig{ display:none; }
+  }
 </style>
 </head>
 <body>
@@ -595,19 +564,35 @@
     <div class="pill" id="quitBtn" style="cursor:pointer;" title="그만하고 메인 메뉴로">🏠</div>
   </div>
 
-  <div id="boat" class="bob">
-    <div class="wake"></div>
-    <div class="hull"></div>
-    <div class="porthole p1"></div>
-    <div class="porthole p2"></div>
-    <div class="cabin"></div>
-    <div class="window"></div>
-    <div class="mast"></div>
-    <div class="sail"></div>
-    <div class="pennant"></div>
+  <!-- 내 배: 그림 하나(SVG)로 그려서 친구 배·경쟁 배도 이걸 복제해 색만 바꿔 써요.
+       오른쪽을 보고 있는 모습이 기본이고, 뱃머리(오른쪽) 낚싯대 끝(154,32)에서 낚싯줄이 나가요.
+       좌표를 바꾸면 core.js의 Game.boat 숫자도 같이 바꿔야 해요. -->
+  <div id="boat">
+    <div class="boatBody">
+      <div class="wake"></div>
+      <svg class="boatSvg" viewBox="0 0 160 100" width="160" height="100" aria-hidden="true">
+        <g class="boatRig">
+          <rect class="mast" x="78.5" y="10" width="3" height="31" rx="1.5"/>
+          <path class="sail" d="M83 13 L83 37 L104 37 Z"/>
+          <path class="pennant" d="M79 10.5 L63 15 L79 19.5 Z"/>
+        </g>
+        <path class="cabin" d="M58 66 L58 48 Q58 43 63 43 L97 43 Q102 43 102 48 L102 66 Z"/>
+        <rect class="cabinWin" x="63" y="48" width="14" height="10" rx="2"/>
+        <rect class="cabinWin" x="83" y="48" width="14" height="10" rx="2"/>
+        <rect class="roof" x="54" y="39" width="52" height="5" rx="2"/>
+        <path class="rod" d="M128 60 L154 32"/>
+        <circle class="reel" cx="131.5" cy="56" r="3"/>
+        <path class="hullBody" d="M12 62 Q80 70 150 54 L128 96 Q125 100 118 100 L30 100 Q18 99 16 88 Z"/>
+        <path class="hullBottom" d="M15.6 86 L133.2 86 L128 96 Q125 100 118 100 L30 100 Q18 99 16 88 Z"/>
+        <path class="hullStripe" d="M14.2 76 L138.5 76 L135.9 81 L14.9 81 Z"/>
+        <circle class="porthole" cx="56" cy="70" r="3.2"/>
+        <circle class="porthole" cx="80" cy="70" r="3.2"/>
+        <circle class="porthole" cx="104" cy="70" r="3.2"/>
+        <path class="hullRail" d="M12 62 Q80 70 150 54"/>
+      </svg>
+    </div>
   </div>
-  <div id="rivalBoat">⛵</div>
-  <div id="rodPole"></div>
+  <div id="rivalBoat"></div>
   <svg id="lineSvg"><path id="linePath" d=""></path></svg>
   <div id="hook">🪝</div>
 
