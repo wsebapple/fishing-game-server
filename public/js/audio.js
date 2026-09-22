@@ -58,6 +58,12 @@ function playStealSound(){
   playTone(160, 0.25, 'sawtooth', 0.15, 0.2);
 }
 
+// 보스가 물고기를 꿀꺽 삼킬 때
+function playEatSound(){
+  playTone(140, 0.08, 'square', 0.14);
+  playTone(90, 0.14, 'square', 0.14, 0.07);
+}
+
 function playLevelUpSound(){
   [523,659,784,1046].forEach((f,i)=>playTone(f,0.15,'square',0.2,i*0.09));
 }

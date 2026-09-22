@@ -1,5 +1,5 @@
 const { fishTypes, hitbox } = require('../public/game-config.json');
-const { bossWanderPosition, isBossStealthed } = require('../public/js/shared/boss-math');
+const { bossWanderPosition, isBossStealthed, regularFishCenter, trashCenter } = require('../public/js/shared/boss-math');
 
 function pickFishType(random = Math.random) {
   const total = fishTypes.reduce((sum, fish) => sum + fish.chance, 0);
@@ -32,9 +32,12 @@ function canCatch(fish, position, now = Date.now(), magnetUntil = 0, viewElapsed
     return Math.hypot(hookX - (point.xRatio * width + type.half), hookY - (point.yRatio * height + type.half)) <= type.catchRadius + hitbox.bossServerTolerance;
   }
   if (magnetUntil > now && !type.isMagnet) return true;
-  const progress = elapsed / fish.durationMs;
-  const left = fish.fromLeft ? -50 + progress * (width + 100) : width + 50 - progress * (width + 100);
-  return Math.hypot(hookX - (left + hitbox.fishHalf), hookY - (fish.y * height + hitbox.fishHalf)) <= hitbox.fishCatchRadius + hitbox.fishServerTolerance;
+  if (fish.trash) {
+    const c = trashCenter(fish.trash, elapsed / 1000, width, height);
+    return Math.hypot(hookX - c.x, hookY - c.y) <= hitbox.trashCatchRadius + hitbox.fishServerTolerance;
+  }
+  const c = regularFishCenter(fish, elapsed, width, height, hitbox.fishHalf);
+  return Math.hypot(hookX - c.x, hookY - c.y) <= hitbox.fishCatchRadius + hitbox.fishServerTolerance;
 }
 
 module.exports = { pickFishType, fishDurationMs, bossWanderPosition, canCatch };

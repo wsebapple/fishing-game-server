@@ -52,9 +52,16 @@ test('the browser and the server use the exact same boss math file', () => {
       assert.equal(browser.isBossStealthed(seed, t, type), server.isBossStealthed(seed, t, type));
     }
   }
+  const trash = { xRatio: 0.4, yRatio: 0.3, offX: 70, offY: 69, vx: -25, vy: 52 };
+  const fish = { fromLeft: false, y: 0.6, durationMs: 9000 };
+  for (const t of [0, 1.7, 5.2]) {
+    assert.deepEqual({ ...browser.trashCenter(trash, t, 1280, 800) }, server.trashCenter(trash, t, 1280, 800));
+    assert.deepEqual({ ...browser.regularFishCenter(fish, t * 1000, 390, 844, 35) }, server.regularFishCenter(fish, t * 1000, 390, 844, 35));
+  }
+  for (const type of fishTypes) assert.equal(browser.isEdible(type), server.isEdible(type));
   for (const client of ['multiplayer.js', 'single.js', 'core.js']) {
     const source = fs.readFileSync(path.join(__dirname, '../public/js', client), 'utf8');
-    assert.doesNotMatch(source, /function\s+(bossWanderPosition|isBossStealthed)\b/, client + ' must not redefine shared boss math');
+    assert.doesNotMatch(source, /function\s+(bossWanderPosition|isBossStealthed|isEdible|trashCenter|regularFishCenter|makeTrashThrows)\b/, client + ' must not redefine shared boss math');
   }
 });
 
@@ -78,4 +85,27 @@ test('lag compensation judges the moment the player was seeing, within a limit',
   // 미래 시점을 주장해도 현재 시점으로 판정해요
   assert.equal(canCatch(fish, aimAt(5000), now, 0, 9000), true);
   assert.equal(canCatch(fish, aimAt(6000), now, 0, 6000), false);
+});
+
+test('only point-giving fish are edible, and thrown trash is judged on its sinking path', () => {
+  const { isEdible, makeTrashThrows, trashCenter } = require('../public/js/shared/boss-math');
+  const edible = fishTypes.filter(isEdible).map(f => f.name);
+  assert.ok(edible.includes('참치') && edible.includes('고래'));
+  for (const f of fishTypes) {
+    if (f.points <= 0 || f.isTreasure || f.isMagnet || f.isTimeBonus || f.isBossTrash) assert.equal(isEdible(f), false, f.name);
+  }
+  bossTypes.forEach(b => assert.equal(isEdible(b), false));
+  const trashTypes = fishTypes.filter(f => f.isBossTrash);
+  assert.deepEqual(trashTypes.map(f => f.points).sort(), [-3, -4, -5]);
+  assert.ok(trashTypes.every(f => f.chance === 0), 'trash only comes from the crab');
+  assert.equal(bossTypes.find(b => b.name === '보스 고래').points, 100);
+
+  const now = 100000, width = 1280, height = 800;
+  const [trash] = makeTrashThrows({ xRatio: 0.5, yRatio: 0.3 }, 60, 1, () => 0.5);
+  const fish = { type: trashTypes[0], trash, startTime: now - 2000, durationMs: 6000 };
+  const c = trashCenter(trash, 2, width, height);
+  const at = (x, y) => ({ xRatio: x / width, yRatio: y / height, width, height, at: now });
+  assert.equal(canCatch(fish, at(c.x, c.y), now), true);
+  assert.equal(canCatch(fish, at(c.x, c.y - 200), now), false, 'where it was thrown is no longer where it is');
+  assert.equal(canCatch(fish, at(c.x, c.y), now + 4001), false, 'expired trash is gone');
 });

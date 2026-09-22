@@ -115,14 +115,22 @@ function joinMultiplayer(roomCodeOverride){
         el.remove();
         delete Game.mp.fishEls[id];
       }
-      delete Game.mp.fishTypeById[id];
-      delete Game.mp.caughtSent[id];
-      clearTimeout(Game.mp.catchResetTimers[id]); delete Game.mp.catchResetTimers[id];
-      delete Game.mp.bossInvulnUntil[id];
-      delete Game.mp.catchRetryAt[id];
-      delete Game.mp.bossSeedById[id];
-      delete Game.mp.bossSeedTransitionById[id];
-      clearTimeout(Game.mp.catchResetTimers[id]); delete Game.mp.catchResetTimers[id];
+      forgetMpFish(id);
+    });
+
+    // 사나운 보스(상어·바다용·오징어)가 점수 물고기를 먼저 삼켰어요 (서버가 정해요)
+    Game.mp.socket.on('fishEaten', ({ id, bossId }) => {
+      const el = Game.mp.fishEls[id];
+      const bossEl = Game.mp.fishEls[bossId];
+      const bossType = Game.mp.fishTypeById[bossId];
+      if(el){
+        if(bossEl && bossType){
+          const half = bossType.half || Game.config.hitbox.bossHalf;
+          playEatEffect(el, (parseFloat(bossEl.style.left) || 0) + half, (parseFloat(bossEl.style.top) || 0) + half, bossType);
+        } else el.remove();
+        delete Game.mp.fishEls[id];
+      }
+      forgetMpFish(id);
     });
 
     Game.mp.socket.on('bossInked', ({ id, seed, byId }) => {
@@ -260,7 +268,7 @@ function joinMultiplayer(roomCodeOverride){
           Game.effects.magnetActive = true;
           updateHookIcon();
           clearTimeout(Game.effects.magnetTimer);
-          Game.effects.magnetTimer = setTimeout(() => { Game.effects.magnetActive = false; updateHookIcon(); }, 6000);
+          Game.effects.magnetTimer = setTimeout(() => { Game.effects.magnetActive = false; updateHookIcon(); }, Game.config.fishTypes.find(f => f.isMagnet).magnetMs);
         }
       }
 
@@ -393,6 +401,17 @@ function updateMpTime(t){
 
 // 피격 후 서버가 새 경로(seed)를 주면 650ms 동안 부드럽게 옮겨가요. 전환이 끝난 뒤에는
 // 스폰 때의 옛 seed가 아니라 최신 seed를 써야 서버 판정 위치와 화면 위치가 맞아요.
+// 사라진 물고기에 대해 기억해두던 상태를 모두 지워요 (fishExpire/fishEaten 공통)
+function forgetMpFish(id){
+  delete Game.mp.fishTypeById[id];
+  delete Game.mp.caughtSent[id];
+  clearTimeout(Game.mp.catchResetTimers[id]); delete Game.mp.catchResetTimers[id];
+  delete Game.mp.bossInvulnUntil[id];
+  delete Game.mp.catchRetryAt[id];
+  delete Game.mp.bossSeedById[id];
+  delete Game.mp.bossSeedTransitionById[id];
+}
+
 function getMpBossSeed(id, fallback, now = performance.now()){
   const current = typeof Game.mp.bossSeedById[id] === 'number' ? Game.mp.bossSeedById[id] : fallback;
   const transition = Game.mp.bossSeedTransitionById[id];
@@ -405,7 +424,7 @@ function getMpBossSeed(id, fallback, now = performance.now()){
 function spawnMpFish(data){
   const type = data.type;
   const fish = document.createElement('div');
-  fish.className = type.isBoss ? 'fish boss-fish' : 'fish';
+  fish.className = type.isBoss ? 'fish boss-fish' : (data.trash ? 'fish trashItem' : 'fish');
   fish.textContent = type.emoji;
   fish.dataset.name = type.name;
   if(type.isBoss){
@@ -418,8 +437,9 @@ function spawnMpFish(data){
   if(type.isBoss) Game.mp.bossSeedById[data.id] = data.seed;
   Game.mp.caughtSent[data.id] = false;
 
-  const half = type.isBoss ? (type.half || Game.config.hitbox.bossHalf) : Game.config.hitbox.fishHalf;
-  const catchRadius = type.isBoss ? (type.catchRadius || Game.config.hitbox.bossCatchRadius) : Game.config.hitbox.fishCatchRadius;
+  const hb = Game.config.hitbox;
+  const half = type.isBoss ? (type.half || hb.bossHalf) : (data.trash ? hb.trashHalf : hb.fishHalf);
+  const catchRadius = type.isBoss ? (type.catchRadius || hb.bossCatchRadius) : (data.trash ? hb.trashCatchRadius : hb.fishCatchRadius);
 
   const distance = window.innerWidth + 100;
   const duration = data.durationMs; // 서버가 정해준 "화면을 가로지르는 시간"(또는 보스의 전체 등장 시간)을 그대로 써서 서버 만료 시점과 맞춰요
@@ -433,6 +453,9 @@ function spawnMpFish(data){
     const pos = bossWanderPosition(getMpBossSeed(data.id, data.seed), (data.elapsedMs || 0) / 1000, type);
     curLeft = pos.xRatio * window.innerWidth;
     curTop = pos.yRatio * window.innerHeight;
+  } else if(data.trash){
+    const c = trashCenter(data.trash, (data.elapsedMs || 0) / 1000, window.innerWidth, window.innerHeight);
+    curLeft = c.x - half; curTop = c.y - half;
   } else {
     curTop = data.y * window.innerHeight;
     curLeft = data.fromLeft ? -50 : window.innerWidth + 50;
@@ -442,22 +465,22 @@ function spawnMpFish(data){
   fish.style.left = curLeft + 'px';
   fish.style.top = curTop + 'px';
 
-  function tryMagnetPull(){
-    // 내가 자석을 켠 상태라면, 이 물고기를 내 낚싯바늘 쪽으로 끌어당겨서 보여줘요
-    // (목표점도 half만큼 당겨서 물고기 "중심"이 바늘 중심에 겹치게 해요 - 안 그러면
-    // 중심끼리 대각선으로 어긋나서 isNearHook 판정 반경 밖에서 맴돌다 못 잡히고 사라져요)
+  let lastFrame = performance.now();
+  function tryMagnetPull(dt){
+    // 내가 자석을 켠 상태라면, 이 물고기를 내 낚싯바늘 쪽으로 끌어당겨서 보여줘요 (싱글과 같은 magnetPull)
     if(!Game.effects.magnetActive || type.isMagnet) return;
-    const dx = (Game.hook.x - half) - curLeft, dy = (Game.hook.y - half) - curTop;
-    const dist = Math.max(Math.sqrt(dx*dx + dy*dy), 0.01);
-    const step = 6;
-    curLeft += (dx/dist) * step;
-    curTop += (dy/dist) * step;
+    const pos = { left: curLeft, top: curTop };
+    magnetPull(pos, half, dt);
+    curLeft = pos.left; curTop = pos.top;
     fish.style.left = curLeft + 'px';
     fish.style.top = curTop + 'px';
   }
 
   function animate(){
-    if(!fish.isConnected) return;
+    if(!fish.isConnected || fish.classList.contains('eaten')) return;
+    const frameNow = performance.now();
+    const dt = Math.min(frameNow - lastFrame, 100) / 1000;
+    lastFrame = frameNow;
     // 캐치 요청을 이미 보냈다면, 서버 응답(fishCaught/fishExpire/bossInked)이 올 때까지
     // 원래 유영 경로로 되돌아가지 않고 제자리에서 기다려요
     if(Game.mp.caughtSent[data.id]){ requestAnimationFrame(animate); return; }
@@ -505,12 +528,21 @@ function spawnMpFish(data){
     }
 
     if(Game.effects.magnetActive && !type.isMagnet){
-      tryMagnetPull();
+      tryMagnetPull(dt);
       requestAnimationFrame(animate);
       return;
     }
 
     const elapsed = performance.now() - localStart;
+    if(data.trash){
+      if(elapsed >= duration) return; // 서버의 fishExpire 이벤트가 제거를 처리해요
+      const c = trashCenter(data.trash, elapsed / 1000, window.innerWidth, window.innerHeight);
+      curLeft = c.x - half; curTop = c.y - half;
+      fish.style.left = curLeft + 'px';
+      fish.style.top = curTop + 'px';
+      requestAnimationFrame(animate);
+      return;
+    }
     const progress = elapsed / duration;
     if(progress >= 1) return; // 서버의 fishExpire 이벤트가 제거를 처리해요
     curLeft = data.fromLeft

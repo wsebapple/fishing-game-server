@@ -150,3 +150,81 @@ test('boss: a partial hit keeps it alive, the final hit scores and schedules the
     await fs.rm(directory, { recursive: true, force: true });
   }
 });
+
+test('fierce bosses eat only point fish, and the king crab throws trash that costs points', async () => {
+  const { hitbox } = require('../public/game-config.json');
+  const { regularFishCenter, trashCenter } = require('../public/js/shared/boss-math');
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-test-'));
+  const { server, io, roomApi } = createApp({ leaderboardFile: path.join(directory, 'scores.json') });
+  await new Promise(resolve => server.listen(0, resolve));
+  const url = 'http://127.0.0.1:' + server.address().port;
+  const a = client(url, { transports: ['websocket'] });
+  const waitFor = (event, ms) => new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Timeout: ' + event)), ms);
+    a.once(event, value => { clearTimeout(timeout); resolve(value); });
+  });
+  try {
+    await once(a, 'connect');
+    const state = once(a, 'roomState');
+    a.emit('joinRoom', { roomCode: 'fierce', name: 'A' });
+    await state;
+    const room = roomApi.rooms.FIERCE;
+    clearInterval(room.spawnTimer); clearTimeout(room.bossTimer); clearTimeout(room.rivalTimer);
+    for (const id of Object.keys(room.fish)) delete room.fish[id];
+
+    // 먹는 보스 바로 옆에 점수 물고기(참치)와 감점 생물(해파리)을 둬요. 해파리가 더 가까워도 참치만 먹어요.
+    const eater = bossTypes.find(b => b.eats);
+    const W = hitbox.eatRefWidth, H = hitbox.eatRefHeight;
+    const now = Date.now();
+    const boss = { id: 'boss950', type: eater, seed: 0.3, startTime: now, durationMs: 28000, hitsNeeded: 3, hitsLanded: 0 };
+    const p = bossWanderPosition(boss.seed, 0.15, eater);
+    const bx = p.xRatio * W + eater.half, by = p.yRatio * H + eater.half;
+    const fishAt = (id, type, dx) => {
+      const durationMs = 1e7; // 거의 멈춰 있게
+      const f = { id, type, fromLeft: true, y: (by - hitbox.fishHalf) / H, startTime: now, durationMs };
+      f.startTime = now - ((bx + dx + 50 - hitbox.fishHalf) / (W + 100)) * durationMs;
+      assert.ok(Math.abs(regularFishCenter(f, now - f.startTime, W, H, hitbox.fishHalf).x - (bx + dx)) < 0.01);
+      room.fish[id] = f;
+    };
+    const tuna = fishTypes.find(f => f.name === '참치');
+    const jelly = fishTypes.find(f => f.points < 0 && !f.isBossTrash);
+    fishAt('f951', jelly, 0);
+    fishAt('f952', tuna, 25);
+    room.fish.boss950 = boss;
+    const eaten = waitFor('fishEaten', 2000);
+    roomApi.startBossActions('FIERCE', room, boss);
+    const info = await eaten;
+    assert.deepEqual(info, { id: 'f952', bossId: 'boss950' });
+    assert.equal(room.fish.f952, undefined);
+    assert.ok(room.fish.f951, 'negative-point creatures are never eaten');
+    delete room.fish.boss950;
+    await new Promise(resolve => setTimeout(resolve, 150));
+    assert.equal(room.bossActTimer, null, 'boss actions stop once the boss is gone');
+
+    // 대왕게: everyMs마다 쓰레기를 뿌리고, 그걸 잡으면 점수가 깎여요
+    const crab = bossTypes.find(b => b.throwsTrash);
+    const crabBoss = { id: 'boss960', type: crab, seed: 0, startTime: Date.now(), durationMs: 28000, hitsNeeded: 4, hitsLanded: 0 };
+    room.fish.boss960 = crabBoss;
+    const spawned = waitFor('fishSpawn', crab.throwsTrash.everyMs + 1500);
+    roomApi.startBossActions('FIERCE', room, crabBoss);
+    const trash = await spawned;
+    assert.equal(trash.type.isBossTrash, true);
+    assert.ok(trash.trash);
+    delete room.fish.boss960;
+    room.players[a.id].score = 10;
+    const width = 1280, height = 800;
+    const c = trashCenter(trash.trash, (Date.now() - trash.startTime) / 1000, width, height);
+    a.emit('boatMove', { xRatio: c.x / width, yRatio: c.y / height, width, height });
+    const caught = once(a, 'fishCaught');
+    a.emit('catchAttempt', { fishId: trash.id });
+    assert.equal((await caught).points, trash.type.points);
+    assert.equal(room.players[a.id].score, 10 + trash.type.points);
+  } finally {
+    a.disconnect();
+    for (const code of Object.keys(roomApi.rooms)) {
+      for (const id of Object.keys(roomApi.rooms[code].players)) roomApi.removePlayer(code, id);
+    }
+    await new Promise(resolve => io.close(resolve));
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});

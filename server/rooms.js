@@ -1,5 +1,9 @@
-const { levelStages, bossTypes } = require('../public/game-config.json');
+const { levelStages, bossTypes, fishTypes, hitbox } = require('../public/game-config.json');
 const { pickFishType, fishDurationMs } = require("./fish");
+const { bossWanderPosition, isBossStealthed, isEdible, regularFishCenter, makeTrashThrows } = require('../public/js/shared/boss-math');
+const TRASH_TYPES = fishTypes.filter(f => f.isBossTrash);
+const TRASH_LIFETIME_MS = 6000;
+const BOSS_ACT_INTERVAL_MS = 100;
 const ROUND_SECONDS = 60, RESET_DELAY_MS = 6000, MAX_ROOMS = 200, MAX_PLAYERS_PER_ROOM = 20;
 const BOSS_ENCOUNTER_MS = 28000;
 function createRooms(io, leaderboard) {
@@ -27,6 +31,7 @@ function getRoom(code){
       fishIdCounter: 0,
       spawnTimer: null,
       bossTimer: null,
+      bossActTimer: null, // 보스가 물고기를 잡아먹거나 쓰레기를 뿌리는 행동 반복
       timerInterval: null,
       rivalTimer: null,
       weatherTimer: null,
@@ -44,6 +49,21 @@ function getRoom(code){
   return rooms[code];
 }
 
+// 물고기를 방에 넣고 모두에게 알린 뒤, 시간이 다 되면 스스로 사라지게 예약해요
+function addFishToRoom(code, room, fishData, onExpire){
+  room.fish[fishData.id] = fishData;
+  io.to(code).emit('fishSpawn', fishData);
+  const expiry = setTimeout(() => {
+    room.fishTimers.delete(expiry);
+    if(rooms[code] === room && room.fish[fishData.id]){
+      delete room.fish[fishData.id];
+      io.to(code).emit('fishExpire', { id: fishData.id });
+      if(onExpire) onExpire();
+    }
+  }, fishData.durationMs);
+  room.fishTimers.add(expiry);
+}
+
 function spawnFishForRoom(code){
   const room = rooms[code];
   if(!room) return;
@@ -53,18 +73,7 @@ function spawnFishForRoom(code){
   const fromLeft = Math.random() < 0.5;
   const y = 0.2 + Math.random() * 0.55;
   const durationMs = fishDurationMs(type.speed);
-  const fishData = { id, type, fromLeft, y, startTime: Date.now(), durationMs };
-  room.fish[id] = fishData;
-  io.to(code).emit('fishSpawn', fishData);
-
-  const expiry = setTimeout(() => {
-    room.fishTimers.delete(expiry);
-    if(rooms[code] === room && room.fish[id]){
-      delete room.fish[id];
-      io.to(code).emit('fishExpire', { id });
-    }
-  }, durationMs);
-  room.fishTimers.add(expiry);
+  addFishToRoom(code, room, { id, type, fromLeft, y, startTime: Date.now(), durationMs });
 }
 
 function scheduleBossForRoom(code){
@@ -84,18 +93,58 @@ function spawnBossForRoom(code){
   const seed = Math.random(); // 화면을 누비는 경로를 친구들 모두가 똑같이 그릴 수 있게 하는 값이에요
   const hitsNeeded = bossType.hitsMin + Math.floor(Math.random() * (bossType.hitsMax - bossType.hitsMin + 1));
   const fishData = { id, type: bossType, seed, startTime: Date.now(), durationMs: BOSS_ENCOUNTER_MS, hitsNeeded, hitsLanded: 0 };
-  room.fish[id] = fishData;
-  io.to(code).emit('fishSpawn', fishData);
+  addFishToRoom(code, room, fishData, () => {
+    stopBossActions(room);
+    scheduleBossForRoom(code); // 보스가 완전히 도망가면 다음 보스를 또 예약해요
+  });
+  startBossActions(code, room, fishData);
+}
 
-  const expiry = setTimeout(() => {
-    room.fishTimers.delete(expiry);
-    if(rooms[code] === room && room.fish[id]){
-      delete room.fish[id];
-      io.to(code).emit('fishExpire', { id });
-      scheduleBossForRoom(code); // 보스가 완전히 도망가면 다음 보스를 또 예약해요
+function stopBossActions(room){
+  clearInterval(room.bossActTimer);
+  room.bossActTimer = null;
+}
+
+// 사나운 보스는 점수 물고기를 잡아먹고, 대왕게는 감점 쓰레기를 뿌려요.
+// 친구마다 화면 크기가 달라서, 서버는 기준 화면(eatRefWidth x eatRefHeight)에서 겹치는지 계산해요.
+function startBossActions(code, room, boss){
+  stopBossActions(room);
+  const type = boss.type;
+  if(!type.eats && !type.throwsTrash) return;
+  let nextEatAt = 0;
+  let nextThrowAt = Date.now() + (type.throwsTrash ? type.throwsTrash.everyMs : 0);
+  room.bossActTimer = setInterval(() => {
+    if(rooms[code] !== room || room.fish[boss.id] !== boss){ stopBossActions(room); return; }
+    const now = Date.now();
+    const elapsedSec = (now - boss.startTime) / 1000;
+    if(isBossStealthed(boss.seed, elapsedSec, type)) return; // 모래 속에 숨어 있을 땐 아무것도 안 해요
+    const pos = bossWanderPosition(boss.seed, elapsedSec, type);
+
+    if(type.eats && now >= nextEatAt){
+      const W = hitbox.eatRefWidth, H = hitbox.eatRefHeight;
+      const bx = pos.xRatio * W + type.half, by = pos.yRatio * H + type.half;
+      let prey = null, preyDist = Infinity;
+      for(const f of Object.values(room.fish)){
+        if(!isEdible(f.type) || f.trash) continue;
+        const c = regularFishCenter(f, now - f.startTime, W, H, hitbox.fishHalf);
+        const d = Math.hypot(c.x - bx, c.y - by);
+        if(d <= type.catchRadius && d < preyDist){ prey = f; preyDist = d; }
+      }
+      if(prey){
+        delete room.fish[prey.id];
+        io.to(code).emit('fishEaten', { id: prey.id, bossId: boss.id });
+        nextEatAt = now + type.eatCooldownMs;
+      }
     }
-  }, BOSS_ENCOUNTER_MS);
-  room.fishTimers.add(expiry);
+
+    if(type.throwsTrash && now >= nextThrowAt && TRASH_TYPES.length){
+      nextThrowAt = now + type.throwsTrash.everyMs;
+      makeTrashThrows(pos, type.half, type.throwsTrash.count).forEach(trash => {
+        const trashType = TRASH_TYPES[Math.floor(Math.random() * TRASH_TYPES.length)];
+        addFishToRoom(code, room, { id: 'f' + (room.fishIdCounter++), type: trashType, trash, startTime: now, durationMs: TRASH_LIFETIME_MS });
+      });
+    }
+  }, BOSS_ACT_INTERVAL_MS);
 }
 
 // 지금 단계 + 날씨 상태에 맞는 스폰 속도로 물고기 생성 타이머를 다시 맞춰요
@@ -139,7 +188,7 @@ function tryStealForRoom(code){
   if(!room) return;
 
   // 보스는 친구들이 직접 잡거나 도망가게 두고, 해적은 노리지 않아요
-  const stealable = Object.values(room.fish).filter(f => !f.type.isBoss);
+  const stealable = Object.values(room.fish).filter(f => !f.type.isBoss && !f.type.isBossTrash);
   if(stealable.length === 0){ scheduleRivalForRoom(code); return; }
 
   // 보물통이 떠 있으면 그것부터 노려요!
@@ -197,6 +246,7 @@ function endRound(code){
 
   clearInterval(room.spawnTimer);
   clearTimeout(room.bossTimer);
+  stopBossActions(room);
   clearTimeout(room.rivalTimer);
   clearTimeout(room.weatherTimer);
   clearTimeout(room.weatherEndTimer);
@@ -273,12 +323,12 @@ function removePlayer(code, id) {
   delete room.players[id];
   io.to(code).emit('playerListUpdate', room.players);
   if (Object.keys(room.players).length) return;
-  for (const timer of ['spawnTimer', 'timerInterval']) clearInterval(room[timer]);
+  for (const timer of ['spawnTimer', 'timerInterval', 'bossActTimer']) clearInterval(room[timer]);
   for (const timer of ['bossTimer', 'rivalTimer', 'weatherTimer', 'weatherEndTimer', 'resetTimer']) clearTimeout(room[timer]);
   for (const expiry of room.fishTimers) clearTimeout(expiry);
   room.fishTimers.clear();
   delete rooms[code];
 }
-return { rooms, getRoom, startRound, endRound, removePlayer, checkLevelUpForRoom, scheduleBossForRoom, broadcastTime, normalizeRoomCode, normalizeName, MAX_ROOMS, MAX_PLAYERS_PER_ROOM, ROUND_SECONDS };
+return { rooms, getRoom, startRound, endRound, removePlayer, checkLevelUpForRoom, scheduleBossForRoom, stopBossActions, startBossActions, broadcastTime, normalizeRoomCode, normalizeName, MAX_ROOMS, MAX_PLAYERS_PER_ROOM, ROUND_SECONDS };
 }
 module.exports = { createRooms };
