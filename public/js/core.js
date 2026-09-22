@@ -81,4 +81,5 @@ let mpBossSeedById = {}; // 피격 후 서버가 갱신한 보스 이동 경로
 let mpBossSeedTransitionById = {}; // 피격 직후 새 경로로 부드럽게 전환하기 위한 상태
 let mpCatchResetTimers = {};
 let mpCaughtSent = {}; // fishId -> 캐치 요청을 보내고 서버 응답(fishCaught/fishExpire/bossInked)을 기다리는 중인지
+let mpCatchRetryAt = {}; // fishId -> 서버가 캐치를 거절했을 때 다시 시도해도 되는 시각(performance.now() 기준)
 let mpBossInvulnUntil = {}; // fishId -> 먹물을 뿌리고 도망간 직후, 같은 스침이 연속으로 여러 번 잡히지 않게 잠깐 무적인 시각(performance.now() 기준)

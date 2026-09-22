@@ -667,7 +667,7 @@
     const response = await fetch("/game-config.json");
     if (!response.ok) throw new Error("설정을 불러올 수 없습니다.");
     window.gameConfig = await response.json();
-    for (const name of ["core", "audio", "single", "ui", "multiplayer"]) {
+    for (const name of ["core", "audio", "single", "ui", "shared/boss-math", "multiplayer"]) {
       await new Promise((resolve, reject) => {
         const script = document.createElement("script");
         script.src = "/js/" + name + ".js";

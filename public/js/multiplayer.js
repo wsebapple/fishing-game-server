@@ -62,7 +62,7 @@ function joinMultiplayer(roomCodeOverride){
       mpConnecting = false;
       if(!mpActive) startMultiplayerMode(); // 방 입장이 확정된 시점에만 화면을 전환해요
       document.querySelectorAll('.fish').forEach(f => f.remove());
-      mpFishEls = {}; mpFishTypeById = {}; mpCaughtSent = {}; mpBossInvulnUntil = {}; mpBossSeedById = {};
+      mpFishEls = {}; mpFishTypeById = {}; mpCaughtSent = {}; mpBossInvulnUntil = {}; mpCatchRetryAt = {}; mpBossSeedById = {};
       stopMpWeather();
       if (state.activeWeather) startMpWeather(state.activeWeather);
       if(state.code) document.getElementById('mpRoomCodeDisplay').textContent = '방 코드: ' + state.code;
@@ -85,6 +85,8 @@ function joinMultiplayer(roomCodeOverride){
     mpSocket.on('catchRejected', ({ fishId }) => {
       clearTimeout(mpCatchResetTimers[fishId]); delete mpCatchResetTimers[fishId];
       mpCaughtSent[fishId] = false;
+      // 거절되자마자 다음 프레임에 또 보내면 초당 수십 번 전송하게 돼요. 잠깐 쉬었다가 다시 시도해요.
+      mpCatchRetryAt[fishId] = performance.now() + 200;
     });
 
     mpSocket.on('fishSpawn', (data) => {
@@ -112,6 +114,7 @@ function joinMultiplayer(roomCodeOverride){
       delete mpCaughtSent[id];
       clearTimeout(mpCatchResetTimers[id]); delete mpCatchResetTimers[id];
       delete mpBossInvulnUntil[id];
+      delete mpCatchRetryAt[id];
       delete mpBossSeedById[id];
       delete mpBossSeedTransitionById[id];
       clearTimeout(mpCatchResetTimers[id]); delete mpCatchResetTimers[id];
@@ -172,7 +175,7 @@ function joinMultiplayer(roomCodeOverride){
       mpFishEls = {};
       mpFishTypeById = {};
       mpCaughtSent = {};
-      mpBossInvulnUntil = {}; mpBossSeedById = {};
+      mpBossInvulnUntil = {}; mpCatchRetryAt = {}; mpBossSeedById = {};
       stopMpWeather();
       showBanner('🎣 새 라운드 시작!');
     });
@@ -289,7 +292,7 @@ function joinMultiplayer(roomCodeOverride){
         setTimeout(() => {
           el.remove();
           delete mpCaughtSent[fishId];
-          delete mpBossInvulnUntil[fishId];
+          delete mpBossInvulnUntil[fishId]; delete mpCatchRetryAt[fishId];
           delete mpFishTypeById[fishId];
           delete mpBossSeedById[fishId];
           delete mpBossSeedTransitionById[fishId];
@@ -297,7 +300,7 @@ function joinMultiplayer(roomCodeOverride){
         delete mpFishEls[fishId];
       } else {
         delete mpCaughtSent[fishId];
-        delete mpBossInvulnUntil[fishId];
+        delete mpBossInvulnUntil[fishId]; delete mpCatchRetryAt[fishId];
       delete mpFishTypeById[fishId];
       delete mpBossSeedById[fishId];
       delete mpBossSeedTransitionById[fishId];
@@ -385,55 +388,24 @@ function updateMpTime(t){
   document.getElementById('timeLeft').textContent = timeLeft;
 }
 
-// 보스가 화면을 이리저리 누비는 경로를 "흐른 시간"만의 함수로 계산해요.
-// (프레임마다 조금씩 움직이는 방식이 아니라 절대 시간 기준으로 계산해서,
-// 친구마다 프레임 속도가 달라도 다들 거의 같은 위치에 보스가 보여요)
-function bossWanderPosition(seed, elapsedSec, type){
-  const speedMul = ((type && type.speedMul) || 1) * 1.25;
-  const jitterBoost = (type && type.jitter) ? 2.75 : 1;
-  const fx = (0.16 + seed * 0.12) * speedMul * jitterBoost;
-  const fy = (0.11 + (1 - seed) * 0.09) * speedMul * jitterBoost;
-  const px = seed * Math.PI * 2;
-  const py = (1 - seed) * Math.PI * 2;
-  let xRatio = 0.5 + 0.42 * Math.sin(fx * elapsedSec + px) * Math.cos(0.29 * elapsedSec * speedMul + py);
-  const yRatio = 0.5 + 0.33 * Math.sin(fy * elapsedSec + py);
+// 보스 이동/은신 계산식(bossWanderPosition, isBossStealthed)은 서버와 같이 쓰는
+// js/shared/boss-math.js에 있어요.
 
-  if(type && type.dash){
-    // 상어: 주기적으로 순간 돌진하는 느낌을 "시간만의 함수"로 표현해요(모든 클라이언트가 똑같이 보도록)
-    const cyclePos = ((elapsedSec * 0.34 + seed * 3) % 1 + 1) % 1;
-    if(cyclePos > 0.78){
-      const burstT = (cyclePos - 0.78) / 0.22;
-      const dashDir = Math.sin(fx * elapsedSec + px) >= 0 ? 1 : -1;
-      xRatio = 0.5 + 0.46 * dashDir * Math.min(1, burstT * 3.2);
-    }
-  }
-
-  return {
-    xRatio: Math.min(0.96, Math.max(0.04, xRatio)),
-    yRatio: Math.min(0.88, Math.max(0.12, yRatio)),
-  };
-}
-
+// 피격 후 서버가 새 경로(seed)를 주면 650ms 동안 부드럽게 옮겨가요. 전환이 끝난 뒤에는
+// 스폰 때의 옛 seed가 아니라 최신 seed를 써야 서버 판정 위치와 화면 위치가 맞아요.
 function getMpBossSeed(id, fallback, now = performance.now()){
+  const current = typeof mpBossSeedById[id] === 'number' ? mpBossSeedById[id] : fallback;
   const transition = mpBossSeedTransitionById[id];
-  if(!transition || typeof transition.from !== 'number') return fallback;
+  if(!transition || typeof transition.from !== 'number') return current;
   const progress = Math.min(1, Math.max(0, (now - transition.started) / 650));
   if(progress >= 1){ delete mpBossSeedTransitionById[id]; return transition.to; }
   return transition.from + (transition.to - transition.from) * progress;
 }
 
-// 대왕게: 주기적으로 모래 속에 잠깐 숨어서 무적이 돼요 (역시 시간만의 함수라 모두 같은 타이밍에 보여요)
-function isBossStealthedNow(seed, elapsedSec, type){
-  if(!type || !type.stealth) return false;
-  const cycle = 5, hideFor = 2; // 초 단위
-  const t = ((elapsedSec + seed * 10) % cycle + cycle) % cycle;
-  return t < hideFor;
-}
-
 function spawnMpFish(data){
   const type = data.type;
   const fish = document.createElement('div');
-  fish.className = 'fish';
+  fish.className = type.isBoss ? 'fish boss-fish' : 'fish';
   fish.textContent = type.emoji;
   fish.dataset.name = type.name;
   if(type.isBoss){
@@ -494,10 +466,11 @@ function spawnMpFish(data){
     // 그 순간에는 연속으로 여러 번 스친 것으로 처리되지 않아요
     const bossInvulnerable = type.isBoss && performance.now() < (mpBossInvulnUntil[data.id] || 0);
     const elapsedSec = (performance.now() - localStart) / 1000;
-    const stealthed = type.isBoss && isBossStealthedNow(getMpBossSeed(data.id, data.seed), elapsedSec, type);
+    const stealthed = type.isBoss && isBossStealthed(getMpBossSeed(data.id, data.seed), elapsedSec, type);
 
     // 낚싯바늘이 물고기에 닿으면 클릭/탭 없이도 자동으로 캐치를 시도해요 (숨어있는 동안은 안 닿아요)
-    if(!bossInvulnerable && !stealthed && isNearHook(curLeft + half, curTop + half, catchRadius)){
+    const retryBlocked = performance.now() < (mpCatchRetryAt[data.id] || 0);
+    if(!bossInvulnerable && !stealthed && !retryBlocked && isNearHook(curLeft + half, curTop + half, catchRadius)){
       mpCaughtSent[data.id] = true;
       clearTimeout(mpCatchResetTimers[data.id]);
       mpCatchResetTimers[data.id] = setTimeout(() => {
@@ -505,6 +478,9 @@ function spawnMpFish(data){
         mpCaughtSent[data.id] = false;
         delete mpCatchResetTimers[data.id];
       }, 1800);
+      // 서버는 마지막으로 받은 바늘 위치로 판정해요. 150ms마다 보내는 위치는 그새 낡았을 수 있어서
+      // 판정 요청 직전에 지금 위치를 먼저 보내요(같은 소켓이라 순서가 보장돼요).
+      sendBoatPosition();
       if(mpSocket) mpSocket.emit('catchAttempt', { fishId: data.id });
       requestAnimationFrame(animate);
       return;
@@ -667,6 +643,7 @@ function startMultiplayerMode(){
   mpFishTypeById = {};
   mpCaughtSent = {};
   mpBossInvulnUntil = {};
+  mpCatchRetryAt = {};
   mpBossSeedById = {};
   mpBossSeedTransitionById = {};
   Object.values(mpCatchResetTimers).forEach(clearTimeout); mpCatchResetTimers = {};
@@ -695,6 +672,7 @@ function leaveMultiplayer(){
   mpFishTypeById = {};
   mpCaughtSent = {};
   mpBossInvulnUntil = {};
+  mpCatchRetryAt = {};
   mpBossSeedById = {};
   mpBossSeedTransitionById = {};
   Object.values(mpCatchResetTimers).forEach(clearTimeout); mpCatchResetTimers = {};

@@ -1,4 +1,12 @@
 {
+  "hitbox": {
+    "fishHalf": 35,
+    "fishCatchRadius": 42,
+    "bossHalf": 59,
+    "bossCatchRadius": 70,
+    "fishServerTolerance": 45,
+    "bossServerTolerance": 10
+  },
   "levelStages": [
     {
       "level": 1,

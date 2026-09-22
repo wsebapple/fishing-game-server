@@ -92,8 +92,8 @@ function updateBoatAndLine(){
 requestAnimationFrame(updateBoatAndLine);
 
 // 물고기 박스 크기의 절반(대략치) + 바늘이 닿았다고 쳐줄 반지름이에요
-const FISH_HALF = 35, FISH_CATCH_RADIUS = 42;
-const BOSS_HALF = 59, BOSS_CATCH_RADIUS = 70;
+const FISH_HALF = gameConfig.hitbox.fishHalf, FISH_CATCH_RADIUS = gameConfig.hitbox.fishCatchRadius;
+const BOSS_HALF = gameConfig.hitbox.bossHalf, BOSS_CATCH_RADIUS = gameConfig.hitbox.bossCatchRadius;
 
 // 바늘이 (centerX, centerY)에 있는 물고기에 닿았는지, DOM을 안 읽고 숫자로만 확인해요
 function isNearHook(centerX, centerY, catchRadius){
