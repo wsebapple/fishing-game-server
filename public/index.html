@@ -523,6 +523,12 @@
     font-size:17px; pointer-events:none;
   }
 
+  /* 스크립트 오류 안내(누르면 닫혀요) */
+  #errorReport{
+    position:fixed; left:8px; right:8px; bottom:8px; z-index:20;
+    background:rgba(120,20,20,0.9); color:#fff; font-size:12px; line-height:1.4;
+    padding:6px 10px; border-radius:8px; font-family:monospace; word-break:break-all;
+  }
   /* 좁은 폰 화면용 조정: 반드시 스타일시트 맨 끝에 둬야 같은 우선순위의 위 규칙들을 확실히 덮어써요 */
   @media (max-width: 480px){
     #hud{ gap:6px; }
@@ -705,22 +711,47 @@
 </div>
 
 <script>
+// 게임 중에 스크립트 오류가 나면 화면 아래에 작게 보여줘요. 아이폰처럼 개발자 도구를 보기 어려운 기기에서
+// 어떤 오류인지 알려주면 바로 고칠 수 있어요. (같은 오류는 한 번만 보여줘요)
+(() => {
+  const shown = new Set();
+  function report(message, where){
+    const text = message + (where ? " (" + where + ")" : "");
+    if(shown.has(text) || shown.size >= 3) return;
+    shown.add(text);
+    let box = document.getElementById("errorReport");
+    if(!box){
+      box = document.createElement("div");
+      box.id = "errorReport";
+      box.addEventListener("click", () => box.remove());
+      document.body.appendChild(box);
+    }
+    const line = document.createElement("div");
+    line.textContent = "⚠️ 오류: " + text;
+    box.appendChild(line);
+  }
+  window.addEventListener("error", e => report(e.message, e.filename ? e.filename.split("/").pop().split("?")[0] + ":" + e.lineno : ""));
+  window.addEventListener("unhandledrejection", e => report(String(e.reason && e.reason.message || e.reason)));
+})();
 (async () => {
   const modules = ["core", "shared/boss-math", "audio", "single", "ui", "multiplayer"];
+  // 서버가 배포 버전으로 바꿔 넣어요. 버전이 바뀌면 주소도 바뀌어서 예전 캐시 파일이 섞이지 않아요.
+  const version = "__BUILD_ID__";
+  const src = file => file + (version.startsWith("__") ? "" : "?v=" + version);
   try {
     // 설정 파일을 받는 동안 게임 스크립트도 미리 같이 내려받아 둬요(실행은 설정이 준비된 뒤에).
     for (const name of modules) {
       const link = document.createElement("link");
-      link.rel = "preload"; link.as = "script"; link.href = "/js/" + name + ".js";
+      link.rel = "preload"; link.as = "script"; link.href = src("/js/" + name + ".js");
       document.head.appendChild(link);
     }
-    const response = await fetch("/game-config.json");
+    const response = await fetch(src("/game-config.json"));
     if (!response.ok) throw new Error("설정을 불러올 수 없습니다.");
     window.gameConfig = await response.json();
     // async=false: 한꺼번에 붙여도 적어둔 순서대로 실행돼요(core가 먼저, multiplayer가 마지막).
     await Promise.all(modules.map(name => new Promise((resolve, reject) => {
       const script = document.createElement("script");
-      script.src = "/js/" + name + ".js";
+      script.src = src("/js/" + name + ".js");
       script.async = false;
       script.onload = resolve; script.onerror = reject;
       document.body.appendChild(script);
