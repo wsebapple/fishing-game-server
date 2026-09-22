@@ -486,7 +486,9 @@ function spawnMpFish(data){
       // 서버는 마지막으로 받은 바늘 위치로 판정해요. 150ms마다 보내는 위치는 그새 낡았을 수 있어서
       // 판정 요청 직전에 지금 위치를 먼저 보내요(같은 소켓이라 순서가 보장돼요).
       sendBoatPosition();
-      if(Game.mp.socket) Game.mp.socket.emit('catchAttempt', { fishId: data.id });
+      // 화면은 네트워크 지연만큼 과거 모습이에요. 내가 보고 있던 시점을 같이 보내면
+      // 서버가 그 시점의 위치로 판정해줘요(빠른 보스가 닿아 보이는데 안 잡히던 문제).
+      if(Game.mp.socket) Game.mp.socket.emit('catchAttempt', { fishId: data.id, viewElapsedMs: Math.max(0, Math.round(performance.now() - localStart)) });
       requestAnimationFrame(animate);
       return;
     }

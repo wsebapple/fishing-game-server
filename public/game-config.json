@@ -5,7 +5,8 @@
     "bossHalf": 59,
     "bossCatchRadius": 70,
     "fishServerTolerance": 45,
-    "bossServerTolerance": 10
+    "bossServerTolerance": 10,
+    "maxLagCompensationMs": 800
   },
   "levelStages": [
     {
