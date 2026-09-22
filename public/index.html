@@ -400,10 +400,74 @@
     0%,100%{ rotate:-12deg; }
     50%{ rotate:12deg; }
   }
-  /* 사나운 보스가 물고기를 한입에 삼킬 때: 보스 입 쪽으로 빨려 들어가며 작아져요 */
+  /* 사나운 보스가 물고기를 삼킬 때: 물고기가 빙글빙글 돌며 보스 입으로 빨려 들어가요.
+     (폰에서도 부드럽도록 transform/opacity만 움직여요) */
   .fish.eaten{
-    transition:left .25s ease-in, top .25s ease-in, transform .25s ease-in, opacity .25s ease-in;
+    transition:left .4s ease-in, top .4s ease-in, transform .4s ease-in, opacity .4s ease-in;
+    transform:rotate(540deg) scale(0.15) !important;
     opacity:0; pointer-events:none;
+  }
+  /* 보스가 덥석 무는 동작: 물고기 쪽(--lx, --ly)으로 확 튀어나갔다가 돌아와요.
+     보스의 좌우 방향(transform)과 따로 움직이도록 translate/scale 속성을 써요. */
+  .boss-fish.lunge{ animation:bossLunge .35s ease-out; }
+  @keyframes bossLunge{
+    0%,100%{ translate:0 0; scale:1; }
+    40%{ translate:var(--lx, 0) var(--ly, 0); scale:1.25; }
+  }
+  /* 덥석! 할 때 튀는 💥 */
+  .chompBurst{
+    position:absolute; z-index:8; pointer-events:none; font-size:34px;
+    transform:translate(-50%,-50%); animation:chompBurst .5s ease-out forwards;
+  }
+  @keyframes chompBurst{
+    0%{ opacity:1; scale:0.4; }
+    60%{ opacity:1; scale:1.3; }
+    100%{ opacity:0; scale:1.5; }
+  }
+  /* 보스 머리 위에 잠깐 뜨는 말풍선(😋 / ❗) */
+  .bossEmote{
+    position:absolute; z-index:8; pointer-events:none; font-size:30px;
+    transform:translate(-50%,-100%); animation:bossEmote .9s ease-out forwards;
+  }
+  @keyframes bossEmote{
+    0%{ opacity:0; translate:0 10px; scale:0.5; }
+    25%{ opacity:1; translate:0 0; scale:1.15; }
+    75%{ opacity:1; translate:0 -12px; scale:1; }
+    100%{ opacity:0; translate:0 -22px; scale:1; }
+  }
+  /* 바늘 가까이서 보스가 물고기를 먹으면 화면이 살짝 흔들려요 */
+  #scene.shake{ animation:sceneShake .3s linear; }
+  @keyframes sceneShake{
+    0%,100%{ translate:0 0; }
+    20%{ translate:-5px 2px; }
+    40%{ translate:4px -3px; }
+    60%{ translate:-3px 3px; }
+    80%{ translate:2px -1px; }
+  }
+  /* 대왕게가 쓰레기를 뿌리기 직전 예고: 빨갛게 깜빡이며 부풀어요 */
+  .boss-fish.warn{ animation:bossWarn .2s ease-in-out 3; }
+  @keyframes bossWarn{
+    0%,100%{ scale:1; text-shadow:none; }
+    50%{ scale:1.12; text-shadow:0 0 14px #ff3b3b, 0 0 4px #ff3b3b; }
+  }
+  /* 쓰레기를 던지는 순간: 집게를 휘두르듯 몸을 흔들어요 */
+  .boss-fish.throwing{ animation:bossThrow .4s ease-in-out; }
+  @keyframes bossThrow{
+    0%,100%{ rotate:0deg; }
+    25%{ rotate:-16deg; }
+    60%{ rotate:14deg; }
+  }
+  /* 쓰레기를 뿌릴 때 퍼지는 흙탕물 구름 */
+  .mudCloud{
+    position:absolute; z-index:2; pointer-events:none;
+    width:220px; height:220px; margin-left:-110px; margin-top:-110px; border-radius:50%;
+    background:radial-gradient(circle, rgba(110,78,40,0.9) 0%, rgba(110,78,40,0.6) 40%, rgba(110,78,40,0) 70%);
+    animation:mudPuff .9s ease-out forwards;
+  }
+  @keyframes mudPuff{
+    0%{ opacity:0; scale:0.3; }
+    30%{ opacity:1; }
+    100%{ opacity:0; scale:1.4; }
   }
   /* 대왕게가 모래 속으로 잠깐 숨을 때 (filter는 보스 고유 색조와 합쳐야 해서 JS에서 함께 설정해요) */
   .boss-fish.stealthed{

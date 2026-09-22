@@ -132,4 +132,5 @@ Game.mp = {
   roundEndCountdownTimer: null,
   ghostBoats: {}, // socket.id -> 그 친구의 배 { el, hookEl, path, boat, hookX, hookY ... }
   boatSendTimer: null,
+  lastThrowKey: '', // 대왕게 던지기 연출을 한 번에 여러 개 오는 쓰레기마다 반복하지 않게 기억해요
 };

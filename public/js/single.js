@@ -363,10 +363,45 @@ function spawnTrash(trash){
   requestAnimationFrame(animate);
 }
 
+// 잠깐 떴다가 사라지는 연출용 글자/이모지 하나를 (x, y)에 띄워요
+function spawnEffectText(className, text, x, y, lifeMs){
+  const el = document.createElement('div');
+  el.className = className;
+  el.textContent = text;
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+  Game.dom.scene.appendChild(el);
+  setTimeout(() => el.remove(), lifeMs);
+}
+
+// 보스 엘리먼트에 연출용 class를 잠깐 붙였다 떼요 (같은 연출을 연달아 다시 틀 수 있게 reflow로 되감아요)
+function flashBossClass(bossEl, className, ms){
+  if(!bossEl || !bossEl.isConnected) return;
+  bossEl.classList.remove(className);
+  void bossEl.offsetWidth;
+  bossEl.classList.add(className);
+  setTimeout(() => bossEl.classList.remove(className), ms);
+}
+
 // 사나운 보스가 물고기를 삼키는 연출 (싱글·멀티 공통). 점수는 아무도 못 받아요.
-function playEatEffect(fishEl, bossCenterX, bossCenterY, bossType){
+// 보스가 물고기 쪽으로 덥석 튀어나가고(💥), 물고기는 빙글빙글 돌며 입으로 빨려 들어가요.
+// 머리 위엔 😋, 바늘이 가까우면 화면도 살짝 흔들려요.
+function playEatEffect(fishEl, bossCenterX, bossCenterY, bossType, bossEl){
   if(!fishEl || !fishEl.isConnected || fishEl.classList.contains('eaten')) return;
   const half = Game.config.hitbox.fishHalf;
+  const fishX = (parseFloat(fishEl.style.left) || 0) + half, fishY = (parseFloat(fishEl.style.top) || 0) + half;
+  const bossHalf = bossType.half || Game.config.hitbox.bossHalf;
+
+  if(bossEl){
+    const dx = fishX - bossCenterX, dy = fishY - bossCenterY;
+    const dist = Math.max(Math.hypot(dx, dy), 1);
+    const reach = Math.min(dist * 0.6, 40);
+    bossEl.style.setProperty('--lx', (dx / dist * reach).toFixed(1) + 'px');
+    bossEl.style.setProperty('--ly', (dy / dist * reach).toFixed(1) + 'px');
+    flashBossClass(bossEl, 'lunge', 360);
+  }
+  spawnEffectText('chompBurst', '💥', (fishX + bossCenterX) / 2, (fishY + bossCenterY) / 2, 520);
+  spawnEffectText('bossEmote', '😋', bossCenterX, bossCenterY - bossHalf, 920);
   const pop = document.createElement('div');
   pop.className = 'caughtPop';
   pop.textContent = bossType.emoji + ' 냠! 먹혔어요';
@@ -376,12 +411,31 @@ function playEatEffect(fishEl, bossCenterX, bossCenterY, bossType){
   pop.style.top = fishEl.style.top;
   Game.dom.scene.appendChild(pop);
   setTimeout(() => pop.remove(), 900);
+
+  if(Math.hypot(Game.hook.x - bossCenterX, Game.hook.y - bossCenterY) < 200) flashBossClass(Game.dom.scene, 'shake', 320);
+
   fishEl.classList.add('eaten');
   fishEl.style.left = (bossCenterX - half) + 'px';
   fishEl.style.top = (bossCenterY - half) + 'px';
-  fishEl.style.transform = 'scale(0.2)';
-  setTimeout(() => fishEl.remove(), 260);
+  setTimeout(() => fishEl.remove(), 420);
   playEatSound();
+}
+
+// 대왕게가 쓰레기를 뿌리기 직전 예고: 빨갛게 깜빡이고 머리 위에 ❗가 떠요
+function playTrashWarnEffect(bossEl, bossCenterX, bossCenterY, bossType){
+  flashBossClass(bossEl, 'warn', 620);
+  spawnEffectText('bossEmote', '❗', bossCenterX, bossCenterY - (bossType.half || Game.config.hitbox.bossHalf), 920);
+}
+
+// 대왕게가 쓰레기를 던지는 순간: 몸을 휘두르고 흙탕물 구름이 퍼져요
+function playTrashThrowEffect(bossEl, bossCenterX, bossCenterY){
+  flashBossClass(bossEl, 'throwing', 420);
+  const cloud = document.createElement('div');
+  cloud.className = 'mudCloud';
+  cloud.style.left = bossCenterX + 'px';
+  cloud.style.top = bossCenterY + 'px';
+  Game.dom.scene.appendChild(cloud);
+  setTimeout(() => cloud.remove(), 950);
 }
 
 function catchFish(fish, type){
@@ -702,6 +756,7 @@ function spawnBoss(){
   // 사나운 보스(eats)는 점수 물고기를 잡아먹고, 대왕게(throwsTrash)는 감점 쓰레기를 뿌려요
   let nextEatAt = 0;
   let nextThrowAt = lastTime + (bossType.throwsTrash ? bossType.throwsTrash.everyMs : 0);
+  let warnedAt = 0; // 쓰레기 예고를 한 시각 (0이면 아직 예고 전)
   // 대왕게: 주기적으로 모래 속에 잠깐 숨어서 무적이 돼요
   const stealthCycleStart = lastTime + 1500 + Math.random() * 1500;
   function isStealthedNow(now){
@@ -738,13 +793,20 @@ function spawnBoss(){
         if(d <= catchRadius && d < preyDist){ prey = f; preyDist = d; }
       });
       if(prey){
-        playEatEffect(prey, bx, by, bossType);
+        playEatEffect(prey, bx, by, bossType, fish);
         nextEatAt = now + bossType.eatCooldownMs;
       }
     }
-    if(!stealthed && bossType.throwsTrash && now >= nextThrowAt){
+    // 대왕게: 뿌리기 TRASH_WARN_MS 전에 예고하고, 예고가 끝난 뒤에만 뿌려요 (숨어 있는 동안은 미뤄요)
+    if(!stealthed && bossType.throwsTrash && !warnedAt && now >= nextThrowAt - TRASH_WARN_MS){
+      warnedAt = now;
+      playTrashWarnEffect(fish, curLeft + half, curTop + half, bossType);
+    }
+    if(!stealthed && bossType.throwsTrash && warnedAt && now >= Math.max(nextThrowAt, warnedAt + TRASH_WARN_MS)){
       nextThrowAt = now + bossType.throwsTrash.everyMs;
+      warnedAt = 0;
       const pos = { xRatio: curLeft / window.innerWidth, yRatio: curTop / window.innerHeight };
+      playTrashThrowEffect(fish, curLeft + half, curTop + half);
       makeTrashThrows(pos, half, bossType.throwsTrash.count).forEach(spawnTrash);
     }
 

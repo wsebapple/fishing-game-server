@@ -118,6 +118,14 @@ function joinMultiplayer(roomCodeOverride){
       forgetMpFish(id);
     });
 
+    // 대왕게가 곧 쓰레기를 뿌려요: 빨갛게 깜빡이며 ❗로 예고해요
+    Game.mp.socket.on('bossWarn', ({ id }) => {
+      const bossEl = Game.mp.fishEls[id], bossType = Game.mp.fishTypeById[id];
+      if(!bossEl || !bossType) return;
+      const half = bossType.half || Game.config.hitbox.bossHalf;
+      playTrashWarnEffect(bossEl, (parseFloat(bossEl.style.left) || 0) + half, (parseFloat(bossEl.style.top) || 0) + half, bossType);
+    });
+
     // 사나운 보스(상어·바다용·오징어)가 점수 물고기를 먼저 삼켰어요 (서버가 정해요)
     Game.mp.socket.on('fishEaten', ({ id, bossId }) => {
       const el = Game.mp.fishEls[id];
@@ -126,7 +134,7 @@ function joinMultiplayer(roomCodeOverride){
       if(el){
         if(bossEl && bossType){
           const half = bossType.half || Game.config.hitbox.bossHalf;
-          playEatEffect(el, (parseFloat(bossEl.style.left) || 0) + half, (parseFloat(bossEl.style.top) || 0) + half, bossType);
+          playEatEffect(el, (parseFloat(bossEl.style.left) || 0) + half, (parseFloat(bossEl.style.top) || 0) + half, bossType, bossEl);
         } else el.remove();
         delete Game.mp.fishEls[id];
       }
@@ -456,6 +464,14 @@ function spawnMpFish(data){
   } else if(data.trash){
     const c = trashCenter(data.trash, (data.elapsedMs || 0) / 1000, window.innerWidth, window.innerHeight);
     curLeft = c.x - half; curTop = c.y - half;
+    // 방금 던진 쓰레기라면 던진 대왕게가 몸을 휘두르고 흙탕물이 퍼져요 (한 번에 여러 개를 던져도 연출은 한 번만)
+    const thrower = Game.mp.fishEls[data.fromBossId], throwerType = Game.mp.fishTypeById[data.fromBossId];
+    const throwKey = data.fromBossId + '@' + data.startTime;
+    if(thrower && throwerType && !data.elapsedMs && Game.mp.lastThrowKey !== throwKey){
+      Game.mp.lastThrowKey = throwKey;
+      const bh = throwerType.half || hb.bossHalf;
+      playTrashThrowEffect(thrower, (parseFloat(thrower.style.left) || 0) + bh, (parseFloat(thrower.style.top) || 0) + bh);
+    }
   } else {
     curTop = data.y * window.innerHeight;
     curLeft = data.fromLeft ? -50 : window.innerWidth + 50;
