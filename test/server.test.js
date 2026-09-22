@@ -5,7 +5,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { io: client } = require('socket.io-client');
 const { createApp } = require('../server');
-const { fishTypes } = require('../public/game-config.json');
+const { fishTypes, bossTypes } = require('../public/game-config.json');
+const { bossWanderPosition } = require('../server/fish');
 
 function once(socket, event) {
   return new Promise((resolve, reject) => {
@@ -91,6 +92,57 @@ test('two players: invalid catch, valid score, room switch, disconnect and leade
     assert.equal(roomApi.rooms.BETA, undefined);
   } finally {
     a.disconnect(); b.disconnect(); if (c) c.disconnect();
+    for (const code of Object.keys(roomApi.rooms)) {
+      for (const id of Object.keys(roomApi.rooms[code].players)) roomApi.removePlayer(code, id);
+    }
+    await new Promise(resolve => io.close(resolve));
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('boss: a partial hit keeps it alive, the final hit scores and schedules the next boss', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-test-'));
+  const { server, io, roomApi } = createApp({ leaderboardFile: path.join(directory, 'scores.json') });
+  await new Promise(resolve => server.listen(0, resolve));
+  const url = 'http://127.0.0.1:' + server.address().port;
+  const a = client(url, { transports: ['websocket'] });
+  try {
+    await once(a, 'connect');
+    const state = once(a, 'roomState');
+    a.emit('joinRoom', { roomCode: 'boss', name: 'A' });
+    await state;
+    const room = roomApi.rooms.BOSS;
+    const type = bossTypes.find(b => !b.stealth);
+    const width = 1280, height = 800;
+    const aimAt = fish => {
+      const point = bossWanderPosition(fish.seed, (Date.now() - fish.startTime) / 1000, fish.type);
+      a.emit('boatMove', { xRatio: (point.xRatio * width + type.half) / width,
+        yRatio: (point.yRatio * height + type.half) / height, width, height });
+    };
+    const boss = { id: 'boss900', type, seed: 0.5, startTime: Date.now() - 2000, durationMs: 28000, hitsNeeded: 2, hitsLanded: 0 };
+    room.fish.boss900 = boss;
+
+    aimAt(boss);
+    const inked = once(a, 'bossInked');
+    a.emit('catchAttempt', { fishId: 'boss900' });
+    assert.equal((await inked).byId, a.id);
+    assert.equal(room.fish.boss900, boss);
+
+    boss.invulnerableUntil = 0;
+    clearTimeout(room.bossTimer);
+    room.bossTimer = null;
+    aimAt(boss);
+    const caught = once(a, 'fishCaught');
+    a.emit('catchAttempt', { fishId: 'boss900' });
+    const info = await caught;
+    assert.equal(info.isBoss, true);
+    assert.equal(info.points, type.points);
+    await new Promise(resolve => setTimeout(resolve, 30));
+    assert.equal(room.fish.boss900, undefined);
+    assert.ok(room.bossTimer, 'next boss should be scheduled');
+    assert.equal(a.connected, true);
+  } finally {
+    a.disconnect();
     for (const code of Object.keys(roomApi.rooms)) {
       for (const id of Object.keys(roomApi.rooms[code].players)) roomApi.removePlayer(code, id);
     }
