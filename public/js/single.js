@@ -40,7 +40,6 @@ function checkLevelUp(){
 }
 
 // 마우스를 따라 낚싯대/줄 움직이기
-const rodPole = document.getElementById('rodPole');
 const linePath = document.getElementById('linePath');
 const hook = document.getElementById('hook');
 const boat = document.getElementById('boat');
@@ -65,28 +64,67 @@ function moveRod(x, y){
   fog.style.setProperty('--fy', clampedY + 'px');
 }
 
-// 배가 바늘 쪽으로 서서히 따라가고, 그 사이 낚싯줄은 팽팽하게 당겨지며 살짝 휘어요
-function updateBoatAndLine(){
+// 배 한 척(내 배/친구 배)을 한 프레임 움직여요. 낚싯대 끝이 바늘 바로 위에 오도록 쫓아가고,
+// 바늘을 반대쪽으로 계속 끌거나 배 가운데 뒤로 넘기면 뱃머리를 돌려요(살짝 되돌리는 건 뒤로 물러나기만 해요).
+// 낚싯대 끝 좌표와 배가 뒤처진 정도(lag)를 돌려줘요.
+function stepBoat(b, hookX, bobY){
+  const s = Game.boat.scale();
+  const reach = Game.boat.tipDX * s;
+  b.hookVel = (b.hookVel || 0) * 0.9 + (hookX - (b.prevHookX ?? hookX)) * 0.1; // 바늘이 움직이는 속도(프레임당 px, 부드럽게)
+  b.prevHookX = hookX;
+  const behind = (hookX - b.x) * b.facing < -Game.boat.turnSlack;
+  if(behind || b.hookVel * b.facing < -Game.boat.turnSpeed) b.facing = -b.facing;
+  const half = 50 * s; // 화면 가장자리에서 배가 반 넘게 잘리지 않게 해요
+  const targetX = Math.max(half, Math.min(window.innerWidth - half, hookX - b.facing * reach));
+  b.x += (targetX - b.x) * 0.1;
+  if(Math.abs(targetX - b.x) < 0.3) b.x = targetX;
+  b.turn += (b.facing - b.turn) * 0.18; // 좌우를 확 뒤집지 않고 납작해졌다가 돌아서게 해요
+  if(Math.abs(b.facing - b.turn) < 0.01) b.turn = b.facing;
+  return {
+    s,
+    tipX: b.x + b.turn * reach,
+    tipY: Game.boat.bottom - Game.boat.tipUp * s + bobY,
+    lag: targetX - b.x,
+  };
+}
+
+// 배가 물 위에서 천천히 오르내리는 높이(px). 줄 시작점도 같은 값만큼 움직여야 낚싯대 끝에 붙어 있어요.
+function boatBob(now, phase = 0){
+  return 3 + 3 * Math.sin(now / 2200 * Math.PI * 2 + phase);
+}
+
+function placeBoat(el, b, bobY, s){
+  el.style.left = b.x.toFixed(1) + 'px';
+  el.style.transform = `translate(-50%, ${bobY.toFixed(1)}px)`;
+  el.firstElementChild.style.transform = `scale(${(b.turn * s).toFixed(3)}, ${s})`;
+}
+
+// 낚싯대 끝에서 바늘까지: 배가 뒤처진 만큼 줄이 뒤로 처지며 휘어요
+function fishingLinePath(tip, hookX, hookY){
+  const midX = (tip.tipX + hookX) / 2, midY = (tip.tipY + hookY) / 2;
+  const controlX = midX - tip.lag * 0.3, controlY = midY - 15;
+  return `M ${tip.tipX.toFixed(1)} ${tip.tipY.toFixed(1)} Q ${controlX.toFixed(1)} ${controlY.toFixed(1)} ${hookX.toFixed(1)} ${hookY.toFixed(1)}`;
+}
+
+function updateBoatAndLine(now){
   // 시작/종료/도감 화면에서는 아무것도 안 움직이니 계산을 쉬어요(루프는 살려둬서 게임이 시작되면 바로 이어져요)
   if(Game.state.running || Game.mp.active || !Game.hook.lastDrawnLine){ // 첫 프레임은 시작 화면 뒤에 배를 그려두려고 항상 그려요
-    Game.hook.boatX += (Game.hook.x - Game.hook.boatX) * 0.1;
-    if(Math.abs(Game.hook.x - Game.hook.boatX) < 0.3) Game.hook.boatX = Game.hook.x;
-
-    const startX = Game.hook.boatX, startY = 70;
-    const midX = (startX + Game.hook.x) / 2, midY = (startY + Game.hook.y) / 2;
-    const bend = (Game.hook.x - Game.hook.boatX) * 0.3; // 배가 뒤처진 만큼 줄도 그만큼 뒤로 처져요
-    const controlX = midX - bend, controlY = midY - 15;
-    const d = `M ${startX} ${startY} Q ${controlX} ${controlY} ${Game.hook.x} ${Game.hook.y}`;
+    const bobY = boatBob(now || 0);
+    const tip = stepBoat(Game.hook.boat, Game.hook.x, bobY);
+    const d = fishingLinePath(tip, Game.hook.x, Game.hook.y);
     if(d !== Game.hook.lastDrawnLine){ // 배가 멈춰 있으면 DOM을 다시 쓰지 않아요
       Game.hook.lastDrawnLine = d;
-      boat.style.left = Game.hook.boatX + 'px';
-      rodPole.style.left = (Game.hook.boatX - 3) + 'px';
+      placeBoat(boat, Game.hook.boat, bobY, tip.s);
       linePath.setAttribute('d', d);
     }
+    if(Game.mp.active) updateGhostBoats(now || 0);
   }
   requestAnimationFrame(updateBoatAndLine);
 }
 requestAnimationFrame(updateBoatAndLine);
+
+// 경쟁 배(해적)도 내 배 그림을 복제해서 써요 (색은 CSS에서 바꿔요)
+document.getElementById('rivalBoat').appendChild(boat.querySelector('.boatBody').cloneNode(true));
 
 // 바늘이 (centerX, centerY)에 있는 물고기에 닿았는지, DOM을 안 읽고 숫자로만 확인해요
 function isNearHook(centerX, centerY, catchRadius){

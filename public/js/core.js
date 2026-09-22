@@ -97,8 +97,21 @@ Game.timers = {
 Game.hook = {
   x: window.innerWidth / 2,
   y: 330,
-  boatX: window.innerWidth / 2, // 배는 바늘을 곧장 따라가지 않고 뒤늦게 쫓아가요
+  // 내 배. 바늘을 곧장 따라가지 않고 뒤늦게 쫓아가요.
+  // facing: 뱃머리 방향(1=오른쪽, -1=왼쪽), turn: 그쪽으로 돌아가는 중인 값(-1~1, 0이면 정면으로 반쯤 돈 상태)
+  boat: { x: window.innerWidth / 2, facing: 1, turn: 1 },
   lastDrawnLine: '', // 마지막으로 그린 낚싯줄 모양 (안 바뀌었으면 다시 안 그려요)
+};
+
+// 배 그림(index.html #boat의 SVG, 160x100)에서 나온 숫자들. 내 배와 친구 배가 같이 써요.
+const phoneBoatMq = window.matchMedia('(max-width: 480px)');
+Game.boat = {
+  bottom: 106, // 배 바닥의 화면 y (#boat top 6px + 높이 100px)
+  tipDX: 74, // 배 가운데에서 낚싯대 끝까지 가로 거리 (SVG 154 - 80)
+  tipUp: 68, // 배 바닥에서 낚싯대 끝까지 높이 (SVG 100 - 32)
+  turnSlack: 12, // 바늘이 배 가운데보다 이만큼 뒤로 넘어가면 뱃머리를 돌려요
+  turnSpeed: 2, // 바늘을 반대쪽으로 이 속도(프레임당 px) 넘게 끌어도 돌려요. 살짝 흔들 때는 안 돌아서 배가 떨지 않아요
+  scale: () => phoneBoatMq.matches ? 0.8 : 1, // 폰에서는 HUD에 덜 가리게 배를 줄여요
 };
 
 // 온라인 같이하기 상태
@@ -117,6 +130,6 @@ Game.mp = {
   flashInterval: null, // 폭풍우 번개 반복
   snowInterval: null, // 눈송이 생성 반복
   roundEndCountdownTimer: null,
-  ghostBoats: {}, // socket.id -> 그 친구의 배 엘리먼트
+  ghostBoats: {}, // socket.id -> 그 친구의 배 { el, hookEl, path, boat, hookX, hookY ... }
   boatSendTimer: null,
 };
