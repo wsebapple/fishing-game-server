@@ -15,7 +15,29 @@
     --coral:#ff6b6b;
     --sand:#f4e1b7;
     --foam:#eaf9ff;
+    /* 바다 배경 그라디언트(수면 → 심해). 55% 지점은 --mid와 같은 색이에요 */
+    --sea-surface:#9be9ff;
+    --sea-shallow:#57d3ee;
+    --sea-bright:#1fb4d9;
+    --sea-open:#0b8fc2;
+    --sea-dim:#0a4f86;
+    --sea-dark:#063a63;
+    --sea-abyss:#021f33;
   }
+  /* 화면 겹침 순서(z-index) — 새 요소를 넣을 땐 이 표에서 알맞은 층을 골라요
+     0  하늘(#sky)
+     1  물결선·빛줄기·거품·반짝이·해초 같은 배경 장식
+     2  해(#sun)
+     3  물고기·보스(.fish), 다른 친구 배(.ghostBoat)
+     4  내 배(#boat), 눈 올 때 하얀 막(#snowTint)
+     5  낚싯줄(#lineSvg), 경쟁 배(#rivalBoat), 폭풍우 비·안개, 눈송이
+     6  바늘(#hook), 번개(#lightningFlash)
+     7  잡았을 때 뜨는 점수 글자(.caughtPop)
+     8  보스가 도망갈 때 연출(.bossEscapeCloud/.bossEscapeBlob)
+     9  조이스틱, 가운데 큰 알림(#levelUpBanner)
+     10 HUD 알약(#hud), 전체 화면 오버레이(시작/종료/도감/순위)
+     11 멀티 점수판(#mpPanel)
+     12 연결 끊김 안내(#mpConnBanner) */
   *{box-sizing:border-box;}
   html,body{
     margin:0; padding:0; height:100%; overflow:hidden;
@@ -32,14 +54,14 @@
        직접 고정해서 절대 스크롤되지 않게 해요. */
     position:fixed; inset:0; width:100%; height:100%;
     background:linear-gradient(180deg,
-      #9be9ff 0%,
-      #57d3ee 10%,
-      #1fb4d9 24%,
-      #0b8fc2 40%,
-      #0b72b9 55%,
-      #0a4f86 70%,
-      #063a63 85%,
-      #021f33 100%);
+      var(--sea-surface) 0%,
+      var(--sea-shallow) 10%,
+      var(--sea-bright) 24%,
+      var(--sea-open) 40%,
+      var(--mid) 55%,
+      var(--sea-dim) 70%,
+      var(--sea-dark) 85%,
+      var(--sea-abyss) 100%);
     overflow:hidden;
   }
   /* 해 */
@@ -432,9 +454,13 @@
   .bigBtn{
     font-family:'Jua',sans-serif; font-size:26px; padding:14px 40px;
     background:var(--coral); color:#fff; border:none; border-radius:999px;
-    box-shadow:0 6px 0 #c94747; cursor:pointer; margin-top:10px;
+    box-shadow:0 6px 0 var(--btn-shadow, #c94747); cursor:pointer; margin-top:10px;
   }
-  .bigBtn:active{ box-shadow:0 2px 0 #c94747; transform:translateY(4px); }
+  .bigBtn:active{ box-shadow:0 2px 0 var(--btn-shadow, #c94747); transform:translateY(4px); }
+  .bigBtn.btn-green{ background:#3b8f6b; --btn-shadow:#2c6b50; }
+  .bigBtn.btn-orange{ background:#d98c2b; --btn-shadow:#a8661a; }
+  .bigBtn.btn-blue{ background:#3b6fc9; --btn-shadow:#2a4f8f; }
+  .bigBtn.btn-gray{ background:#6c757d; --btn-shadow:#4b5157; }
   .hidden{ display:none; }
   #resultScore{ font-size:32px; color:var(--sun); }
 
@@ -606,9 +632,9 @@
     </div>
     <p id="bestScoreStart" style="font-size:22px; color:var(--sun);"></p>
     <button class="bigBtn" id="startBtn">시작하기</button>
-    <button class="bigBtn" id="dexBtnStart" style="background:#3b8f6b; box-shadow:0 6px 0 #2c6b50;">📖 도감 보기</button>
-    <button class="bigBtn" id="leaderboardBtnStart" style="background:#d98c2b; box-shadow:0 6px 0 #a8661a;">🏆 친구 순위 보기</button>
-    <button class="bigBtn" id="mpOpenBtn" style="background:#3b6fc9; box-shadow:0 6px 0 #2a4f8f;">🌐 온라인 같이하기</button>
+    <button class="bigBtn btn-green" id="dexBtnStart">📖 도감 보기</button>
+    <button class="bigBtn btn-orange" id="leaderboardBtnStart">🏆 친구 순위 보기</button>
+    <button class="bigBtn btn-blue" id="mpOpenBtn">🌐 온라인 같이하기</button>
   </div>
 
   <!-- 온라인 접속 화면 -->
@@ -625,7 +651,7 @@
       <input id="mpRoomCode" placeholder="방 코드 (예: HOYA123)" style="width:280px; max-width:82vw; padding:10px 16px; border-radius:999px; border:none; font-family:'Jua',sans-serif; font-size:16px; text-align:center;">
     </div>
     <p id="mpStatus" style="font-size:15px; color:#ffd166; min-height:20px;"></p>
-    <button class="bigBtn" id="mpJoinBtn" style="background:#3b6fc9; box-shadow:0 6px 0 #2a4f8f;">입장하기</button>
+    <button class="bigBtn btn-blue" id="mpJoinBtn">입장하기</button>
     <button class="bigBtn" id="mpCloseBtn">닫기</button>
   </div>
 
@@ -653,9 +679,9 @@
     <p id="lootResult" style="font-size:17px; color:#ffe9b0;"></p>
     <p id="bestScoreEnd" style="font-size:20px; color:var(--sun);"></p>
     <button class="bigBtn" id="retryBtn">다시하기</button>
-    <button class="bigBtn" id="dexBtnEnd" style="background:#3b8f6b; box-shadow:0 6px 0 #2c6b50;">📖 도감 보기</button>
-    <button class="bigBtn" id="leaderboardBtnEnd" style="background:#d98c2b; box-shadow:0 6px 0 #a8661a;">🏆 친구 순위 보기</button>
-    <button class="bigBtn" id="mainMenuBtn" style="background:#6c757d; box-shadow:0 6px 0 #4b5157;">🏠 메인 메뉴로</button>
+    <button class="bigBtn btn-green" id="dexBtnEnd">📖 도감 보기</button>
+    <button class="bigBtn btn-orange" id="leaderboardBtnEnd">🏆 친구 순위 보기</button>
+    <button class="bigBtn btn-gray" id="mainMenuBtn">🏠 메인 메뉴로</button>
   </div>
 
   <!-- 도감 화면 -->
@@ -670,7 +696,7 @@
     <h1>🏆 친구 순위</h1>
     <p style="font-size:15px; opacity:0.85; max-width:400px;">이 서버에서 끝난 멀티플레이 라운드의 점수가 모여요.</p>
     <div id="leaderboardList"></div>
-    <button class="bigBtn" id="leaderboardRefreshBtn" style="background:#3b8f6b; box-shadow:0 6px 0 #2c6b50;">🔄 새로고침</button>
+    <button class="bigBtn btn-green" id="leaderboardRefreshBtn">🔄 새로고침</button>
     <button class="bigBtn" id="leaderboardCloseBtn">닫기</button>
   </div>
 </div>
