@@ -99,7 +99,8 @@
     position:absolute; top:-10%; width:110px; height:140%;
     background:linear-gradient(180deg, rgba(255,255,255,0.32) 0%, rgba(255,255,255,0) 72%);
     transform:rotate(12deg);
-    mix-blend-mode:screen;
+    /* mix-blend-mode는 아이폰에서 아래 화면 전체를 매 프레임 다시 합성하게 만들어 끊김이 생겨요.
+       반투명 흰색이라 그냥 겹쳐도 거의 똑같이 보여요. */
     z-index:1; pointer-events:none;
     animation:raySway 9s ease-in-out infinite;
   }
@@ -319,9 +320,11 @@
     gap:10px; z-index:10;
   }
   .pill{
-    background:rgba(4,59,92,0.55); color:var(--foam); padding:8px 16px;
+    /* 뒤를 흐리게 하는 backdrop-filter는 아래에서 물결·물고기가 움직일 때마다 아이폰이 다시 흐리게 계산해서
+       끊김이 생겨요. 대신 배경을 조금 더 진하게 해서 글자가 잘 보이게 해요. */
+    background:rgba(4,59,92,0.62); color:var(--foam); padding:8px 16px;
     border-radius:999px; font-size:20px; border:2px solid rgba(255,255,255,0.3);
-    backdrop-filter:blur(2px); white-space:nowrap;
+    white-space:nowrap;
   }
   .pill b{ color:var(--sun); }
 
