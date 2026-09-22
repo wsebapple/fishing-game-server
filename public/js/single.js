@@ -74,19 +74,25 @@ function moveRod(x, y){
 }
 
 // 배가 바늘 쪽으로 서서히 따라가고, 그 사이 낚싯줄은 팽팽하게 당겨지며 살짝 휘어요
+let lastDrawnLine = '';
 function updateBoatAndLine(){
-  boatX += (hookX - boatX) * 0.1;
-  if(Math.abs(hookX - boatX) < 0.3) boatX = hookX;
+  // 시작/종료/도감 화면에서는 아무것도 안 움직이니 계산을 쉬어요(루프는 살려둬서 게임이 시작되면 바로 이어져요)
+  if(running || mpActive || !lastDrawnLine){ // 첫 프레임은 시작 화면 뒤에 배를 그려두려고 항상 그려요
+    boatX += (hookX - boatX) * 0.1;
+    if(Math.abs(hookX - boatX) < 0.3) boatX = hookX;
 
-  boat.style.left = boatX + 'px';
-  rodPole.style.left = (boatX - 3) + 'px';
-
-  const startX = boatX, startY = 70;
-  const midX = (startX + hookX) / 2, midY = (startY + hookY) / 2;
-  const bend = (hookX - boatX) * 0.3; // 배가 뒤처진 만큼 줄도 그만큼 뒤로 처져요
-  const controlX = midX - bend, controlY = midY - 15;
-  linePath.setAttribute('d', `M ${startX} ${startY} Q ${controlX} ${controlY} ${hookX} ${hookY}`);
-
+    const startX = boatX, startY = 70;
+    const midX = (startX + hookX) / 2, midY = (startY + hookY) / 2;
+    const bend = (hookX - boatX) * 0.3; // 배가 뒤처진 만큼 줄도 그만큼 뒤로 처져요
+    const controlX = midX - bend, controlY = midY - 15;
+    const d = `M ${startX} ${startY} Q ${controlX} ${controlY} ${hookX} ${hookY}`;
+    if(d !== lastDrawnLine){ // 배가 멈춰 있으면 DOM을 다시 쓰지 않아요
+      lastDrawnLine = d;
+      boat.style.left = boatX + 'px';
+      rodPole.style.left = (boatX - 3) + 'px';
+      linePath.setAttribute('d', d);
+    }
+  }
   requestAnimationFrame(updateBoatAndLine);
 }
 requestAnimationFrame(updateBoatAndLine);

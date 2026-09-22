@@ -663,18 +663,25 @@
 
 <script>
 (async () => {
+  const modules = ["core", "audio", "single", "ui", "shared/boss-math", "multiplayer"];
   try {
+    // 설정 파일을 받는 동안 게임 스크립트도 미리 같이 내려받아 둬요(실행은 설정이 준비된 뒤에).
+    for (const name of modules) {
+      const link = document.createElement("link");
+      link.rel = "preload"; link.as = "script"; link.href = "/js/" + name + ".js";
+      document.head.appendChild(link);
+    }
     const response = await fetch("/game-config.json");
     if (!response.ok) throw new Error("설정을 불러올 수 없습니다.");
     window.gameConfig = await response.json();
-    for (const name of ["core", "audio", "single", "ui", "shared/boss-math", "multiplayer"]) {
-      await new Promise((resolve, reject) => {
-        const script = document.createElement("script");
-        script.src = "/js/" + name + ".js";
-        script.onload = resolve; script.onerror = reject;
-        document.body.appendChild(script);
-      });
-    }
+    // async=false: 한꺼번에 붙여도 적어둔 순서대로 실행돼요(core가 먼저, multiplayer가 마지막).
+    await Promise.all(modules.map(name => new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "/js/" + name + ".js";
+      script.async = false;
+      script.onload = resolve; script.onerror = reject;
+      document.body.appendChild(script);
+    })));
   } catch (error) {
     document.getElementById("startScreen").textContent = "게임을 불러오지 못했어요. 페이지를 새로고침해주세요.";
     console.error(error);
