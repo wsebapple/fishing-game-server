@@ -154,7 +154,7 @@ function joinMultiplayer(roomCodeOverride){
 
         // 물보라/파도로 밀려나는 건 다들 같이 보는 셰이러드 월드라 모두에게 적용해요(서버가 보낸
         // 같은 이벤트를 모든 친구가 같이 받으니까요). 낚싯바늘 밀침·감전은 나를 맞춘 경우에만이에요.
-        if(bossType && bossType.knockback) pushNearbyMpFish(left + bossHalf, top + bossHalf, 220, 150);
+        if(bossType && bossType.knockback){ pushNearbyMpFish(left + bossHalf, top + bossHalf, 220, 150); playPushSound(); }
         const isMe = Game.mp.socket && byId === Game.mp.socket.id;
         if(isMe && bossType){
           if(bossType.knockback){
@@ -488,6 +488,13 @@ function spawnMpFish(data){
       fish.classList.toggle('stealthed', stealthed);
       if(type.stealth){
         fish.style.filter = (type.tint ? type.tint + ' ' : '') + (stealthed ? 'blur(1.5px) ' : '') + 'drop-shadow(0 3px 3px rgba(0,0,0,0.25))';
+      }
+      if(type.dash){
+        // single.js는 자기만의 물리 계산으로 돌진 타이밍을 정해서 소리를 직접 트리거하지만, 멀티는
+        // 서버와 같은 bossWanderPosition의 돌진 구간(cyclePos)을 그대로 읽어서 막 시작한 순간만 감지해요.
+        const dashingNow = isBossDashing(getMpBossSeed(data.id, data.seed), elapsedSec, type);
+        if(dashingNow && !fish._wasDashing) playDashSound();
+        fish._wasDashing = dashingNow;
       }
       const pos = bossWanderPosition(getMpBossSeed(data.id, data.seed), elapsedSec, type);
       const nextLeft = pos.xRatio * Game.view.w;

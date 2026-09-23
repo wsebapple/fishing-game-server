@@ -61,7 +61,7 @@ test('the browser and the server use the exact same boss math file', () => {
   for (const type of fishTypes) assert.equal(browser.isEdible(type), server.isEdible(type));
   for (const client of ['multiplayer.js', 'single.js', 'core.js']) {
     const source = fs.readFileSync(path.join(__dirname, '../public/fishing/js', client), 'utf8');
-    assert.doesNotMatch(source, /function\s+(bossWanderPosition|isBossStealthed|isEdible|trashCenter|regularFishCenter|makeTrashThrows)\b/, client + ' must not redefine shared boss math');
+    assert.doesNotMatch(source, /function\s+(bossWanderPosition|isBossStealthed|isBossDashing|isEdible|trashCenter|regularFishCenter|makeTrashThrows)\b/, client + ' must not redefine shared boss math');
   }
 });
 
