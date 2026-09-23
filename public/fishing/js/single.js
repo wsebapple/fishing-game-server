@@ -568,34 +568,69 @@ function tryStealFish(){
   scheduleRival();
 }
 
-// 해적 배가 나타나 물고기 el을 채가는 연출 (싱글·멀티 공통). 다 끝나면 el을 지우고 onRemoved를 불러요.
+// 해적 배 밑동의 y좌표(px). #rivalBoat가 top:6px, height:100px, transform-origin:50% 100%로
+// 바닥을 축으로 세로만 축소되니, 화면에 보이는 뱃머리 밑(그물을 던지는 지점)은 6+100=106이에요.
+const RIVAL_NET_ORIGIN_Y = 106;
+
+// 해적 배가 그물을 던져 물고기 el을 쓸어가는 연출 (싱글·멀티 공통). 다 끝나면 el을 지우고 onRemoved를 불러요.
 function playStealAnimation(el, name, boatX, onRemoved){
   const rival = document.getElementById('rivalBoat');
   rival.style.left = boatX + 'px';
   rival.classList.add('show');
 
+  const half = Game.config.hitbox.fishHalf;
+  const targetX = (parseFloat(el.style.left) || 0) + half;
+  const targetY = (parseFloat(el.style.top) || 0) + half;
+
+  const net = document.createElement('div');
+  net.className = 'stealNet';
+  net.style.left = boatX + 'px';
+  net.style.top = RIVAL_NET_ORIGIN_Y + 'px';
+  Game.dom.scene.appendChild(net);
+
+  // 1단계: 배 밑에서 그물을 펼쳐 던져 목표 물고기까지 내려요
+  requestAnimationFrame(() => {
+    playNetSplashSound();
+    net.classList.add('dropping');
+    net.style.left = targetX + 'px';
+    net.style.top = targetY + 'px';
+  });
+
   setTimeout(() => {
+    // 2단계: 목표 위치에서 그물이 오므라들며 물고기를 감싸요
+    net.classList.remove('dropping');
+    net.classList.add('closed');
     if(el.isConnected){
       playStealSound();
-      el.style.transition = 'transform .3s ease, opacity .3s ease';
+      el.style.transition = 'transform .25s ease, opacity .25s ease';
       el.style.transform = (el.style.transform || '') + ' scale(0.3)';
       el.style.opacity = '0';
 
       const steal = document.createElement('div');
       steal.className = 'caughtPop';
       steal.textContent = name === '보물통'
-        ? '🏴‍☠️ 해적이 보물통을 가져갔어요!'
-        : '🏴‍☠️ 다른 배가 채갔어요!';
+        ? '🏴‍☠️ 해적이 그물로 보물통을 쓸어갔어요!'
+        : '🏴‍☠️ 다른 배가 그물로 쓸어갔어요!';
       steal.style.color = '#ff9b9b';
       steal.style.fontSize = '16px';
       steal.style.left = el.style.left;
       steal.style.top = el.style.top;
       Game.dom.scene.appendChild(steal);
       setTimeout(() => steal.remove(), 900);
-      setTimeout(() => { el.remove(); if(onRemoved) onRemoved(); }, 300);
+      setTimeout(() => { el.remove(); if(onRemoved) onRemoved(); }, 250);
     }
-    setTimeout(() => rival.classList.remove('show'), 500);
-  }, 700);
+  }, 480);
+
+  setTimeout(() => {
+    // 3단계: 물고기를 담은 그물이 다시 배까지 끌려 올라가요
+    net.classList.remove('closed');
+    net.classList.add('hauling');
+    net.style.left = boatX + 'px';
+    net.style.top = RIVAL_NET_ORIGIN_Y + 'px';
+  }, 730);
+
+  setTimeout(() => { net.classList.add('fading'); }, 1180);
+  setTimeout(() => { net.remove(); rival.classList.remove('show'); }, 1480);
 }
 
 
