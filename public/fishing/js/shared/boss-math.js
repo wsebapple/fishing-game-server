@@ -37,6 +37,14 @@ function isBossStealthed(seed, elapsedSec, type){
   return ((elapsedSec + seed * 10) % cycle + cycle) % cycle < hideFor;
 }
 
+// 상어: 지금 이 순간이 순간 돌진 구간인지 (멀티에서 돌진 효과음을 언제 틀지 판단할 때 써요.
+// 실제 위치 계산은 bossWanderPosition 안에 있고, 여기선 같은 주기 식만 다시 써요)
+function isBossDashing(seed, elapsedSec, type){
+  if(!type || !type.dash) return false;
+  const cyclePos = ((elapsedSec * 0.34 + seed * 3) % 1 + 1) % 1;
+  return cyclePos > 0.78;
+}
+
 // 사나운 보스(상어·바다용·오징어)가 잡아먹을 수 있는 건 "점수를 주는 물고기"뿐이에요.
 // 보물통·자석·시계·쓰레기·감점 생물은 안 먹어요.
 function isEdible(type){
@@ -82,5 +90,5 @@ function makeTrashThrows(bossPos, half, count, random = Math.random){
 }
 
 if(typeof module !== 'undefined' && module.exports){
-  module.exports = { bossWanderPosition, isBossStealthed, isEdible, regularFishCenter, trashCenter, makeTrashThrows, TRASH_WARN_MS };
+  module.exports = { bossWanderPosition, isBossStealthed, isBossDashing, isEdible, regularFishCenter, trashCenter, makeTrashThrows, TRASH_WARN_MS };
 }

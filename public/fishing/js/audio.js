@@ -119,3 +119,34 @@ function playBossEscapeSound(kind){
   else if(kind === 'sand') [150,120].forEach((f,i)=>playTone(f,0.22,'triangle',0.12,i*0.08));
   else [180,140,100,70].forEach((f,i)=>playTone(f,0.18,'sawtooth',0.18,i*0.07)); // ink(기본값)
 }
+
+// 상어가 순간 돌진할 때: 쐐액 하고 빠르게 낮아지는 소리
+function playDashSound(){
+  playTone(1100, 0.05, 'sawtooth', 0.15);
+  playTone(650, 0.07, 'sawtooth', 0.14, 0.04);
+  playTone(320, 0.09, 'sawtooth', 0.12, 0.08);
+}
+
+// 고래·상어의 물보라/파도에 맞아 바늘과 물고기들이 확 밀려날 때
+function playPushSound(){
+  playTone(220, 0.1, 'sine', 0.2);
+  playTone(130, 0.18, 'sine', 0.22, 0.05);
+}
+
+// 바다용에게 감전된 1초 동안 지지직 울리는 버즈
+function playShockBuzzSound(){
+  for(let i = 0; i < 7; i++) playTone(170 + Math.random() * 280, 0.05, 'square', 0.07, i * 0.13);
+}
+
+// 대왕게가 쓰레기를 던지기 직전 경고음(삐빅삐빅)
+function playTrashWarnSound(){
+  playTone(700, 0.07, 'square', 0.12);
+  playTone(700, 0.07, 'square', 0.12, 0.2);
+}
+
+// 대왕게가 쓰레기를 던지는 순간(휙 던지고 철퍽)
+function playTrashThrowSound(){
+  playTone(480, 0.06, 'sawtooth', 0.15);
+  playTone(250, 0.12, 'sawtooth', 0.13, 0.05);
+  playTone(130, 0.1, 'triangle', 0.1, 0.12);
+}

@@ -459,6 +459,7 @@ function playEatEffect(fishEl, bossCenterX, bossCenterY, bossType, bossEl){
 function playTrashWarnEffect(bossEl, bossCenterX, bossCenterY, bossType){
   flashBossClass(bossEl, 'warn', 620);
   spawnEffectText('bossEmote', '❗', bossCenterX, bossCenterY - (bossType.half || Game.config.hitbox.bossHalf), 920);
+  playTrashWarnSound();
 }
 
 // 대왕게가 쓰레기를 던지는 순간: 몸을 휘두르고 흙탕물 구름이 퍼져요
@@ -470,6 +471,7 @@ function playTrashThrowEffect(bossEl, bossCenterX, bossCenterY){
   cloud.style.top = bossCenterY + 'px';
   Game.dom.scene.appendChild(cloud);
   setTimeout(() => cloud.remove(), 950);
+  playTrashThrowSound();
 }
 
 function catchFish(fish, type){
@@ -797,6 +799,7 @@ function playShockEffect(durationMs){
   hook.classList.add('shocked');
   linePath.classList.add('shocked');
   boatBody.classList.add('shocked');
+  playShockBuzzSound();
   setTimeout(() => {
     hook.classList.remove('shocked');
     linePath.classList.remove('shocked');
@@ -824,9 +827,9 @@ function scheduleBoss(){
   Game.timers.bossTimeout = setTimeout(spawnBoss, delay);
 }
 
-function spawnBoss(){
+function spawnBoss(forcedType){
   if(!Game.state.running) return;
-  const bossType = Game.config.bossTypes[Math.floor(Math.random() * Game.config.bossTypes.length)];
+  const bossType = forcedType || Game.config.bossTypes[Math.floor(Math.random() * Game.config.bossTypes.length)];
   const half = bossType.half, catchRadius = bossType.catchRadius;
   showBanner(bossType.emoji + ' ' + bossType.name + ' 출현!');
   playBossSound();
@@ -940,6 +943,7 @@ function spawnBoss(){
         const kdist = Math.max(Math.hypot(kdx, kdy), 0.01);
         moveRod(Game.hook.x + (kdx / kdist) * 90, Game.hook.y + (kdy / kdist) * 90);
         pushNearbyFish(curLeft + half, curTop + half, 220, 150);
+        playPushSound();
       }
       if(bossType.freeze){
         // 바다용: 감전돼서 낚싯줄이 1초간 얼어붙고, 바늘·줄·배에 지지직 전기가 흘러요
@@ -952,6 +956,7 @@ function spawnBoss(){
       if(bossType.dash){
         // 상어는 맞고 도망갈 때도 곧장 돌진하듯 빠르게 빠져나가요
         dashUntil = now + 500;
+        playDashSound();
       }
     }
 
@@ -959,6 +964,7 @@ function spawnBoss(){
       dashUntil = now + 500;
       target = pickBossFleeTarget(curLeft, curTop, minX, maxX, minY, maxY);
       nextDashAt = now + 1800 + Math.random() * 1800;
+      playDashSound();
     }
     if(bossType.jitter && now >= nextJitterPickAt){
       target = pickBossTarget(minX, maxX, minY, maxY);
@@ -982,6 +988,35 @@ function spawnBoss(){
   }
   requestAnimationFrame(animate);
 }
+
+// 비밀 치트: 키보드로 "boss"라고 입력한 뒤(대소문자 상관없이) 4초 안에 숫자 1~5를 누르면
+// 그 보스가 바로 나와요. 어디에도 안내는 안 하고, 성공하면 배너로만 살짝 알려줘요.
+// 화면 아무 데도 안 적어둔 이유대로 정말 "비밀"이라, 싱글플레이에서만 동작해요(멀티는 방 전체에
+// 영향을 주는 서버 기능이 필요해서 일부러 빼뒀어요).
+const BOSS_CHEAT_WORD = 'boss';
+let bossCheatTyped = '';
+let bossCheatArmedUntil = 0;
+window.addEventListener('keydown', e => {
+  if(!Game.state.running || Game.mp.active) return;
+  if(document.activeElement && /^(input|textarea)$/i.test(document.activeElement.tagName)) return;
+  const key = e.key.toLowerCase();
+
+  if(performance.now() < bossCheatArmedUntil && /^[1-5]$/.test(key)){
+    bossCheatArmedUntil = 0;
+    const bossType = Game.config.bossTypes[+key - 1];
+    if(bossType && !document.querySelector('.boss-fish')){
+      clearTimeout(Game.timers.bossTimeout);
+      spawnBoss(bossType);
+    }
+    return;
+  }
+
+  bossCheatTyped = (bossCheatTyped + key).slice(-BOSS_CHEAT_WORD.length);
+  if(bossCheatTyped === BOSS_CHEAT_WORD){
+    bossCheatArmedUntil = performance.now() + 4000;
+    showBanner('🔓 1~5로 보스를 골라보세요!');
+  }
+});
 
 function catchBoss(fish, bossType){
   if(!Game.state.running || !fish.isConnected) return;
