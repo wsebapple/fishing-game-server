@@ -281,7 +281,7 @@ function joinMultiplayer(roomCodeOverride){
           popText.textContent = '🧲 ' + by + ' 자석 발동!';
           popText.style.color = '#a0e6ff';
         } else if(isTimeBonus){
-          popText.textContent = '⏰ ' + by + ' 시간 +5초!';
+          popText.textContent = '⏰ ' + by + ' 시간 +' + Game.config.fishTypes.find(f => f.isTimeBonus).timeBonus + '초!';
           popText.style.color = '#b6ffb0';
         } else if(points === 0){
           popText.textContent = by + ' ' + (label || '꽝!');

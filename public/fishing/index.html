@@ -27,7 +27,7 @@
   /* 화면 겹침 순서(z-index) — 새 요소를 넣을 땐 이 표에서 알맞은 층을 골라요
      0  하늘(#sky)
      1  물결선·빛줄기·거품·반짝이·해초 같은 배경 장식
-     2  해(#sun)
+     2  해(#sun), 대왕게가 뿌린 흙탕물 구름(.mudCloud)
      3  물고기·보스(.fish), 다른 친구 배(.ghostBoat)
      4  내 배(#boat), 눈 올 때 하얀 막(#snowTint)
      5  낚싯줄(#lineSvg, 친구 줄 포함), 친구 바늘(.ghostHook), 경쟁 배(#rivalBoat), 폭풍우 비·안개, 눈송이
@@ -70,7 +70,7 @@
     background:var(--sun); border-radius:50%;
     box-shadow:0 0 0 8px rgba(255,201,60,0.35);
     transition:transform .25s ease;
-    z-index:2; /* HUD(5)/배(3)보다 뒤에 있어야 해가 알약이나 배를 가리지 않아요 */
+    z-index:2; /* HUD(10)/내 배(4)보다 뒤에 있어야 해가 알약이나 배를 가리지 않아요 */
   }
   #sun.bounce{ transform:scale(1.25) rotate(15deg); }
 

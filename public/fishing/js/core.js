@@ -59,7 +59,12 @@ Game.dom = { scene: document.getElementById('scene') };
 // 화면 크기. window.innerWidth/innerHeight는 읽을 때마다 브라우저가 레이아웃을 다시 계산할 수 있어서
 // (물고기 위치를 바꾼 직후 읽으면 매번 강제 계산 → 아이폰에서 끊김), 창 크기가 바뀔 때만 읽어 여기 저장해둬요.
 // 게임 코드는 매 프레임 이 값만 써요.
-function updateGameView(){ Game.view.w = window.innerWidth; Game.view.h = window.innerHeight; }
+function updateGameView(){
+  Game.view.w = window.innerWidth; Game.view.h = window.innerHeight;
+  // 화면 크기가 바뀌었는데 바늘이 새 가장자리 여백 밖에 남아있을 수 있으니 다시 안쪽으로 당겨와요
+  // (moveRod는 single.js가 정의해요. resize는 페이지가 다 뜬 뒤에나 일어나니 그때는 항상 있어요)
+  if(typeof moveRod === 'function' && Game.hook) moveRod(Game.hook.x, Game.hook.y);
+}
 Game.view = { w: window.innerWidth, h: window.innerHeight };
 window.addEventListener('resize', updateGameView);
 window.addEventListener('orientationchange', updateGameView);

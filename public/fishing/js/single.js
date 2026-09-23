@@ -287,7 +287,7 @@ function spawnFish(){
   fish.dataset.name = type.name;
 
   const fromLeft = Math.random() < 0.5;
-  const y = 120 + Math.random() * (Game.view.h - 260);
+  const y = 120 + Math.random() * Math.max(40, Game.view.h - 260); // 아주 낮은 화면에서도 범위가 뒤집히지 않게
   fish.style.top = y + 'px';
   fish.style.left = (fromLeft ? -50 : Game.view.w + 50) + 'px';
   // 물고기 이모지는 기본적으로 왼쪽을 보므로, 왼쪽에서 오른쪽으로 갈 때 뒤집어요.
@@ -1036,7 +1036,7 @@ function spawnBoss(forcedType){
   playBossSound();
 
   const fromLeft = Math.random() < 0.5;
-  const startY = 150 + Math.random() * (Game.view.h - 320);
+  const startY = 150 + Math.random() * Math.max(40, Game.view.h - 320); // 아주 낮은 화면에서도 범위가 뒤집히지 않게
   const fish = document.createElement('div');
   fish.className = 'fish boss-fish';
   fish.textContent = bossType.emoji;
@@ -1056,7 +1056,7 @@ function spawnBoss(forcedType){
   let invulnerableUntil = 0;
 
   const minX = -80, maxX = Game.view.w + 80;
-  const minY = 130, maxY = Game.view.h - 160;
+  const minY = 130, maxY = Math.max(minY + 40, Game.view.h - 160); // 아주 낮은 화면에서도 범위가 뒤집히지 않게
   // 처음에는 화면 안쪽으로 헤엄쳐 들어와요
   let target = { x: Game.view.w * (0.3 + Math.random() * 0.4), y: startY };
 
