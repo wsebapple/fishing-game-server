@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { io: client } = require('socket.io-client');
 const { createApp } = require('../server');
-const { fishTypes, bossTypes } = require('../public/game-config.json');
+const { fishTypes, bossTypes } = require('../public/fishing/game-config.json');
 const { bossWanderPosition } = require('../server/fish');
 
 function once(socket, event) {
@@ -152,8 +152,8 @@ test('boss: a partial hit keeps it alive, the final hit scores and schedules the
 });
 
 test('fierce bosses eat only point fish, and the king crab throws trash that costs points', async () => {
-  const { hitbox } = require('../public/game-config.json');
-  const { regularFishCenter, trashCenter } = require('../public/js/shared/boss-math');
+  const { hitbox } = require('../public/fishing/game-config.json');
+  const { regularFishCenter, trashCenter } = require('../public/fishing/js/shared/boss-math');
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-test-'));
   const { server, io, roomApi } = createApp({ leaderboardFile: path.join(directory, 'scores.json') });
   await new Promise(resolve => server.listen(0, resolve));
@@ -229,21 +229,33 @@ test('fierce bosses eat only point fish, and the king crab throws trash that cos
   }
 });
 
-test('index.html asks for versioned scripts so a stale cached file can never mix with a new one', async () => {
+test('the home page lists the games, and the fishing game asks for versioned scripts', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-test-'));
   const { server, io } = createApp({ leaderboardFile: path.join(directory, 'scores.json') });
   await new Promise(resolve => server.listen(0, resolve));
   try {
     const base = 'http://127.0.0.1:' + server.address().port;
-    const res = await fetch(base + '/');
+    const home = await fetch(base + '/');
+    assert.equal(home.status, 200);
+    assert.match(await home.text(), /href: '\/fishing\/'/, 'the home page links to the fishing game');
+
+    const redirect = await fetch(base + '/fishing', { redirect: 'manual' });
+    assert.equal(redirect.status, 301);
+    assert.equal(redirect.headers.get('location'), '/fishing/');
+    await redirect.arrayBuffer();
+
+    const res = await fetch(base + '/fishing/');
     assert.equal(res.headers.get('cache-control'), 'no-cache');
     const html = await res.text();
     assert.doesNotMatch(html, /__BUILD_ID__/);
     const version = html.match(/const version = "([0-9a-f]{10})"/);
     assert.ok(version, 'build id injected');
-    const js = await fetch(base + '/js/core.js?v=' + version[1]);
-    assert.equal(js.status, 200);
-    assert.equal(js.headers.get('cache-control'), 'no-cache');
+    for (const file of ['js/core.js', 'js/shared/boss-math.js', 'game-config.json']) {
+      const asset = await fetch(base + '/fishing/' + file + '?v=' + version[1]);
+      assert.equal(asset.status, 200, file);
+      assert.equal(asset.headers.get('cache-control'), 'no-cache');
+      await asset.arrayBuffer();
+    }
   } finally {
     await new Promise(resolve => io.close(resolve));
     await fs.rm(directory, { recursive: true, force: true });

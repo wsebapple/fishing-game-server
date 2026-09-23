@@ -1,5 +1,5 @@
 const { canCatch } = require("./fish");
-const { lootItems } = require('../public/game-config.json');
+const { lootItems } = require('../public/fishing/game-config.json');
 function attachSockets(io, api) {
 const { rooms, getRoom, startRound, removePlayer, checkLevelUpForRoom, scheduleBossForRoom, broadcastTime, normalizeRoomCode, normalizeName, MAX_ROOMS, MAX_PLAYERS_PER_ROOM } = api;
 io.on('connection', (socket) => {

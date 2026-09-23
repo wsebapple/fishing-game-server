@@ -1,5 +1,5 @@
-const { fishTypes, hitbox } = require('../public/game-config.json');
-const { bossWanderPosition, isBossStealthed, regularFishCenter, trashCenter } = require('../public/js/shared/boss-math');
+const { fishTypes, hitbox } = require('../public/fishing/game-config.json');
+const { bossWanderPosition, isBossStealthed, regularFishCenter, trashCenter } = require('../public/fishing/js/shared/boss-math');
 
 function pickFishType(random = Math.random) {
   const total = fishTypes.reduce((sum, fish) => sum + fish.chance, 0);
