@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { canCatch, bossWanderPosition } = require('../server/fish');
-const { bossTypes, fishTypes } = require('../public/game-config.json');
+const { bossTypes, fishTypes } = require('../public/fishing/game-config.json');
 
 test('normal fish require fresh hook coordinates near their server position', () => {
   const now = 100000;
@@ -42,10 +42,10 @@ test('the browser and the server use the exact same boss math file', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const vm = require('node:vm');
-  const file = path.join(__dirname, '../public/js/shared/boss-math.js');
+  const file = path.join(__dirname, '../public/fishing/js/shared/boss-math.js');
   const browser = {};
   vm.runInNewContext(fs.readFileSync(file, 'utf8'), browser);
-  const server = require('../public/js/shared/boss-math');
+  const server = require('../public/fishing/js/shared/boss-math');
   for (const type of bossTypes) {
     for (const [seed, t] of [[0.1, 0.5], [0.5, 3.3], [0.93, 12.7], [0.37, 25.1]]) {
       assert.deepEqual({ ...browser.bossWanderPosition(seed, t, type) }, server.bossWanderPosition(seed, t, type));
@@ -60,13 +60,13 @@ test('the browser and the server use the exact same boss math file', () => {
   }
   for (const type of fishTypes) assert.equal(browser.isEdible(type), server.isEdible(type));
   for (const client of ['multiplayer.js', 'single.js', 'core.js']) {
-    const source = fs.readFileSync(path.join(__dirname, '../public/js', client), 'utf8');
+    const source = fs.readFileSync(path.join(__dirname, '../public/fishing/js', client), 'utf8');
     assert.doesNotMatch(source, /function\s+(bossWanderPosition|isBossStealthed|isEdible|trashCenter|regularFishCenter|makeTrashThrows)\b/, client + ' must not redefine shared boss math');
   }
 });
 
 test('lag compensation judges the moment the player was seeing, within a limit', () => {
-  const { hitbox } = require('../public/game-config.json');
+  const { hitbox } = require('../public/fishing/game-config.json');
   const type = bossTypes.find(b => b.jitter); // 가장 빠르게 움직이는 보스
   const now = 100000, width = 1280, height = 800, seed = 0.42;
   const fish = { type, seed, startTime: now - 5000, durationMs: 28000 };
@@ -88,7 +88,7 @@ test('lag compensation judges the moment the player was seeing, within a limit',
 });
 
 test('only point-giving fish are edible, and thrown trash is judged on its sinking path', () => {
-  const { isEdible, makeTrashThrows, trashCenter } = require('../public/js/shared/boss-math');
+  const { isEdible, makeTrashThrows, trashCenter } = require('../public/fishing/js/shared/boss-math');
   const edible = fishTypes.filter(isEdible).map(f => f.name);
   assert.ok(edible.includes('참치') && edible.includes('고래'));
   for (const f of fishTypes) {

@@ -1,6 +1,6 @@
-const { levelStages, bossTypes, fishTypes, hitbox } = require('../public/game-config.json');
+const { levelStages, bossTypes, fishTypes, hitbox } = require('../public/fishing/game-config.json');
 const { pickFishType, fishDurationMs } = require("./fish");
-const { bossWanderPosition, isBossStealthed, isEdible, regularFishCenter, makeTrashThrows, TRASH_WARN_MS } = require('../public/js/shared/boss-math');
+const { bossWanderPosition, isBossStealthed, isEdible, regularFishCenter, makeTrashThrows, TRASH_WARN_MS } = require('../public/fishing/js/shared/boss-math');
 const TRASH_TYPES = fishTypes.filter(f => f.isBossTrash);
 const TRASH_LIFETIME_MS = 6000;
 const BOSS_ACT_INTERVAL_MS = 100;
