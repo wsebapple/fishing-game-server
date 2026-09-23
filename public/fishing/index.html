@@ -847,6 +847,14 @@
     <button class="bigBtn btn-green" id="leaderboardRefreshBtn">🔄 새로고침</button>
     <button class="bigBtn" id="leaderboardCloseBtn">닫기</button>
   </div>
+
+  <!-- 그만하기 확인 팝업 (브라우저 기본 confirm 대신 게임 스타일로 그려요) -->
+  <div class="overlay hidden" id="quitConfirm" style="z-index:30;">
+    <h1>⚠️ 잠깐!</h1>
+    <p id="quitConfirmMsg">정말 그만하고 메인 메뉴로 돌아갈까요?</p>
+    <button class="bigBtn" id="quitConfirmYes">네, 나갈게요</button>
+    <button class="bigBtn btn-gray" id="quitConfirmNo">아니요</button>
+  </div>
 </div>
 
 <script>

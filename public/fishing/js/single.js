@@ -1191,12 +1191,33 @@ function endGame(){
 document.getElementById('startBtn').addEventListener('click', startGame);
 document.getElementById('retryBtn').addEventListener('click', startGame);
 
+// 브라우저 기본 confirm()은 게임 화면과 스타일이 안 맞아서, 직접 그린 팝업으로 같은 역할을 해요
+function showQuitConfirm(message){
+  return new Promise(resolve => {
+    const box = document.getElementById('quitConfirm');
+    document.getElementById('quitConfirmMsg').textContent = message;
+    box.classList.remove('hidden');
+    const yesBtn = document.getElementById('quitConfirmYes');
+    const noBtn = document.getElementById('quitConfirmNo');
+    const finish = result => {
+      box.classList.add('hidden');
+      yesBtn.removeEventListener('click', onYes);
+      noBtn.removeEventListener('click', onNo);
+      resolve(result);
+    };
+    const onYes = () => finish(true);
+    const onNo = () => finish(false);
+    yesBtn.addEventListener('click', onYes);
+    noBtn.addEventListener('click', onNo);
+  });
+}
+
 // 게임 중 어디서든 메인 메뉴로 빠져나갈 수 있는 버튼 (혼자하기/온라인 둘 다 동작)
-document.getElementById('quitBtn').addEventListener('click', () => {
+document.getElementById('quitBtn').addEventListener('click', async () => {
   if(Game.mp.active){
-    if(confirm('정말 그만하고 메인 메뉴로 돌아갈까요?')) leaveMultiplayer();
+    if(await showQuitConfirm('정말 그만하고 메인 메뉴로 돌아갈까요?')) leaveMultiplayer();
   } else if(Game.state.running){
-    if(confirm('정말 그만하고 메인 메뉴로 돌아갈까요?')) endGame();
+    if(await showQuitConfirm('정말 그만하고 메인 메뉴로 돌아갈까요?')) endGame();
   }
 });
 
