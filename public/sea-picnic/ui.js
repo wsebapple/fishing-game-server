@@ -41,6 +41,7 @@
       <label class="nameBox">이름 <input id="playerName" maxlength="10" placeholder="${theme.defaultName}" autocomplete="nickname"></label>
       <div id="startRanking"></div>
       <button id="start"></button>
+      <div><a class="backToHub" href="/">◀ 다른 게임 고르기</a></div>
     </section>`;
 
     const themeGrid = overlay.querySelector('#themeGrid');
@@ -48,7 +49,7 @@
       const btn = document.createElement('button');
       btn.type = 'button'; btn.className = 'themeCard' + (t.key === picked.themeKey ? ' active' : '');
       btn.style.background = t.artBg;
-      btn.innerHTML = `<span class="themeArt">${t.art}</span><span class="themeName">${t.shortTitle}</span>`;
+      btn.innerHTML = `<span class="themeArt">${t.art}</span><span class="themeName">${t.shortTitle}</span><span class="themeCheck">✔ 선택됨</span>`;
       btn.onclick = () => { picked.themeKey = t.key; renderSelect(); };
       themeGrid.appendChild(btn);
     });
@@ -85,6 +86,7 @@
       <p>${theme.scoreIcon} 친구를 <b>${score}마리</b> 만났어요 · <b>${elapsed}</b><br>${win ? '정말 멋진 여행이었어요!' : '이번에는 방해꾼을 살짝 피해 봐요.'}</p>
       ${rankingHTML}
       <button id="again">테마·난이도 다시 고르기</button>
+      <div><a class="backToHub" href="/">◀ 다른 게임 고르기</a></div>
     </section>`;
     overlay.querySelector('#again').onclick = renderSelect;
   }

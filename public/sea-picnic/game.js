@@ -202,6 +202,13 @@ async function startGame(selectedTheme, selectedDiff, name) {
 window.SeaPicnicGame = { start: startGame };
 
 document.querySelector('#sound').onclick = () => { ensureAudio(); muted = !muted; master.gain.setTargetAtTime(muted ? 0 : .52, audioCtx.currentTime, .03); let b = document.querySelector('#sound'); b.textContent = muted ? '🔇' : '🔊'; b.setAttribute('aria-label', muted ? '소리 켜기' : '소리 끄기'); };
+document.querySelector('#quit').onclick = () => {
+  if (!running) return;
+  if (!confirm('정말 그만하고 테마 고르기로 돌아갈까요?')) return;
+  running = false;
+  document.querySelector('#overlay').style.display = 'grid';
+  window.SeaPicnicUI.renderSelect();
+};
 addEventListener('keydown', e => { keys[e.code] = true; if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'Space'].includes(e.code)) e.preventDefault(); });
 addEventListener('keyup', e => keys[e.code] = false);
 document.querySelectorAll('[data-key]').forEach(b => { let k = b.dataset.key; b.onpointerdown = e => { e.preventDefault(); keys[k] = true; }; b.onpointerup = b.onpointercancel = b.onpointerleave = () => keys[k] = false; });
