@@ -59,8 +59,14 @@ Game.dom = { scene: document.getElementById('scene') };
 // 화면 크기. window.innerWidth/innerHeight는 읽을 때마다 브라우저가 레이아웃을 다시 계산할 수 있어서
 // (물고기 위치를 바꾼 직후 읽으면 매번 강제 계산 → 아이폰에서 끊김), 창 크기가 바뀔 때만 읽어 여기 저장해둬요.
 // 게임 코드는 매 프레임 이 값만 써요.
+function updateGameView(){ Game.view.w = window.innerWidth; Game.view.h = window.innerHeight; }
 Game.view = { w: window.innerWidth, h: window.innerHeight };
-window.addEventListener('resize', () => { Game.view.w = window.innerWidth; Game.view.h = window.innerHeight; });
+window.addEventListener('resize', updateGameView);
+window.addEventListener('orientationchange', updateGameView);
+// 아이폰 사파리는 스크롤하다가 주소창이 접히거나 펴지면서 화면이 커지고 줄어드는데, 그때는
+// window의 resize가 안 오고 visualViewport의 resize만 와요. 이걸 놓치면 캐시된 크기가 실제보다
+// 작게 남아서, 바늘이 그만큼 화면 가장자리까지 못 가는 테두리 같은 죽은 영역이 생겨요.
+if(window.visualViewport) window.visualViewport.addEventListener('resize', updateGameView);
 
 // 한 판(또는 온라인 한 라운드) 동안의 진행 상황
 Game.state = {
