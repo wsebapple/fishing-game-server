@@ -98,7 +98,7 @@ document.getElementById('soundToggle').addEventListener('click', () => {
   ensureAudio();
   Game.audio.soundOn = !Game.audio.soundOn;
   document.getElementById('soundToggle').innerHTML = Game.audio.soundOn ? '🔊' : '🔇';
-  if(Game.audio.soundOn && Game.state.running) startBgMusic();
+  if(Game.audio.soundOn && (Game.state.running || Game.mp.active)) startBgMusic();
   else stopBgMusic();
 });
 

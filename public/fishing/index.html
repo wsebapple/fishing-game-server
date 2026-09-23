@@ -292,10 +292,10 @@
      높이)을 뾰족한 꼭짓점으로 하는 삼각형 그물이에요. 꼭짓점은 항상 배에 고정된 채(transform-origin),
      목표 방향으로 회전만 한 번 해두고, 그 안에서 길이·넓이 두 숫자로 clip-path 윤곽을 매 프레임
      다시 그려서 펼쳤다(길이+넓이 증가) → 오므리고(넓이만 감소, 길이는 고정) → 접어 들어가요(둘 다 감소).
-     transform:scale을 안 쓰기 때문에 오므릴 때 길이가 같이 짧아져 보이는 문제가 없어요. */
+     transform:scale을 안 쓰기 때문에 오므릴 때 길이가 같이 짧아져 보이는 문제가 없어요.
+     width/height는 고정값이 아니라 매번 던질 때(playStealAnimation) 실제 길이·넓이에 맞춰 JS가 정해요. */
   .stealNet{
     position:absolute; z-index:6; pointer-events:none;
-    width:420px; height:420px;
     transform-origin:0% 50%;
     background:
       repeating-linear-gradient(35deg, rgba(255,255,255,0.4) 0 1.5px, transparent 1.5px 10px),

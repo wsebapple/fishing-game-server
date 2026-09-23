@@ -91,6 +91,7 @@ Game.effects = {
   // 'storm' | 'snow' | null - 레벨업 시에도 지금 날씨에 맞는 스폰 속도를 유지하려고 따로 기억해둬요
   // (멀티플레이 서버의 applySpawnRate와 같은 방식이에요)
   activeWeatherKind: null,
+  stealAnims: new Set(), // 진행 중인 해적 그물 연출들 (게임 종료/모드 전환 시 cancelStealAnimations로 정리해요)
 };
 
 // 혼자하기 타이머들 (게임 종료 시 반드시 정리해야 해요)

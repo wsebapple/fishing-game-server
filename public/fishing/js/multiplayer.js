@@ -40,6 +40,7 @@ function joinMultiplayer(roomCodeOverride){
   document.getElementById('mpStatus').textContent = '연결하는 중...';
 
   loadSocketIoScript(() => {
+    if(!Game.mp.connecting) return; // 스크립트가 로드되는 사이 입장 화면을 닫는 등으로 시도가 취소됐어요
     ensureAudio();
     Game.mp.socket = window.io(url);
 
@@ -62,8 +63,9 @@ function joinMultiplayer(roomCodeOverride){
     Game.mp.socket.on('roomState', (state) => {
       Game.mp.connecting = false;
       if(!Game.mp.active) startMultiplayerMode(); // 방 입장이 확정된 시점에만 화면을 전환해요
+      cancelStealAnimations();
       document.querySelectorAll('.fish').forEach(f => f.remove());
-      Game.mp.fishEls = {}; Game.mp.fishTypeById = {}; Game.mp.caughtSent = {}; Game.mp.bossInvulnUntil = {}; Game.mp.catchRetryAt = {}; Game.mp.bossSeedById = {};
+      resetMpFishState();
       stopMpWeather();
       if (state.activeWeather) startMpWeather(state.activeWeather);
       if(state.code) document.getElementById('mpRoomCodeDisplay').textContent = '방 코드: ' + state.code;
@@ -201,11 +203,9 @@ function joinMultiplayer(roomCodeOverride){
       renderMpPlayerList(players);
       updateMpTime(timeLeft);
       updateMpLevel(level || 1);
+      cancelStealAnimations();
       document.querySelectorAll('.fish').forEach(f => f.remove());
-      Game.mp.fishEls = {};
-      Game.mp.fishTypeById = {};
-      Game.mp.caughtSent = {};
-      Game.mp.bossInvulnUntil = {}; Game.mp.catchRetryAt = {}; Game.mp.bossSeedById = {};
+      resetMpFishState();
       stopMpWeather();
       showBanner('🎣 새 라운드 시작!');
     });
@@ -242,7 +242,10 @@ function joinMultiplayer(roomCodeOverride){
       const caught = stolen.map(({ id, name }) => ({ el: Game.mp.fishEls[id], id, name })).filter(c => c.el);
       if(caught.length === 0) return;
       const targetX = Math.max(80, Math.min(Game.view.w - 80, parseFloat(caught[0].el.style.left) || Game.view.w/2));
-      playStealAnimation(caught, targetX, () => { caught.forEach(c => delete Game.mp.fishEls[c.id]); });
+      // 서버가 이미 지운 물고기들이니, 여기서 바로 상태를 정리하고(누수 방지) '걸림' 상태로
+      // 묶어서 애니메이션이 끝날 때까지 제자리에 멈춰요(스냅백 방지, 재포획/재도난 방지)
+      caught.forEach(c => { c.el.classList.add('netted'); delete Game.mp.fishEls[c.id]; forgetMpFish(c.id); });
+      playStealAnimation(caught, targetX);
     });
 
     Game.mp.socket.on('fishCaught', (info) => {
@@ -379,6 +382,21 @@ function forgetMpFish(id){
   delete Game.mp.bossSeedTransitionById[id];
 }
 
+// 방 입장/라운드 리셋/모드 전환마다 반복되던 "물고기 관련 상태를 통째로 비우기"를 한 곳에 모았어요.
+// (예전엔 곳곳에 따로 적혀 있어서 일부는 catchResetTimers나 lastThrowKey를 빼먹곤 했어요)
+function resetMpFishState(){
+  Game.mp.fishEls = {};
+  Game.mp.fishTypeById = {};
+  Game.mp.caughtSent = {};
+  Game.mp.bossInvulnUntil = {};
+  Game.mp.catchRetryAt = {};
+  Game.mp.bossSeedById = {};
+  Game.mp.bossSeedTransitionById = {};
+  Object.values(Game.mp.catchResetTimers).forEach(clearTimeout);
+  Game.mp.catchResetTimers = {};
+  Game.mp.lastThrowKey = '';
+}
+
 function getMpBossSeed(id, fallback, now = performance.now()){
   const current = typeof Game.mp.bossSeedById[id] === 'number' ? Game.mp.bossSeedById[id] : fallback;
   const transition = Game.mp.bossSeedTransitionById[id];
@@ -452,7 +470,7 @@ function spawnMpFish(data){
   }
 
   function animate(){
-    if(!fish.isConnected || fish.classList.contains('eaten')) return;
+    if(!fish.isConnected || fish.classList.contains('eaten') || fish.classList.contains('netted')) return;
     const frameNow = performance.now();
     const dt = Math.min(frameNow - lastFrame, 100) / 1000;
     lastFrame = frameNow;
@@ -686,6 +704,12 @@ function startMultiplayerMode(){
   clearInterval(Game.timers.gameTimer); Game.timers.gameTimer = null;
   clearInterval(Game.timers.spawnTimer); Game.timers.spawnTimer = null;
   clearTimeout(Game.timers.rivalTimeout); clearTimeout(Game.timers.stormTimeout); clearTimeout(Game.timers.bossTimeout);
+  // 혼자하기 쪽에서 폭풍우/눈이 오던 도중 온라인으로 넘어온 경우를 대비한 방어적 정리예요
+  // (지금 진입 경로상 실제로 걸리진 않지만, 나중에 다른 진입 경로가 생겨도 안전하게)
+  clearTimeout(Game.timers.weatherEndTimeout); Game.timers.weatherEndTimeout = null;
+  clearInterval(Game.timers.stormFlashInterval); Game.timers.stormFlashInterval = null;
+  clearInterval(Game.timers.snowFlakeInterval); Game.timers.snowFlakeInterval = null;
+  cancelStealAnimations();
   document.getElementById('rivalBoat').classList.remove('show');
   stopMpWeather();
   Game.effects.magnetActive = false; clearTimeout(Game.effects.magnetTimer);
@@ -699,14 +723,7 @@ function startMultiplayerMode(){
   clearInterval(Game.mp.roundEndCountdownTimer);
   document.getElementById('mpPanel').classList.remove('hidden');
   document.querySelectorAll('.fish').forEach(f => f.remove());
-  Game.mp.fishEls = {};
-  Game.mp.fishTypeById = {};
-  Game.mp.caughtSent = {};
-  Game.mp.bossInvulnUntil = {};
-  Game.mp.catchRetryAt = {};
-  Game.mp.bossSeedById = {};
-  Game.mp.bossSeedTransitionById = {};
-  Object.values(Game.mp.catchResetTimers).forEach(clearTimeout); Game.mp.catchResetTimers = {};
+  resetMpFishState();
   startBgMusic();
   setJoystickVisible(true);
 
@@ -721,6 +738,7 @@ function leaveMultiplayer(){
   Game.mp.active = false;
   setJoystickVisible(false);
   Game.effects.magnetActive = false; clearTimeout(Game.effects.magnetTimer);
+  cancelStealAnimations();
   document.getElementById('rivalBoat').classList.remove('show');
   stopMpWeather();
   stopBgMusic();
@@ -728,14 +746,7 @@ function leaveMultiplayer(){
   clearInterval(Game.mp.roundEndCountdownTimer);
   clearGhostBoats();
   document.querySelectorAll('.fish').forEach(f => f.remove());
-  Game.mp.fishEls = {};
-  Game.mp.fishTypeById = {};
-  Game.mp.caughtSent = {};
-  Game.mp.bossInvulnUntil = {};
-  Game.mp.catchRetryAt = {};
-  Game.mp.bossSeedById = {};
-  Game.mp.bossSeedTransitionById = {};
-  Object.values(Game.mp.catchResetTimers).forEach(clearTimeout); Game.mp.catchResetTimers = {};
+  resetMpFishState();
   document.getElementById('mpPanel').classList.add('hidden');
   document.getElementById('mpRoundEndScreen').classList.add('hidden');
   document.getElementById('mpConnBanner').classList.add('hidden');

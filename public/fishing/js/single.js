@@ -307,7 +307,7 @@ function spawnFish(){
   let lastFrame = startTime;
 
   function animate(now){
-    if(!fish.isConnected || fish.classList.contains('eaten')) return;
+    if(!fish.isConnected || fish.classList.contains('eaten') || fish.classList.contains('netted')) return;
 
     // 낚싯바늘이 물고기 몸에 닿으면 클릭/탭 없이도 바로 잡혀요
     if(isNearHook(curLeft + Game.config.hitbox.fishHalf, curTop + Game.config.hitbox.fishHalf, Game.config.hitbox.fishCatchRadius)){
@@ -559,7 +559,7 @@ function tryStealFish(){
   // 보스는 친구들(여기선 나)이 직접 잡거나 도망가게 두고, 해적은 노리지 않아요 (멀티플레이와 동일)
   // 그렇지 않으면 해적이 보스를 통째로 훔쳐가버려서, 잡는 도중 사라지고
   // 다음 보스도 다시는 안 나오는 문제가 생겨요
-  const fishes = Array.from(document.querySelectorAll('.fish')).filter(f => !f.classList.contains('boss-fish') && !f.classList.contains('trashItem') && !f.classList.contains('eaten'));
+  const fishes = Array.from(document.querySelectorAll('.fish')).filter(f => !f.classList.contains('boss-fish') && !f.classList.contains('trashItem') && !f.classList.contains('eaten') && !f.classList.contains('netted') && !f.classList.contains('caught'));
   if(fishes.length === 0){ scheduleRival(); return; }
 
   // 보물통이 화면에 있으면 그것부터 노려요!
@@ -577,6 +577,9 @@ function tryStealFish(){
     return Math.hypot(fx - lureX, fy - lureY) <= radius;
   });
   const caught = [lure, ...others].map(f => ({ el: f, name: f.dataset.name }));
+  // 던지는 순간 바로 '걸림' 상태로 묶어서, 애니메이션이 끝날 때까지 제자리에 멈추고(스냅백 방지)
+  // 낚싯바늘로 다시 잡히거나 다음 그물에 또 걸리지 않게 해요
+  caught.forEach(c => c.el.classList.add('netted'));
   const targetX = Math.max(80, Math.min(Game.view.w - 80, parseFloat(lure.style.left) || Game.view.w/2));
 
   playStealAnimation(caught, targetX);
@@ -590,25 +593,28 @@ const RIVAL_NET_ORIGIN_Y = 106;
 // .stealNet 그물의 윤곽을 "길이(len)"와 "넓이(halfW)" 두 숫자만으로 매번 다시 그려요.
 // transform:scale을 전혀 안 쓰기 때문에, halfW만 바뀌어도 len은 픽셀 단위로 그대로예요
 // — scale(x,y) 하나로 조절하면 넓이만 줄여도 곡선 특성상 길이도 짧아 보이는 문제가 생겨요.
-const NET_CY = 210; // .stealNet 박스(420x420) 안에서 배 쪽 꼭짓점의 세로 위치(=height/2)
-function netPathD(len, halfW){
+// cy(박스 안에서 배 쪽 꼭짓점의 세로 위치)는 매번 던질 때 실제 길이·넓이에 맞춰 정해요
+// (예전엔 420x420 고정 박스+상한값이라, 큰 화면/먼 목표에서는 그물이 실제 판정 범위보다 짧게 보였어요).
+function netPathD(len, halfW, cy){
   const r = v => Math.round(v * 10) / 10;
-  const y = dy => r(NET_CY + dy);
-  return 'M0,' + NET_CY + ' ' +
+  const y = dy => r(cy + dy);
+  return 'M0,' + r(cy) + ' ' +
     'Q' + r(len*0.54) + ',' + y(-halfW*1.15) + ' ' + r(len*0.98) + ',' + y(-halfW*0.9) + ' ' +
     'Q' + r(len*1.07) + ',' + y(-halfW*0.55) + ' ' + r(len*1.01) + ',' + y(0) + ' ' +
     'Q' + r(len*1.07) + ',' + y(halfW*0.55) + ' ' + r(len*0.98) + ',' + y(halfW*0.9) + ' ' +
-    'Q' + r(len*0.54) + ',' + y(halfW*1.15) + ' 0,' + NET_CY + ' Z';
+    'Q' + r(len*0.54) + ',' + y(halfW*1.15) + ' 0,' + r(cy) + ' Z';
 }
-function setNetPath(net, len, halfW){ net.style.clipPath = 'path("' + netPathD(len, halfW) + '")'; }
+function setNetPath(net, len, halfW, cy){ net.style.clipPath = 'path("' + netPathD(len, halfW, cy) + '")'; }
 
 function easeOutCubic(p){ return 1 - Math.pow(1 - p, 3); }
 function easeInCubic(p){ return p * p * p; }
 function easeInOutQuad(p){ return p < 0.5 ? 2*p*p : 1 - Math.pow(-2*p + 2, 2) / 2; }
-// duration(ms) 동안 매 프레임 onFrame(진행도 0~1에 easing을 입힌 값)을 불러요
-function tween(duration, easing, onFrame, onDone){
+// duration(ms) 동안 매 프레임 onFrame(진행도 0~1에 easing을 입힌 값)을 불러요.
+// isCancelled()가 참이 되면(게임 종료 등으로 취소되면) 그 시점부터 아무 것도 더 안 해요.
+function tween(duration, easing, onFrame, onDone, isCancelled){
   const start = performance.now();
   function step(now){
+    if(isCancelled && isCancelled()) return;
     const p = Math.min(1, (now - start) / duration);
     onFrame(easing(p));
     if(p < 1) requestAnimationFrame(step);
@@ -617,8 +623,22 @@ function tween(duration, easing, onFrame, onDone){
   requestAnimationFrame(step);
 }
 
+// 게임 종료/모드 전환/라운드 리셋 등으로 화면의 물고기를 한꺼번에 치울 때, 진행 중이던 그물
+// 연출도 같이 멈추고 치워요. 안 그러면 이미 사라진 물고기를 최대 1.5초 넘게 계속 건드리다가
+// 죽은 배열을 참조하거나, .stealNet이 다음 판/방에 고아로 남아요.
+function cancelStealAnimations(){
+  if(!Game.effects.stealAnims.size) return;
+  Game.effects.stealAnims.forEach(anim => {
+    anim.cancelled = true;
+    if(anim.net && anim.net.isConnected) anim.net.remove();
+  });
+  Game.effects.stealAnims.clear();
+  document.getElementById('rivalBoat').classList.remove('show');
+}
+
 // 해적 배가 그물을 던져 items(범위 안에 걸린 물고기들, [{el,name}, ...])를 한꺼번에 쓸어가는 연출
-// (싱글·멀티 공통). items[0]이 그물이 조준한 기준(방향·사거리)이에요. 다 끝나면 el들을 지우고
+// (싱글·멀티 공통). items[0]이 그물이 조준한 기준(방향·사거리)이에요. 호출하는 쪽이 이미 items의
+// el들을 '걸림' 상태(예: netted 클래스)로 표시해뒀다고 가정해요. 다 끝나면 el들을 지우고
 // onRemoved(items)를 불러요.
 function playStealAnimation(items, boatX, onRemoved){
   if(!items || items.length === 0) return;
@@ -626,15 +646,21 @@ function playStealAnimation(items, boatX, onRemoved){
   rival.style.left = boatX + 'px';
   rival.classList.add('show');
 
+  // 이 연출 전체를 취소 가능하게 등록해요 (cancelStealAnimations가 anim.cancelled를 켜면
+  // 이후의 모든 tween/rAF 단계가 조용히 멈춰요)
+  const anim = { cancelled: false, net: null };
+  Game.effects.stealAnims.add(anim);
+  const isCancelled = () => anim.cancelled;
+
   const half = Game.config.hitbox.fishHalf;
   const anchorX = boatX, anchorY = RIVAL_NET_ORIGIN_Y;
   const lure = items[0];
   const lureX = (parseFloat(lure.el.style.left) || 0) + half;
   const lureY = (parseFloat(lure.el.style.top) || 0) + half;
   const dx = lureX - anchorX, dy = lureY - anchorY;
-  const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-  const rad = Math.atan2(dy, dx), cos = Math.cos(rad), sin = Math.sin(rad);
-  const distPx = Math.hypot(dx, dy);
+  const rad = Math.atan2(dy, dx);
+  const angle = rad * 180 / Math.PI;
+  const cos = Math.cos(rad), sin = Math.sin(rad);
 
   // lure만 보고 길이·넓이를 정하면, 같이 걸린 나머지(범위 판정은 lure 주변 반경으로 하니 lure에서
   // 옆으로 떨어져 있을 수 있어요)가 그물이 실제로 그려진 모양 밖에 남은 것처럼 보일 수 있어요.
@@ -645,45 +671,69 @@ function playStealAnimation(items, boatX, onRemoved){
     const rx = ix - anchorX, ry = iy - anchorY;
     return { along: rx * cos + ry * sin, perp: rx * -sin + ry * cos };
   });
-  const maxAlong = Math.max(distPx, ...points.map(p => p.along));
-  // 그물이 목표를 살짝 지나칠 만큼만 뻗어서, 감싸는 느낌이 나게 해요
-  const targetLen = Math.min(340, maxAlong * 1.12);
+  const maxAlong = Math.max(...points.map(p => p.along)); // points[0](lure)의 along이 곧 distPx예요
+  // 그물이 목표를 살짝 지나칠 만큼만 뻗어서, 감싸는 느낌이 나게 해요 (화면 크기에 따른 상한은 없어요 —
+  // 대신 .stealNet 박스를 매번 실제 크기에 맞게 만들어요)
+  const targetLen = Math.max(1, maxAlong * 1.12);
   let targetHalfW = 14 + targetLen * 0.2; // 기본 넓이(뾰족하고 길게)
   points.forEach(p => {
     const alongRatio = Math.max(0.22, Math.min(1, p.along / targetLen)); // 배 바로 앞은 늘 어느 정도 넓다고 쳐요
     targetHalfW = Math.max(targetHalfW, (Math.abs(p.perp) + 22) / alongRatio);
   });
-  targetHalfW = Math.min(targetHalfW, 170); // .stealNet 박스 높이(420px) 안에 들어가는 상한
-  const closedHalfW = targetHalfW * 0.38; // 오므렸을 때 남는 넓이(길이는 안 바뀜)
+  // 오므렸을 때도 옆으로 멀리 걸린 것들이 그물 폭 밖으로 그려지지 않게, 필요한 최소 넓이 이상은 유지해요
+  let neededHalfW = 0;
+  points.forEach(p => {
+    const alongRatio = Math.max(0.22, Math.min(1, p.along / targetLen));
+    neededHalfW = Math.max(neededHalfW, Math.abs(p.perp) / alongRatio);
+  });
+  const closedHalfW = Math.max(targetHalfW * 0.38, Math.min(targetHalfW, neededHalfW + 6));
+
+  const boxW = Math.ceil(targetLen * 1.1);
+  const boxH = Math.ceil(targetHalfW * 2 * 1.25);
+  const cy = boxH / 2;
 
   const net = document.createElement('div');
   net.className = 'stealNet';
   net.style.left = anchorX + 'px';
-  net.style.top = (anchorY - NET_CY) + 'px';
+  net.style.top = (anchorY - cy) + 'px';
+  net.style.width = boxW + 'px';
+  net.style.height = boxH + 'px';
   net.style.transform = 'rotate(' + angle + 'deg)';
   Game.dom.scene.appendChild(net);
-  setNetPath(net, 0, 0);
+  anim.net = net;
+  setNetPath(net, 0, 0, cy);
 
-  const starts = items.map(it => ({ x: parseFloat(it.el.style.left) || 0, y: parseFloat(it.el.style.top) || 0 }));
+  // flip: 던져질 때 이미 scaleX(-1)로 뒤집혀 있던(왼쪽에서 온) 물고기는 끌려가는 동안에도
+  // 계속 뒤집힌 채로 줄어들어야 해요. 아래 haul 단계는 transform을 통째로 다시 쓰므로
+  // (scale(flip*shrink, shrink)) 여기서 미리 기억해둬요.
+  const starts = items.map(it => ({
+    x: parseFloat(it.el.style.left) || 0,
+    y: parseFloat(it.el.style.top) || 0,
+    flip: it.el.style.transform.includes('scaleX(-1)') ? -1 : 1,
+  }));
 
   requestAnimationFrame(() => {
+    if(isCancelled()) return;
     playNetSplashSound();
     // 1단계: 꼭짓점은 배에 고정된 채, 목표를 향해 길이·넓이가 함께 커져요
-    tween(650, easeOutCubic, e => setNetPath(net, targetLen * e, targetHalfW * e), flutterThenClose);
+    tween(650, easeOutCubic, e => setNetPath(net, targetLen * e, targetHalfW * e, cy), flutterThenClose, isCancelled);
   });
 
   function flutterThenClose(){
+    if(isCancelled()) return;
     // 다 펼쳐진 뒤 잠깐 하늘하늘 — 길이는 고정, 넓이에만 작은 물결을 더해요
     const t0 = performance.now();
     (function flutter(){
+      if(isCancelled()) return;
       const el = performance.now() - t0;
-      if(el > 260){ setNetPath(net, targetLen, targetHalfW); startClose(); return; }
-      setNetPath(net, targetLen, targetHalfW * (1 + 0.05 * Math.sin(el / 40)));
+      if(el > 260){ setNetPath(net, targetLen, targetHalfW, cy); startClose(); return; }
+      setNetPath(net, targetLen, targetHalfW * (1 + 0.05 * Math.sin(el / 40)), cy);
       requestAnimationFrame(flutter);
     })();
   }
 
   function startClose(){
+    if(isCancelled()) return;
     // 2단계: 길이는 그대로 둔 채 넓이만 오므라들며 범위 안을 감싸요 (길이가 같이 줄면 버그!)
     playStealSound();
     const steal = document.createElement('div');
@@ -699,30 +749,32 @@ function playStealAnimation(items, boatX, onRemoved){
     setTimeout(() => steal.remove(), 900);
 
     tween(320, easeInOutQuad, e => {
-      setNetPath(net, targetLen, targetHalfW + (closedHalfW - targetHalfW) * e); // targetLen 고정!
-    }, startHaul);
+      setNetPath(net, targetLen, targetHalfW + (closedHalfW - targetHalfW) * e, cy); // targetLen 고정!
+    }, startHaul, isCancelled);
   }
 
   function startHaul(){
+    if(isCancelled()) return;
     // 3단계: 그물과 걸린 것들 전부가 같은 진행도로 함께 배까지 끌려가요.
     // 배에 거의 닿기 직전에야 사라져서 "빨려들어가는" 느낌을 줘요.
     tween(620, easeInCubic, e => {
-      setNetPath(net, targetLen * (1 - e), closedHalfW * (1 - e));
+      setNetPath(net, targetLen * (1 - e), closedHalfW * (1 - e), cy);
       items.forEach((it, i) => {
         if(!it.el.isConnected) return;
         const sx = starts[i].x, sy = starts[i].y;
         it.el.style.left = (sx + (anchorX - half - sx) * e) + 'px';
         it.el.style.top = (sy + (anchorY - half - sy) * e) + 'px';
         const shrink = Math.max(0.12, 1 - e * 0.8);
-        it.el.style.transform = 'scale(' + shrink + ')';
+        it.el.style.transform = 'scale(' + (starts[i].flip * shrink) + ',' + shrink + ')';
         it.el.style.opacity = e > 0.78 ? String(Math.max(0, (1 - e) / 0.22)) : '1';
       });
     }, () => {
       items.forEach(it => it.el.remove());
       net.remove();
       rival.classList.remove('show');
+      Game.effects.stealAnims.delete(anim);
       if(onRemoved) onRemoved(items);
-    });
+    }, isCancelled);
   }
 }
 
@@ -1051,7 +1103,7 @@ function spawnBoss(forcedType){
       nextPreyScanAt = now + 100;
       const bx = curLeft + half, by = curTop + half;
       let prey = null, preyDist = Infinity;
-      document.querySelectorAll('.fish:not(.boss-fish):not(.caught):not(.eaten)').forEach(f => {
+      document.querySelectorAll('.fish:not(.boss-fish):not(.caught):not(.eaten):not(.netted)').forEach(f => {
         if(!f._center || !isEdible(f._type)) return;
         const c = f._center();
         const d = Math.hypot(c.x - bx, c.y - by);
@@ -1148,7 +1200,7 @@ let bossCheatArmedUntil = 0;
 window.addEventListener('keydown', e => {
   if(!Game.state.running || Game.mp.active) return;
   if(document.activeElement && /^(input|textarea)$/i.test(document.activeElement.tagName)) return;
-  const key = e.key.toLowerCase();
+  const key = String(e.key || '').toLowerCase();
 
   if(performance.now() < bossCheatArmedUntil && /^[1-5]$/.test(key)){
     bossCheatArmedUntil = 0;
@@ -1215,6 +1267,7 @@ function startGame(){
   startBgMusic();
   setJoystickVisible(true);
 
+  cancelStealAnimations();
   document.querySelectorAll('.fish').forEach(f=>f.remove());
 
   Game.timers.spawnTimer = setInterval(spawnFish, Game.config.levelStages[0].spawnMs);
@@ -1257,7 +1310,7 @@ function endGame(){
   document.getElementById('stormFog').classList.remove('active');
   document.getElementById('snowTint').classList.remove('active');
   document.getElementById('hook').textContent = '🪝';
-  document.getElementById('rivalBoat').classList.remove('show');
+  cancelStealAnimations();
   document.querySelectorAll('.fish').forEach(f=>f.remove());
   document.querySelectorAll('.snowflake').forEach(f=>f.remove());
 
