@@ -138,6 +138,12 @@ function playShockBuzzSound(){
   for(let i = 0; i < 7; i++) playTone(170 + Math.random() * 280, 0.05, 'square', 0.07, i * 0.13);
 }
 
+// 해적 배가 그물을 던져 물속에 텀벙 빠뜨릴 때
+function playNetSplashSound(){
+  playTone(520, 0.05, 'sine', 0.14);
+  playTone(260, 0.12, 'sine', 0.16, 0.05);
+}
+
 // 대왕게가 쓰레기를 던지기 직전 경고음(삐빅삐빅)
 function playTrashWarnSound(){
   playTone(700, 0.07, 'square', 0.12);
