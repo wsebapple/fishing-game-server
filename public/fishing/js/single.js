@@ -590,7 +590,7 @@ const RIVAL_NET_ORIGIN_Y = 106;
 // .stealNet 그물의 윤곽을 "길이(len)"와 "넓이(halfW)" 두 숫자만으로 매번 다시 그려요.
 // transform:scale을 전혀 안 쓰기 때문에, halfW만 바뀌어도 len은 픽셀 단위로 그대로예요
 // — scale(x,y) 하나로 조절하면 넓이만 줄여도 곡선 특성상 길이도 짧아 보이는 문제가 생겨요.
-const NET_CY = 170; // .stealNet 박스(360x340) 안에서 배 쪽 꼭짓점의 세로 위치(=height/2)
+const NET_CY = 210; // .stealNet 박스(420x420) 안에서 배 쪽 꼭짓점의 세로 위치(=height/2)
 function netPathD(len, halfW){
   const r = v => Math.round(v * 10) / 10;
   const y = dy => r(NET_CY + dy);
@@ -633,10 +633,27 @@ function playStealAnimation(items, boatX, onRemoved){
   const lureY = (parseFloat(lure.el.style.top) || 0) + half;
   const dx = lureX - anchorX, dy = lureY - anchorY;
   const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+  const rad = Math.atan2(dy, dx), cos = Math.cos(rad), sin = Math.sin(rad);
   const distPx = Math.hypot(dx, dy);
+
+  // lure만 보고 길이·넓이를 정하면, 같이 걸린 나머지(범위 판정은 lure 주변 반경으로 하니 lure에서
+  // 옆으로 떨어져 있을 수 있어요)가 그물이 실제로 그려진 모양 밖에 남은 것처럼 보일 수 있어요.
+  // 그래서 방향은 lure로 잡되, 걸린 것들 전부를 좌표축(along=뻗는 방향, perp=옆으로 벗어난 정도)으로
+  // 바꿔서 전부 덮도록 길이·넓이를 넉넉히 계산해요.
+  const points = items.map(it => {
+    const ix = (parseFloat(it.el.style.left) || 0) + half, iy = (parseFloat(it.el.style.top) || 0) + half;
+    const rx = ix - anchorX, ry = iy - anchorY;
+    return { along: rx * cos + ry * sin, perp: rx * -sin + ry * cos };
+  });
+  const maxAlong = Math.max(distPx, ...points.map(p => p.along));
   // 그물이 목표를 살짝 지나칠 만큼만 뻗어서, 감싸는 느낌이 나게 해요
-  const targetLen = Math.min(320, distPx * 1.15);
-  const targetHalfW = 12 + targetLen * 0.22; // 길이가 늘어날수록 넓이도 함께(비례해서) 커지되, 뾰족하고 길게
+  const targetLen = Math.min(340, maxAlong * 1.12);
+  let targetHalfW = 14 + targetLen * 0.2; // 기본 넓이(뾰족하고 길게)
+  points.forEach(p => {
+    const alongRatio = Math.max(0.22, Math.min(1, p.along / targetLen)); // 배 바로 앞은 늘 어느 정도 넓다고 쳐요
+    targetHalfW = Math.max(targetHalfW, (Math.abs(p.perp) + 22) / alongRatio);
+  });
+  targetHalfW = Math.min(targetHalfW, 170); // .stealNet 박스 높이(420px) 안에 들어가는 상한
   const closedHalfW = targetHalfW * 0.38; // 오므렸을 때 남는 넓이(길이는 안 바뀜)
 
   const net = document.createElement('div');
