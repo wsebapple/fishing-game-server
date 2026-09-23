@@ -149,14 +149,16 @@ function joinMultiplayer(roomCodeOverride){
       if(el){
         const left = parseFloat(el.style.left) || 0;
         const top = parseFloat(el.style.top) || 0;
-        spawnBossEscapeEffect(left + (bossType ? (bossType.half || Game.config.hitbox.bossHalf) : Game.config.hitbox.bossHalf), top + (bossType ? (bossType.half || Game.config.hitbox.bossHalf) : Game.config.hitbox.bossHalf), bossType ? bossType.escape : 'ink');
+        const bossHalf = bossType ? (bossType.half || Game.config.hitbox.bossHalf) : Game.config.hitbox.bossHalf;
+        spawnBossEscapeEffect(left + bossHalf, top + bossHalf, bossType ? bossType.escape : 'ink');
 
-        // 나를 맞춘 경우에만: 고래는 내 낚싯바늘을 밀쳐내고, 바다용은 내 낚싯줄을 얼려요
+        // 물보라/파도로 밀려나는 건 다들 같이 보는 셰이러드 월드라 모두에게 적용해요(서버가 보낸
+        // 같은 이벤트를 모든 친구가 같이 받으니까요). 낚싯바늘 밀침·감전은 나를 맞춘 경우에만이에요.
+        if(bossType && bossType.knockback) pushNearbyMpFish(left + bossHalf, top + bossHalf, 220, 150);
         const isMe = Game.mp.socket && byId === Game.mp.socket.id;
         if(isMe && bossType){
           if(bossType.knockback){
-            const half = bossType.half || Game.config.hitbox.bossHalf;
-            const kdx = Game.hook.x - (left + half), kdy = Game.hook.y - (top + half);
+            const kdx = Game.hook.x - (left + bossHalf), kdy = Game.hook.y - (top + bossHalf);
             const kdist = Math.max(Math.hypot(kdx, kdy), 0.01);
             moveRod(Game.hook.x + (kdx / kdist) * 90, Game.hook.y + (kdy / kdist) * 90);
           }
@@ -165,6 +167,7 @@ function joinMultiplayer(roomCodeOverride){
             updateHookIcon();
             clearTimeout(Game.effects.freezeTimeout);
             Game.effects.freezeTimeout = setTimeout(() => { Game.effects.frozen = false; updateHookIcon(); }, 1000);
+            playShockEffect(1000);
           }
         }
       }
@@ -396,6 +399,7 @@ function spawnMpFish(data){
   Game.dom.scene.appendChild(fish);
   Game.mp.fishEls[data.id] = fish;
   Game.mp.fishTypeById[data.id] = type;
+  if(!type.isBoss && !data.trash) fish._knock = { x: 0, y: 0 }; // 상어/고래의 물보라·파도에 슬쩍 밀려났다가 되돌아오는 정도
   if(type.isBoss) Game.mp.bossSeedById[data.id] = data.seed;
   Game.mp.caughtSent[data.id] = false;
 
@@ -442,8 +446,7 @@ function spawnMpFish(data){
     const pos = { left: curLeft, top: curTop };
     magnetPull(pos, half, dt);
     curLeft = pos.left; curTop = pos.top;
-    fish.style.left = curLeft + 'px';
-    fish.style.top = curTop + 'px';
+    renderFishAt(fish, curLeft, curTop);
   }
 
   function animate(){
@@ -518,10 +521,27 @@ function spawnMpFish(data){
     curLeft = data.fromLeft
       ? -50 + progress * distance
       : (Game.view.w + 50) - progress * distance;
-    fish.style.left = curLeft + 'px';
+    renderFishAt(fish, curLeft, curTop);
     requestAnimationFrame(animate);
   }
   requestAnimationFrame(animate);
+}
+
+// 싱글(single.js)에서 쓰는 pushNearbyFish는 DOM에 없는 물고기별 클로저 상태(_center)를 읽으니
+// 멀티에선 못 써요. 대신 서버가 알려준 화면 위치(fish.style.left/top)를 그대로 읽어서 밀어내요.
+function pushNearbyMpFish(cx, cy, radius, strength){
+  Object.entries(Game.mp.fishEls).forEach(([id, el]) => {
+    const type = Game.mp.fishTypeById[id];
+    if(!type || type.isBoss || type.isBossTrash || !el._knock) return;
+    const half = Game.config.hitbox.fishHalf;
+    const x = (parseFloat(el.style.left) || 0) + half, y = (parseFloat(el.style.top) || 0) + half;
+    const dx = x - cx, dy = y - cy;
+    const dist = Math.max(Math.hypot(dx, dy), 0.01);
+    if(dist > radius) return;
+    const power = strength * (1 - dist / radius);
+    el._knock.x += (dx / dist) * power;
+    el._knock.y += (dy / dist) * power;
+  });
 }
 
 function renderMpPlayerList(players){
