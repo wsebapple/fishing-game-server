@@ -6,11 +6,21 @@ const fish = [], puffs = [], bubbles = [], effects = [];
 let score = 0, lives = 3, running = false, t = 0, spawn = 0, speed = 3.05, swimClock = 0;
 let theme = window.THEMES[0], diff = window.DIFFICULTIES.find(d => d.default) || window.DIFFICULTIES[0];
 let runStartedAt = 0, playerName = theme.defaultName;
+let gameOverTimer = null; // 목숨이 다 떨어진 뒤 잠깐 있다가 gameOver()를 부르는 예약. 그 사이 나가기를 누르면 취소해야 해요
 const assetCache = {};
 
-function readScores() { try { return JSON.parse(localStorage.getItem(theme.scoreKey) || '[]'); } catch { return []; } }
-function formatTime(sec) { let m = Math.floor(sec / 60), s = Math.floor(sec % 60); return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`; }
-function safeName(v) { return String(v || theme.defaultName).replace(/[<>&"']/g, '').trim().slice(0, 10) || theme.defaultName; }
+// 이 파일과 ui.js가 똑같은 순위 데이터를 다루니, 읽기/검증/렌더링을 여기 한 곳에만 두고
+// window.SeaPicnicGame으로 ui.js에도 내줘요(예전엔 두 파일에 거의 같은 함수가 따로 있었어요).
+// readScores는 저장된 값이 배열이 아니거나 항목이 이상해도(수동으로 손댄 localStorage 등)
+// 던지지 않고 걸러내요 — 안 그러면 결과 화면이 아예 안 뜨고 멈춘 것처럼 보여요.
+function readScores(t = theme) {
+  let list;
+  try { list = JSON.parse(localStorage.getItem(t.scoreKey) || '[]'); } catch { return []; }
+  if (!Array.isArray(list)) return [];
+  return list.filter(r => r && typeof r.name === 'string' && Number.isFinite(r.score) && Number.isFinite(r.time) && typeof r.date === 'string');
+}
+function formatTime(sec) { sec = Number.isFinite(sec) ? sec : 0; let m = Math.floor(sec / 60), s = Math.floor(sec % 60); return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`; }
+function safeName(v, t = theme) { return String(v || t.defaultName).replace(/[<>&"']/g, '').trim().slice(0, 10) || t.defaultName; }
 function saveScore(points, seconds) {
   let list = readScores();
   list.push({ name: safeName(playerName), score: points, time: Math.max(1, Math.round(seconds)), date: new Date().toISOString() });
@@ -19,9 +29,10 @@ function saveScore(points, seconds) {
   try { localStorage.setItem(theme.scoreKey, JSON.stringify(list)); } catch {}
   return list;
 }
-function rankingHTML(list = readScores()) {
+function rankingHTML(t = theme) {
+  const list = readScores(t);
   if (!list.length) return '<div class="ranking"><h2>🏆 TOP 10</h2><div class="empty">아직 기록이 없어요</div></div>';
-  return `<div class="ranking"><h2>🏆 TOP 10</h2><table><thead><tr><th>순위</th><th>이름</th><th>친구</th><th>시간</th><th>날짜</th></tr></thead><tbody>${list.map((r, i) => `<tr><td>${i + 1}</td><td>${safeName(r.name)}</td><td>${r.score}마리</td><td>${formatTime(r.time)}</td><td>${new Date(r.date).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}</td></tr>`).join('')}</tbody></table></div>`;
+  return `<div class="ranking"><h2>🏆 TOP 10</h2><table><thead><tr><th>순위</th><th>이름</th><th>친구</th><th>시간</th><th>날짜</th></tr></thead><tbody>${list.map((r, i) => `<tr><td>${i + 1}</td><td>${safeName(r.name, t)}</td><td>${r.score}마리</td><td>${formatTime(r.time)}</td><td>${new Date(r.date).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
 let audioCtx = null, master = null, musicTimer = null, musicStep = 0, muted = false;
@@ -73,6 +84,7 @@ async function loadTheme(t) {
 let A = null; // 현재 테마의 로드된 이미지들
 
 function reset() {
+  clearTimeout(gameOverTimer); gameOverTimer = null;
   score = 0; lives = 3; speed = 3.05 * diff.speedMul; swimClock = 0;
   fish.length = puffs.length = bubbles.length = effects.length = 0;
   Object.assign(player, { x: 170, y: 390, w: theme.char.w, h: theme.char.h, vx: 0, vy: 0, inv: 0, hurt: 0, tilt: 0 });
@@ -158,7 +170,7 @@ function update() {
       lives--; sfxHit(); player.inv = 80; player.hurt = 38; player.vx = -8; p.hurt = 38; p.vx = 5;
       for (let j = 0; j < 6; j++) effects.push({ x: (player.x + p.x) / 2, y: (player.y + p.y) / 2, a: j * Math.PI / 3, r: 8 + j % 2 * 3, life: 38 });
       updateHud();
-      if (lives <= 0) setTimeout(gameOver, 550);
+      if (lives <= 0) { clearTimeout(gameOverTimer); gameOverTimer = setTimeout(gameOver, 550); }
     } else if (p.x < -100) puffs.splice(i, 1);
   }
   for (let i = bubbles.length - 1; i >= 0; i--) { let b = bubbles[i]; b.x += b.vx; b.y += b.vy; b.life--; if (b.life < 0) bubbles.splice(i, 1); }
@@ -168,7 +180,7 @@ function draw() {
   x.clearRect(0, 0, W, H);
   if (A.bg.complete) x.drawImage(A.bg, 0, 0, W, H);
   x.fillStyle = '#38bfd70d'; x.fillRect(0, WATER, W, H - WATER);
-  for (let i = 0; i < 25; i++) { let bx = (i * 97 - t * speed * .22) % 1300, by = WATER + 18 + (i * 73) % (H - WATER - 25), hue = [174, 194, 218, 282, 345][i % 5]; x.beginPath(); x.arc(bx, by, 2 + (i % 4), 0, 7); x.fillStyle = `hsla(${hue},90%,82%,.55)`; x.fill(); }
+  for (let i = 0; i < 25; i++) { let bx = ((i * 97 - t * speed * .22) % 1300 + 1300) % 1300, by = WATER + 18 + (i * 73) % (H - WATER - 25), hue = [174, 194, 218, 282, 345][i % 5]; x.beginPath(); x.arc(bx, by, 2 + (i % 4), 0, 7); x.fillStyle = `hsla(${hue},90%,82%,.55)`; x.fill(); }
   livingWater(); livingPlants();
   fish.forEach(f => { let phase = (t + f.bob * 25), blink = phase % 190 < 10, frame = blink ? 2 : Math.floor(phase / 9) % 2, wag = Math.sin(t * .14 + f.bob); x.save(); x.translate(f.x, f.y); x.rotate(wag * .045); drawFishFrame(f.kind, frame, -theme.fish.drawW / 2, -theme.fish.drawH * .5, theme.fish.drawW, theme.fish.drawH); x.restore(); });
   puffs.forEach(p => { let idle = (t + p.bob * 20) % 170 < 10 ? 2 : Math.floor((t + p.bob * 20) / 16) % 2, frame = p.hurt ? 3 + Math.min(2, Math.floor((38 - p.hurt) / 12)) : idle, shake = p.hurt ? Math.sin(t * 1.5) * 7 : 0; x.save(); x.translate(p.x + shake, p.y); if (p.hurt) x.rotate(Math.sin(t * .8) * .16); drawPuffer(frame, -theme.puffer.drawW / 2, -theme.puffer.drawH / 2, theme.puffer.drawW, theme.puffer.drawH); x.restore(); });
@@ -183,12 +195,27 @@ function draw() {
   if (!player.inv || Math.floor(player.inv / 6) % 2 === 0) drawCharacter(frame, player.vx < -.2, bob, 1);
   x.fillStyle = '#fff8'; x.font = 'bold 15px sans-serif'; x.fillText(`${theme.scoreIcon} 만나기 +1  ·  복어 -1 ${theme.lifeIcon}`, 18, H - 18);
 }
-function loop() { update(); if (A) draw(); requestAnimationFrame(loop); }
+// 60Hz 기준으로 만든 물리/타이밍이라, rAF가 그보다 자주 오는 화면(120Hz 등)에서 프레임마다
+// update()를 한 번씩만 부르면 게임이 실제보다 배로 빨라져요. 실제 흐른 시간을 누적했다가
+// 60분의 1초씩 나눠 갚는 방식으로, 화면 주사율과 상관없이 항상 같은 속도로 진행돼요.
+const STEP_MS = 1000 / 60;
+let stepAcc = 0, lastLoopTime = null;
+function loop(now) {
+  if (lastLoopTime === null) lastLoopTime = now;
+  // 탭을 오래 백그라운드에 뒀다 돌아오는 등 간격이 크게 벌어져도 한 번에 몰아서 따라잡지 않게 상한을 둬요
+  stepAcc = Math.min(stepAcc + (now - lastLoopTime), STEP_MS * 6);
+  lastLoopTime = now;
+  while (stepAcc >= STEP_MS) { update(); stepAcc -= STEP_MS; }
+  if (A) draw();
+  requestAnimationFrame(loop);
+}
 
 function gameOver() {
+  gameOverTimer = null;
   running = false; sfxGameOver();
-  let elapsed = (performance.now() - runStartedAt) / 1000, list = saveScore(score, elapsed);
-  window.SeaPicnicUI.showResult({ score, elapsed: formatTime(elapsed), win: score >= 20, rankingHTML: rankingHTML(list) });
+  let elapsed = (performance.now() - runStartedAt) / 1000;
+  saveScore(score, elapsed);
+  window.SeaPicnicUI.showResult({ score, elapsed: formatTime(elapsed), win: score >= 20, rankingHTML: rankingHTML() });
 }
 
 async function startGame(selectedTheme, selectedDiff, name) {
@@ -196,10 +223,19 @@ async function startGame(selectedTheme, selectedDiff, name) {
   try { localStorage.setItem(theme.nameKey, playerName); } catch {}
   document.querySelector('#title').textContent = `${playerName}의 ${theme.title}`;
   document.querySelector('#sound').setAttribute('aria-label', muted ? '소리 켜기' : '소리 끄기');
-  A = await loadTheme(theme);
+  try {
+    A = await loadTheme(theme);
+  } catch (error) {
+    // 이미지 하나라도 못 받아오면(네트워크 문제 등) 빈 화면으로 멈추는 대신 테마 고르기로 되돌리고 알려줘요
+    console.error('테마를 불러오지 못했어요', error);
+    document.querySelector('#overlay').style.display = 'grid';
+    window.SeaPicnicUI.renderSelect();
+    window.SeaPicnicUI.showLoadError();
+    return;
+  }
   ensureAudio(); sfxStart(); reset(); runStartedAt = performance.now(); running = true; updateTimer();
 }
-window.SeaPicnicGame = { start: startGame };
+window.SeaPicnicGame = { start: startGame, readScores, formatTime, safeName, rankingHTML };
 
 document.querySelector('#sound').onclick = () => { ensureAudio(); muted = !muted; master.gain.setTargetAtTime(muted ? 0 : .52, audioCtx.currentTime, .03); let b = document.querySelector('#sound'); b.textContent = muted ? '🔇' : '🔊'; b.setAttribute('aria-label', muted ? '소리 켜기' : '소리 끄기'); };
 // 브라우저 기본 confirm()은 게임 화면과 스타일이 안 맞아서, 직접 그린 팝업으로 같은 역할을 해요
@@ -216,12 +252,17 @@ function showQuitConfirm() {
 document.querySelector('#quit').onclick = async () => {
   if (!running) return;
   if (!await showQuitConfirm()) return;
+  clearTimeout(gameOverTimer); gameOverTimer = null; // 목숨이 막 떨어져 예약된 gameOver()가 있다면, 나간 뒤 결과 화면이 뒤늦게 튀어나오지 않게 취소해요
   running = false;
   document.querySelector('#overlay').style.display = 'grid';
   window.SeaPicnicUI.renderSelect();
 };
 addEventListener('keydown', e => { keys[e.code] = true; if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'Space'].includes(e.code)) e.preventDefault(); });
 addEventListener('keyup', e => keys[e.code] = false);
+// 알트탭 등으로 포커스를 잃으면 keyup이 안 와서 눌린 키가 계속 눌린 채로 남을 수 있어요. 다 풀어줘요.
+function releaseAllKeys() { Object.keys(keys).forEach(k => keys[k] = false); }
+addEventListener('blur', releaseAllKeys);
+document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAllKeys(); });
 document.querySelectorAll('[data-key]').forEach(b => { let k = b.dataset.key; b.onpointerdown = e => { e.preventDefault(); keys[k] = true; }; b.onpointerup = b.onpointercancel = b.onpointerleave = () => keys[k] = false; });
 
 requestAnimationFrame(loop);

@@ -1,9 +1,20 @@
 const { canCatch } = require("./fish");
 const { lootItems } = require('../public/fishing/game-config.json');
+// 한 소켓이 너무 자주 보내는 이벤트는 조용히 무시해요. 정상 플레이 패턴보다 여유있게 잡아서
+// (boatMove는 150ms마다, catchAttempt는 잡을 때마다 + 자석 버프 중 연타 가능) 실제 플레이는 걸리지 않아요.
+function allow(socket, key, maxPerSec){
+  const now = Date.now();
+  const rate = socket.data.rate || (socket.data.rate = Object.create(null));
+  let bucket = rate[key];
+  if(!bucket || now - bucket.windowStart >= 1000) bucket = rate[key] = { windowStart: now, count: 0 };
+  bucket.count++;
+  return bucket.count <= maxPerSec;
+}
 function attachSockets(io, api) {
-const { rooms, getRoom, startRound, removePlayer, checkLevelUpForRoom, scheduleBossForRoom, broadcastTime, normalizeRoomCode, normalizeName, MAX_ROOMS, MAX_PLAYERS_PER_ROOM } = api;
+const { rooms, getRoom, startRound, removePlayer, checkLevelUpForRoom, scheduleBossForRoom, broadcastTime, normalizeRoomCode, normalizeName, MAX_ROOMS, MAX_PLAYERS_PER_ROOM, MAX_TIME_LEFT } = api;
 io.on('connection', (socket) => {
   socket.on('joinRoom', (payload) => {
+    if (!allow(socket, 'joinRoom', 5)) return;
     const code = normalizeRoomCode(payload && payload.roomCode);
     const name = normalizeName(payload && payload.name);
     if (!code) { socket.emit('joinError', { message: '방 코드는 24자 이내의 한글, 영문, 숫자, _ 또는 -만 사용할 수 있어요.' }); return; }
@@ -50,6 +61,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('catchAttempt', (payload) => {
+    if (!allow(socket, 'catchAttempt', 150)) return;
     const fishId = payload && typeof payload.fishId === 'string' && /^f\d+$|^boss\d+$/.test(payload.fishId) ? payload.fishId : null;
     if(!fishId) return;
 
@@ -93,8 +105,8 @@ io.on('connection', (socket) => {
     }
 
     if(type.isTimeBonus){
-      // 시계는 방 전체가 같이 쓰는 시간을 늘려줘요
-      room.timeLeft += type.timeBonus;
+      // 시계는 방 전체가 같이 쓰는 시간을 늘려줘요 (끝없이 늘어나지 않게 상한을 둬요)
+      room.timeLeft = Math.min(room.timeLeft + type.timeBonus, MAX_TIME_LEFT);
       broadcastTime(code);
     }
     if (type.isMagnet) socket.data.magnetUntil = now + type.magnetMs;
@@ -125,6 +137,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('boatMove', (payload) => {
+    if (!allow(socket, 'boatMove', 120)) return;
     // 내 배가 어디 있는지 같은 방 친구들한테만 살짝 알려줘요 (나한테는 다시 안 보내요)
     const code = socket.data.roomCode;
     if(!code) return;

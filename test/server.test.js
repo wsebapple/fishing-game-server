@@ -5,8 +5,10 @@ const os = require('node:os');
 const path = require('node:path');
 const { io: client } = require('socket.io-client');
 const { createApp } = require('../server');
-const { fishTypes, bossTypes } = require('../public/fishing/game-config.json');
+const { createRooms } = require('../server/rooms');
+const { fishTypes, bossTypes, hitbox } = require('../public/fishing/game-config.json');
 const { bossWanderPosition } = require('../server/fish');
+const { regularFishCenter } = require('../public/fishing/js/shared/boss-math');
 
 function once(socket, event) {
   return new Promise((resolve, reject) => {
@@ -221,6 +223,131 @@ test('fierce bosses eat only point fish, and the king crab throws trash that cos
     assert.equal((await caught).points, trash.type.points);
     assert.equal(room.players[a.id].score, 10 + trash.type.points);
   } finally {
+    a.disconnect();
+    for (const code of Object.keys(roomApi.rooms)) {
+      for (const id of Object.keys(roomApi.rooms[code].players)) roomApi.removePlayer(code, id);
+    }
+    await new Promise(resolve => io.close(resolve));
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('normalizeName keeps emoji whole and strips control characters', () => {
+  const roomApi = createRooms({ to: () => ({ emit: () => {} }) }, { record: () => Promise.resolve(), list: () => Promise.resolve([]) });
+  assert.equal(roomApi.normalizeName('a'.repeat(11) + '😀' + 'b'), 'a'.repeat(11) + '😀', '자르는 위치가 이모지 한가운데를 지나가면 안 돼요');
+  assert.equal(roomApi.normalizeName('\u0000hello\u0000'), 'hello', '제어문자는 걷어내요');
+  assert.equal(roomApi.normalizeName('   '), '친구', '빈 이름은 기본값으로 대체해요');
+});
+
+test('the clock bonus cannot push the round timer past the cap', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-test-'));
+  const { server, io, roomApi } = createApp({ leaderboardFile: path.join(directory, 'scores.json') });
+  await new Promise(resolve => server.listen(0, resolve));
+  const url = 'http://127.0.0.1:' + server.address().port;
+  const a = client(url, { transports: ['websocket'] });
+  try {
+    await once(a, 'connect');
+    const state = once(a, 'roomState');
+    a.emit('joinRoom', { roomCode: 'clock', name: 'A' });
+    await state;
+    const room = roomApi.rooms.CLOCK;
+    const clockType = fishTypes.find(f => f.isTimeBonus);
+    room.timeLeft = roomApi.MAX_TIME_LEFT - 1;
+    room.fish.f900 = { id: 'f900', type: clockType, fromLeft: true, y: 0.5, startTime: Date.now() - 1000, durationMs: 10000 };
+    a.emit('boatMove', { xRatio: 123 / 1280, yRatio: 435 / 800, width: 1280, height: 800 });
+    const caught = once(a, 'fishCaught');
+    a.emit('catchAttempt', { fishId: 'f900' });
+    await caught;
+    assert.equal(room.timeLeft, roomApi.MAX_TIME_LEFT, '상한을 넘어 계속 늘어나면 안 돼요');
+  } finally {
+    a.disconnect();
+    for (const code of Object.keys(roomApi.rooms)) {
+      for (const id of Object.keys(roomApi.rooms[code].players)) roomApi.removePlayer(code, id);
+    }
+    await new Promise(resolve => io.close(resolve));
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('boatMove flooding is throttled instead of overwhelming the room', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-test-'));
+  const { server, io, roomApi } = createApp({ leaderboardFile: path.join(directory, 'scores.json') });
+  await new Promise(resolve => server.listen(0, resolve));
+  const url = 'http://127.0.0.1:' + server.address().port;
+  const a = client(url, { transports: ['websocket'] });
+  const b = client(url, { transports: ['websocket'] });
+  try {
+    await Promise.all([once(a, 'connect'), once(b, 'connect')]);
+    let state = once(a, 'roomState');
+    a.emit('joinRoom', { roomCode: 'flood', name: 'A' });
+    await state;
+    state = once(b, 'roomState');
+    b.emit('joinRoom', { roomCode: 'flood', name: 'B' });
+    await state;
+
+    let received = 0;
+    b.on('boatMove', () => { received++; });
+    for (let i = 0; i < 600; i++) {
+      a.emit('boatMove', { xRatio: 0.5, yRatio: 0.5, width: 1280, height: 800 });
+    }
+    await new Promise(resolve => setTimeout(resolve, 300));
+    assert.ok(received <= 130, `초당 제한을 넘어서면 안 돼요 (받은 개수: ${received})`);
+    assert.equal(a.connected, true, '너무 많이 보내도 연결은 끊기지 않아요');
+
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    const nextMove = once(b, 'boatMove');
+    a.emit('boatMove', { xRatio: 0.6, yRatio: 0.6, width: 1280, height: 800 });
+    await nextMove; // 다음 초 창에서는 다시 정상적으로 전달돼요
+  } finally {
+    a.disconnect(); b.disconnect();
+    for (const code of Object.keys(roomApi.rooms)) {
+      for (const id of Object.keys(roomApi.rooms[code].players)) roomApi.removePlayer(code, id);
+    }
+    await new Promise(resolve => io.close(resolve));
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('the pirate net sweeps the lure and its close neighbours only', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-test-'));
+  const { server, io, roomApi } = createApp({ leaderboardFile: path.join(directory, 'scores.json') });
+  await new Promise(resolve => server.listen(0, resolve));
+  const url = 'http://127.0.0.1:' + server.address().port;
+  const a = client(url, { transports: ['websocket'] });
+  const origRandom = Math.random;
+  try {
+    await once(a, 'connect');
+    const state = once(a, 'roomState');
+    a.emit('joinRoom', { roomCode: 'pirate', name: 'A' });
+    await state;
+    const room = roomApi.rooms.PIRATE;
+    clearInterval(room.spawnTimer); clearTimeout(room.bossTimer); clearTimeout(room.rivalTimer);
+    for (const id of Object.keys(room.fish)) delete room.fish[id];
+
+    const regular = fishTypes.find(f => !f.isTreasure && !f.isBoss && !f.isBossTrash && !f.isMagnet && !f.isTimeBonus);
+    const W = hitbox.eatRefWidth, H = hitbox.eatRefHeight, now = Date.now();
+    const bx = 300, by = 300;
+    const fishAt = (id, dx) => {
+      const durationMs = 1e7; // 거의 멈춰 있게
+      const f = { id, type: regular, fromLeft: true, y: (by - hitbox.fishHalf) / H, startTime: now, durationMs };
+      f.startTime = now - ((bx + dx + 50 - hitbox.fishHalf) / (W + 100)) * durationMs;
+      assert.ok(Math.abs(regularFishCenter(f, now - f.startTime, W, H, hitbox.fishHalf).x - (bx + dx)) < 0.01);
+      room.fish[id] = f;
+    };
+    fishAt('f1', 0);   // lure (조준당하는 물고기)
+    fishAt('f2', 100); // 반경(150) 안 — 같이 쓸려가요
+    fishAt('f3', 400); // 반경 밖 — 그대로 남아요
+
+    Math.random = () => 0; // 등록 순서상 첫 번째(f1)가 lure로 뽑히게 고정
+    const stolen = once(a, 'fishStolen');
+    roomApi.tryStealForRoom('PIRATE');
+    const items = await stolen;
+    assert.deepEqual(items.map(i => i.id).sort(), ['f1', 'f2'], '조준 대상과 가까운 것만 그물에 걸려요');
+    assert.equal(room.fish.f1, undefined);
+    assert.equal(room.fish.f2, undefined);
+    assert.ok(room.fish.f3, '반경 밖 물고기는 안 쓸려가요');
+  } finally {
+    Math.random = origRandom;
     a.disconnect();
     for (const code of Object.keys(roomApi.rooms)) {
       for (const id of Object.keys(roomApi.rooms[code].players)) roomApi.removePlayer(code, id);

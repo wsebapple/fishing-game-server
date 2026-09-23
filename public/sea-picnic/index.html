@@ -29,6 +29,8 @@
 .card button.btnGray{background:#8aa0a8;box-shadow:0 6px 0 #62767d}
 .ranking{margin:12px auto 16px;width:min(460px,100%);background:#dff6efaa;border-radius:16px;padding:10px 14px}.ranking h2{font-size:17px;margin:0 0 7px;color:#277285}.ranking table{width:100%;border-collapse:collapse;font-size:13px}.ranking th,.ranking td{padding:3px 5px;border-bottom:1px solid #65aeb433}.ranking th{color:#397786}.ranking tr:last-child td{border:0}.ranking .empty{padding:8px;color:#6c8e91}
 #touch{position:absolute;inset:auto 18px 16px;display:none;justify-content:space-between}.touchBtn{width:74px;height:74px;border:3px solid #fff;background:#fff7;border-radius:50%;font-size:28px;color:#164f63;font-weight:900}.rightBtns{display:flex;gap:12px}@media(pointer:coarse),(max-width:800px){#wrap{width:100vw;height:100vh;aspect-ratio:auto;border-radius:0;border:0}#touch{display:flex}.pill{padding:7px 10px;font-size:13px}#title{top:60px}}
+/* 스크립트 오류 안내(누르면 닫혀요) */
+#errorReport{position:absolute;left:8px;right:8px;bottom:8px;z-index:40;background:#781414e6;color:#fff;font-size:12px;line-height:1.4;padding:6px 10px;border-radius:8px;font-family:monospace;word-break:break-all}
 </style>
 </head>
 <body><main id="wrap"><canvas id="game" width="1180" height="664" aria-label="바다 소풍 게임"></canvas>
@@ -46,17 +48,47 @@
 </div>
 <div id="touch"><button class="touchBtn" data-key="ArrowLeft">◀</button><div class="rightBtns"><button class="touchBtn" data-key="ArrowRight">▶</button><button class="touchBtn" data-key="Space">↑</button></div></div></main>
 <script>
+// 게임 중에 스크립트 오류가 나면 화면 아래에 작게 보여줘요. 아이폰처럼 개발자 도구를 보기 어려운 기기에서
+// 어떤 오류인지 알려주면 바로 고칠 수 있어요. (같은 오류는 한 번만 보여줘요)
+(() => {
+  const shown = new Set();
+  function report(message, where){
+    const text = message + (where ? " (" + where + ")" : "");
+    if(shown.has(text) || shown.size >= 3) return;
+    shown.add(text);
+    let box = document.getElementById("errorReport");
+    if(!box){
+      box = document.createElement("div");
+      box.id = "errorReport";
+      box.addEventListener("click", () => box.remove());
+      document.getElementById("wrap").appendChild(box);
+    }
+    const line = document.createElement("div");
+    line.textContent = "⚠️ 오류: " + text;
+    box.appendChild(line);
+  }
+  window.addEventListener("error", e => report(e.message, e.filename ? e.filename.split("/").pop().split("?")[0] + ":" + e.lineno : ""));
+  window.addEventListener("unhandledrejection", e => report(String(e.reason && e.reason.message || e.reason)));
+})();
 (async () => {
   const modules = ["themes", "game", "ui"];
   const version = "__BUILD_ID__";
   const src = file => file + (version.startsWith("__") ? "" : "?v=" + version);
-  for (const name of modules) {
-    await new Promise((resolve, reject) => {
-      const script = document.createElement("script");
-      script.src = src(name + ".js");
-      script.onload = resolve; script.onerror = reject;
-      document.body.appendChild(script);
-    });
+  try {
+    for (const name of modules) {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = src(name + ".js");
+        script.onload = resolve; script.onerror = reject;
+        document.body.appendChild(script);
+      });
+    }
+  } catch (error) {
+    // themes/game/ui 중 하나라도 못 받아오면(네트워크 문제 등) ui.js가 아예 안 붙어서 renderSelect()가
+    // 안 불리고 화면이 텅 빈 채로 멈춰요. 여기서 직접 안내 문구를 채워줘요.
+    document.getElementById("overlay").innerHTML =
+      '<section class="card"><h1>앗!</h1><p>게임을 불러오지 못했어요. 페이지를 새로고침해주세요.</p></section>';
+    console.error(error);
   }
 })();
 </script>
