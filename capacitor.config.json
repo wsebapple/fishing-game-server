@@ -1,0 +1,10 @@
+{
+  "appId": "com.wsebapple.fishinggame",
+  "appName": "낚시 게임",
+  "webDir": "capacitor-www",
+  "server": {
+    "url": "https://fishing-game-server-pr77.onrender.com/fishing/",
+    "androidScheme": "https",
+    "cleartext": false
+  }
+}
