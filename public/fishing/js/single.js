@@ -550,6 +550,10 @@ function scheduleRival(){
   Game.timers.rivalTimeout = setTimeout(tryStealFish, delay);
 }
 
+// 해적이 노리는 물고기(lure) 주변 이 반경(px) 안에 있는 것들도 그물 범위에 같이 걸려요.
+// 화면 크기에 비례해서(멀티플레이의 기준 화면 판정과 같은 비율感) 정해요.
+function rivalSweepRadius(){ return Math.min(Game.view.w, Game.view.h) * 0.21; }
+
 function tryStealFish(){
   if(!Game.state.running) return;
   // 보스는 친구들(여기선 나)이 직접 잡거나 도망가게 두고, 해적은 노리지 않아요 (멀티플레이와 동일)
@@ -561,10 +565,21 @@ function tryStealFish(){
   // 보물통이 화면에 있으면 그것부터 노려요!
   const treasures = fishes.filter(f => f.dataset.name === '보물통');
   const pool = treasures.length > 0 ? treasures : fishes;
-  const target = pool[Math.floor(Math.random() * pool.length)];
-  const targetX = Math.max(80, Math.min(Game.view.w - 80, parseFloat(target.style.left) || Game.view.w/2));
+  const lure = pool[Math.floor(Math.random() * pool.length)];
 
-  playStealAnimation(target, target.dataset.name, targetX);
+  // 그물은 lure 하나만 잡는 게 아니라, 실제로 펼쳐진 범위(rivalSweepRadius) 안에 있는 것도 같이 쓸어가요
+  const half = Game.config.hitbox.fishHalf;
+  const lureX = (parseFloat(lure.style.left) || 0) + half, lureY = (parseFloat(lure.style.top) || 0) + half;
+  const radius = rivalSweepRadius();
+  const others = fishes.filter(f => {
+    if(f === lure) return false;
+    const fx = (parseFloat(f.style.left) || 0) + half, fy = (parseFloat(f.style.top) || 0) + half;
+    return Math.hypot(fx - lureX, fy - lureY) <= radius;
+  });
+  const caught = [lure, ...others].map(f => ({ el: f, name: f.dataset.name }));
+  const targetX = Math.max(80, Math.min(Game.view.w - 80, parseFloat(lure.style.left) || Game.view.w/2));
+
+  playStealAnimation(caught, targetX);
   scheduleRival();
 }
 
@@ -572,65 +587,126 @@ function tryStealFish(){
 // 바닥을 축으로 세로만 축소되니, 화면에 보이는 뱃머리 밑(그물을 던지는 지점)은 6+100=106이에요.
 const RIVAL_NET_ORIGIN_Y = 106;
 
-// 해적 배가 그물을 던져 물고기 el을 쓸어가는 연출 (싱글·멀티 공통). 다 끝나면 el을 지우고 onRemoved를 불러요.
-function playStealAnimation(el, name, boatX, onRemoved){
+// .stealNet 그물의 윤곽을 "길이(len)"와 "넓이(halfW)" 두 숫자만으로 매번 다시 그려요.
+// transform:scale을 전혀 안 쓰기 때문에, halfW만 바뀌어도 len은 픽셀 단위로 그대로예요
+// — scale(x,y) 하나로 조절하면 넓이만 줄여도 곡선 특성상 길이도 짧아 보이는 문제가 생겨요.
+const NET_CY = 170; // .stealNet 박스(360x340) 안에서 배 쪽 꼭짓점의 세로 위치(=height/2)
+function netPathD(len, halfW){
+  const r = v => Math.round(v * 10) / 10;
+  const y = dy => r(NET_CY + dy);
+  return 'M0,' + NET_CY + ' ' +
+    'Q' + r(len*0.54) + ',' + y(-halfW*1.15) + ' ' + r(len*0.98) + ',' + y(-halfW*0.9) + ' ' +
+    'Q' + r(len*1.07) + ',' + y(-halfW*0.55) + ' ' + r(len*1.01) + ',' + y(0) + ' ' +
+    'Q' + r(len*1.07) + ',' + y(halfW*0.55) + ' ' + r(len*0.98) + ',' + y(halfW*0.9) + ' ' +
+    'Q' + r(len*0.54) + ',' + y(halfW*1.15) + ' 0,' + NET_CY + ' Z';
+}
+function setNetPath(net, len, halfW){ net.style.clipPath = 'path("' + netPathD(len, halfW) + '")'; }
+
+function easeOutCubic(p){ return 1 - Math.pow(1 - p, 3); }
+function easeInCubic(p){ return p * p * p; }
+function easeInOutQuad(p){ return p < 0.5 ? 2*p*p : 1 - Math.pow(-2*p + 2, 2) / 2; }
+// duration(ms) 동안 매 프레임 onFrame(진행도 0~1에 easing을 입힌 값)을 불러요
+function tween(duration, easing, onFrame, onDone){
+  const start = performance.now();
+  function step(now){
+    const p = Math.min(1, (now - start) / duration);
+    onFrame(easing(p));
+    if(p < 1) requestAnimationFrame(step);
+    else if(onDone) onDone();
+  }
+  requestAnimationFrame(step);
+}
+
+// 해적 배가 그물을 던져 items(범위 안에 걸린 물고기들, [{el,name}, ...])를 한꺼번에 쓸어가는 연출
+// (싱글·멀티 공통). items[0]이 그물이 조준한 기준(방향·사거리)이에요. 다 끝나면 el들을 지우고
+// onRemoved(items)를 불러요.
+function playStealAnimation(items, boatX, onRemoved){
+  if(!items || items.length === 0) return;
   const rival = document.getElementById('rivalBoat');
   rival.style.left = boatX + 'px';
   rival.classList.add('show');
 
   const half = Game.config.hitbox.fishHalf;
-  const targetX = (parseFloat(el.style.left) || 0) + half;
-  const targetY = (parseFloat(el.style.top) || 0) + half;
+  const anchorX = boatX, anchorY = RIVAL_NET_ORIGIN_Y;
+  const lure = items[0];
+  const lureX = (parseFloat(lure.el.style.left) || 0) + half;
+  const lureY = (parseFloat(lure.el.style.top) || 0) + half;
+  const dx = lureX - anchorX, dy = lureY - anchorY;
+  const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+  const distPx = Math.hypot(dx, dy);
+  // 그물이 목표를 살짝 지나칠 만큼만 뻗어서, 감싸는 느낌이 나게 해요
+  const targetLen = Math.min(320, distPx * 1.15);
+  const targetHalfW = 12 + targetLen * 0.22; // 길이가 늘어날수록 넓이도 함께(비례해서) 커지되, 뾰족하고 길게
+  const closedHalfW = targetHalfW * 0.38; // 오므렸을 때 남는 넓이(길이는 안 바뀜)
 
   const net = document.createElement('div');
   net.className = 'stealNet';
-  net.style.left = boatX + 'px';
-  net.style.top = RIVAL_NET_ORIGIN_Y + 'px';
+  net.style.left = anchorX + 'px';
+  net.style.top = (anchorY - NET_CY) + 'px';
+  net.style.transform = 'rotate(' + angle + 'deg)';
   Game.dom.scene.appendChild(net);
+  setNetPath(net, 0, 0);
 
-  // 1단계: 배 밑에서 그물을 펼쳐 던져 목표 물고기까지 내려요
+  const starts = items.map(it => ({ x: parseFloat(it.el.style.left) || 0, y: parseFloat(it.el.style.top) || 0 }));
+
   requestAnimationFrame(() => {
     playNetSplashSound();
-    net.classList.add('dropping');
-    net.style.left = targetX + 'px';
-    net.style.top = targetY + 'px';
+    // 1단계: 꼭짓점은 배에 고정된 채, 목표를 향해 길이·넓이가 함께 커져요
+    tween(650, easeOutCubic, e => setNetPath(net, targetLen * e, targetHalfW * e), flutterThenClose);
   });
 
-  setTimeout(() => {
-    // 2단계: 목표 위치에서 그물이 오므라들며 물고기를 감싸요
-    net.classList.remove('dropping');
-    net.classList.add('closed');
-    if(el.isConnected){
-      playStealSound();
-      el.style.transition = 'transform .25s ease, opacity .25s ease';
-      el.style.transform = (el.style.transform || '') + ' scale(0.3)';
-      el.style.opacity = '0';
+  function flutterThenClose(){
+    // 다 펼쳐진 뒤 잠깐 하늘하늘 — 길이는 고정, 넓이에만 작은 물결을 더해요
+    const t0 = performance.now();
+    (function flutter(){
+      const el = performance.now() - t0;
+      if(el > 260){ setNetPath(net, targetLen, targetHalfW); startClose(); return; }
+      setNetPath(net, targetLen, targetHalfW * (1 + 0.05 * Math.sin(el / 40)));
+      requestAnimationFrame(flutter);
+    })();
+  }
 
-      const steal = document.createElement('div');
-      steal.className = 'caughtPop';
-      steal.textContent = name === '보물통'
-        ? '🏴‍☠️ 해적이 그물로 보물통을 쓸어갔어요!'
-        : '🏴‍☠️ 다른 배가 그물로 쓸어갔어요!';
-      steal.style.color = '#ff9b9b';
-      steal.style.fontSize = '16px';
-      steal.style.left = el.style.left;
-      steal.style.top = el.style.top;
-      Game.dom.scene.appendChild(steal);
-      setTimeout(() => steal.remove(), 900);
-      setTimeout(() => { el.remove(); if(onRemoved) onRemoved(); }, 250);
-    }
-  }, 480);
+  function startClose(){
+    // 2단계: 길이는 그대로 둔 채 넓이만 오므라들며 범위 안을 감싸요 (길이가 같이 줄면 버그!)
+    playStealSound();
+    const steal = document.createElement('div');
+    steal.className = 'caughtPop';
+    steal.textContent = items.length > 1
+      ? ('🏴‍☠️ 그물로 ' + items.length + '마리나 쓸어갔어요!')
+      : (lure.name === '보물통' ? '🏴‍☠️ 해적이 그물로 보물통을 쓸어갔어요!' : '🏴‍☠️ 다른 배가 그물로 쓸어갔어요!');
+    steal.style.color = '#ff9b9b';
+    steal.style.fontSize = '16px';
+    steal.style.left = lureX + 'px';
+    steal.style.top = lureY + 'px';
+    Game.dom.scene.appendChild(steal);
+    setTimeout(() => steal.remove(), 900);
 
-  setTimeout(() => {
-    // 3단계: 물고기를 담은 그물이 다시 배까지 끌려 올라가요
-    net.classList.remove('closed');
-    net.classList.add('hauling');
-    net.style.left = boatX + 'px';
-    net.style.top = RIVAL_NET_ORIGIN_Y + 'px';
-  }, 730);
+    tween(320, easeInOutQuad, e => {
+      setNetPath(net, targetLen, targetHalfW + (closedHalfW - targetHalfW) * e); // targetLen 고정!
+    }, startHaul);
+  }
 
-  setTimeout(() => { net.classList.add('fading'); }, 1180);
-  setTimeout(() => { net.remove(); rival.classList.remove('show'); }, 1480);
+  function startHaul(){
+    // 3단계: 그물과 걸린 것들 전부가 같은 진행도로 함께 배까지 끌려가요.
+    // 배에 거의 닿기 직전에야 사라져서 "빨려들어가는" 느낌을 줘요.
+    tween(620, easeInCubic, e => {
+      setNetPath(net, targetLen * (1 - e), closedHalfW * (1 - e));
+      items.forEach((it, i) => {
+        if(!it.el.isConnected) return;
+        const sx = starts[i].x, sy = starts[i].y;
+        it.el.style.left = (sx + (anchorX - half - sx) * e) + 'px';
+        it.el.style.top = (sy + (anchorY - half - sy) * e) + 'px';
+        const shrink = Math.max(0.12, 1 - e * 0.8);
+        it.el.style.transform = 'scale(' + shrink + ')';
+        it.el.style.opacity = e > 0.78 ? String(Math.max(0, (1 - e) / 0.22)) : '1';
+      });
+    }, () => {
+      items.forEach(it => it.el.remove());
+      net.remove();
+      rival.classList.remove('show');
+      if(onRemoved) onRemoved(items);
+    });
+  }
 }
 
 

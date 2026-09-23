@@ -236,11 +236,13 @@ function joinMultiplayer(roomCodeOverride){
       else startMpWeather(kind);
     });
 
-    Game.mp.socket.on('fishStolen', ({ id, name }) => {
-      const el = Game.mp.fishEls[id];
-      if(!el) return;
-      const targetX = Math.max(80, Math.min(Game.view.w - 80, parseFloat(el.style.left) || Game.view.w/2));
-      playStealAnimation(el, name, targetX, () => { delete Game.mp.fishEls[id]; });
+    Game.mp.socket.on('fishStolen', (stolen) => {
+      // stolen: [{id,name}, ...] — 서버가 범위 판정까지 해서 걸린 걸 한꺼번에 보내줘요.
+      // 이 클라이언트 화면에 이미 없어진 el(다른 친구가 먼저 잡은 등)은 걸러내요.
+      const caught = stolen.map(({ id, name }) => ({ el: Game.mp.fishEls[id], id, name })).filter(c => c.el);
+      if(caught.length === 0) return;
+      const targetX = Math.max(80, Math.min(Game.view.w - 80, parseFloat(caught[0].el.style.left) || Game.view.w/2));
+      playStealAnimation(caught, targetX, () => { caught.forEach(c => delete Game.mp.fishEls[c.id]); });
     });
 
     Game.mp.socket.on('fishCaught', (info) => {

@@ -192,6 +192,10 @@ function scheduleRivalForRoom(code){
   room.rivalTimer = setTimeout(() => tryStealForRoom(code), delay);
 }
 
+// 해적이 노리는 물고기(lure) 주변 이 반경(px, 기준 화면 eatRefWidth x eatRefHeight 안) 안에
+// 있는 것들도 그물 범위에 같이 걸려요 — 보스 포식 판정(catchRadius)보다 넉넉하게, 그물답게 넓혀요.
+const RIVAL_SWEEP_RADIUS = 150;
+
 function tryStealForRoom(code){
   const room = rooms[code];
   if(!room) return;
@@ -203,10 +207,21 @@ function tryStealForRoom(code){
   // 보물통이 떠 있으면 그것부터 노려요!
   const treasures = stealable.filter(f => f.type.isTreasure);
   const pool = treasures.length > 0 ? treasures : stealable;
-  const target = pool[Math.floor(Math.random() * pool.length)];
+  const lure = pool[Math.floor(Math.random() * pool.length)];
 
-  delete room.fish[target.id];
-  io.to(code).emit('fishStolen', { id: target.id, name: target.type.name });
+  // 그물은 lure 하나만 잡는 게 아니라, 실제로 펼쳐진 범위(RIVAL_SWEEP_RADIUS) 안에 있는 것도 같이
+  // 쓸어가요. 친구마다 화면 크기가 달라서, 보스 포식 판정과 같은 기준 화면에서 계산해요.
+  const W = hitbox.eatRefWidth, H = hitbox.eatRefHeight, now = Date.now();
+  const lureCenter = regularFishCenter(lure, now - lure.startTime, W, H, hitbox.fishHalf);
+  const others = stealable.filter(f => {
+    if(f === lure) return false;
+    const c = regularFishCenter(f, now - f.startTime, W, H, hitbox.fishHalf);
+    return Math.hypot(c.x - lureCenter.x, c.y - lureCenter.y) <= RIVAL_SWEEP_RADIUS;
+  });
+  const caught = [lure, ...others];
+
+  caught.forEach(f => delete room.fish[f.id]);
+  io.to(code).emit('fishStolen', caught.map(f => ({ id: f.id, name: f.type.name })));
 
   scheduleRivalForRoom(code);
 }
