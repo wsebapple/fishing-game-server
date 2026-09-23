@@ -51,10 +51,30 @@ function updateHookIcon(){
   hook.textContent = Game.effects.frozen ? '🧊' : (Game.effects.magnetActive ? '🧲' : '🪝');
 }
 
+// 터치 기기인지, 화면 아래 왼쪽 가상 조이스틱 DOM은 moveRod()의 가장자리 여백 계산에도 필요해서
+// (조이스틱을 완전히 덮지 않게 피하려고) 조이스틱 코드보다 앞, moveRod 정의 앞으로 옮겨왔어요.
+// (예전엔 이 줄들이 더 아래에 있어서, 페이지가 뜨자마자 실행되는 아래쪽 moveRod(...) 첫 호출이
+// 이 값들을 읽으려다 "선언 전 접근" 오류로 매번 죽었었어요)
+const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+const joystickBase = document.getElementById('joystickBase');
+
+// 화면 가장자리 안전 여백. 배/바늘이 화면 밖으로 잘리지 않을 만큼만 남기고, 위쪽만 HUD 알약에
+// 가리지 않게 더 넉넉히 둬요. 예전엔 상하좌우 모두 80~110px로 넓게 막아놔서, 화면 아래·양옆
+// 가장자리 쪽에 바늘이 아예 못 들어가는 테두리처럼 느껴지는 죽은 공간이 생겼어요.
+const EDGE_MARGIN_X = 28, EDGE_MARGIN_TOP = 78, EDGE_MARGIN_BOTTOM = 28;
+
 function moveRod(x, y){
   if(Game.effects.frozen) return; // 얼어있는 동안엔 낚싯줄을 움직일 수 없어요
-  const clampedX = Math.max(80, Math.min(Game.view.w - 80, x));
-  const clampedY = Math.max(110, Math.min(Game.view.h - 110, y || 330));
+  let clampedX = Math.max(EDGE_MARGIN_X, Math.min(Game.view.w - EDGE_MARGIN_X, x));
+  let clampedY = Math.max(EDGE_MARGIN_TOP, Math.min(Game.view.h - EDGE_MARGIN_BOTTOM, y || 330));
+  // 터치 기기에서 조이스틱이 떠 있는 동안엔, 바늘이 조이스틱 원판 자리(왼쪽 아래)를 완전히
+  // 덮어버리지 않게 그 네모 영역만 살짝 피해서 오른쪽·위쪽으로 밀어내요.
+  if(isTouchDevice && !joystickBase.classList.contains('hidden')){
+    const jx = 132, jy = Game.view.h - 132; // 조이스틱 원판이 차지하는 네모(left:22,bottom:22,110x110)의 오른쪽 위 모서리
+    if(clampedX < jx && clampedY > jy){
+      if(jx - clampedX < clampedY - jy) clampedX = jx; else clampedY = jy;
+    }
+  }
   // 바늘(잡는 판정 기준)은 커서를 그대로 따라가야 정확하니 즉시 움직여요.
   // 배/낚싯줄의 "뒤늦게 따라오는" 연출은 updateBoatAndLine()이 따로 매 프레임 처리해요.
   Game.hook.x = clampedX; Game.hook.y = clampedY;
@@ -163,9 +183,8 @@ moveRod(Game.view.w/2, 330);
 /* ------------------------------------------------------
    터치 기기용 가상 조이스틱: 화면 아래 왼쪽 원을 손가락으로 밀면
    그 방향으로 배가 계속 이동해요 (마우스는 그대로 커서를 따라가요)
+   (isTouchDevice/joystickBase는 moveRod()보다 앞에서 이미 선언했어요)
 ------------------------------------------------------ */
-const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
-const joystickBase = document.getElementById('joystickBase');
 const joystickKnob = document.getElementById('joystickKnob');
 Game.joystick = { dx: 0, dy: 0, active: false, touchId: null }; // dx/dy: -1~1로 정규화된 방향
 
