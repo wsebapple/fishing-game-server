@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>바다 소풍</title>
+<meta name="description" content="테마를 골라 물고기 친구를 만나는 헤엄 게임">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐟</text></svg>">
+<style>
+*{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden;background:#073d58;font-family:"Malgun Gothic",sans-serif;color:#fff}body{display:grid;place-items:center;background:radial-gradient(circle at 50% 20%,#88e3e5,#0b6688 70%)}
+#wrap{position:relative;width:min(100vw,1180px);aspect-ratio:16/9;overflow:hidden;border-radius:24px;box-shadow:0 25px 80px #002b44aa;border:3px solid #fff8}canvas{width:100%;height:100%;display:block;touch-action:none}
+#hud{position:absolute;inset:18px 20px auto;display:flex;justify-content:space-between;gap:12px;pointer-events:none;text-shadow:0 2px 4px #174f5e;font-weight:900}.pill{background:#fff8;color:#154f62;padding:9px 16px;border:2px solid #fff;border-radius:999px;backdrop-filter:blur(8px)}#status{display:flex;align-items:center;gap:10px}#status .divider{width:1px;height:18px;background:#38798a66}#sound{position:absolute;right:20px;top:70px;pointer-events:auto;border:2px solid #fff;background:#fff9;color:#154f62;width:46px;height:46px;border-radius:50%;font-size:20px;cursor:pointer;box-shadow:0 4px 12px #13536a55}#sound:active{transform:scale(.92)}
+#title{position:absolute;top:12px;left:50%;transform:translateX(-50%);max-width:76%;padding:8px 24px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:3px solid #ffffffdd;border-radius:999px;background:linear-gradient(180deg,#fffff2e8,#c9f8efdf);box-shadow:0 7px 18px #075c7060,inset 0 2px 0 #fff;color:#116c80;font-family:"Arial Rounded MT Bold","Trebuchet MS","Malgun Gothic",sans-serif;font-size:clamp(17px,2.25vw,29px);font-weight:900;letter-spacing:-.055em;line-height:1.05;text-shadow:0 2px 0 #fff,0 3px 8px #61c8c066}
+#overlay{position:absolute;inset:0;display:grid;place-items:center;background:#083b4d77;backdrop-filter:blur(3px)}.card{text-align:center;background:#fffce5ed;color:#174f62;padding:22px 30px;border-radius:28px;border:4px solid #fff;box-shadow:0 12px 40px #03465a88;max-width:92%;max-height:94%;overflow:auto}.card h1{margin:0 0 8px;color:#df6550;font-size:clamp(26px,4.6vw,50px)}.card p{line-height:1.6;margin:8px 0 14px}
+.themeGrid{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:6px 0}
+.themeCard{border:3px solid #fff;border-radius:18px;padding:10px 14px;min-width:88px;color:#0f3d4a;font-weight:900;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;box-shadow:0 4px 10px #0b425522;opacity:.72;transform:scale(.96);transition:transform .12s ease,opacity .12s ease}
+.themeCard.active{opacity:1;transform:scale(1);border-color:#f26d5b;box-shadow:0 6px 16px #f26d5b55}
+.themeCard .themeArt{font-size:30px}.themeCard .themeName{font-size:14px}
+.themeDesc{font-size:14px;color:#3f7686;margin:2px 0 10px}
+.diffRow{display:flex;gap:8px;justify-content:center;margin:4px 0}
+.diffPill{border:2px solid #78bdc2;background:#fffdf4;color:#154f62;border-radius:999px;padding:7px 20px;font-weight:900;font-size:15px;cursor:pointer}
+.diffPill.active{background:#f26d5b;border-color:#f26d5b;color:#fff}
+.diffDesc{font-size:13px;color:#3f7686;margin:2px 0 10px}
+.nameBox{display:flex;align-items:center;justify-content:center;gap:8px;margin:8px auto 4px;font-weight:900}.nameBox input{width:150px;border:2px solid #78bdc2;border-radius:999px;padding:8px 13px;background:#fffdf4;color:#174f62;font:inherit;outline:none;text-align:center}.nameBox input:focus{border-color:#f07a64;box-shadow:0 0 0 3px #f7ad9c55}
+.card button{border:0;border-radius:999px;padding:13px 30px;background:#f26d5b;color:#fff;font-size:20px;font-weight:900;box-shadow:0 6px 0 #bd493d;cursor:pointer}.card button:active{transform:translateY(4px);box-shadow:0 2px 0 #bd493d}.card button:disabled{opacity:.6;cursor:default}
+.ranking{margin:12px auto 16px;width:min(460px,100%);background:#dff6efaa;border-radius:16px;padding:10px 14px}.ranking h2{font-size:17px;margin:0 0 7px;color:#277285}.ranking table{width:100%;border-collapse:collapse;font-size:13px}.ranking th,.ranking td{padding:3px 5px;border-bottom:1px solid #65aeb433}.ranking th{color:#397786}.ranking tr:last-child td{border:0}.ranking .empty{padding:8px;color:#6c8e91}
+#touch{position:absolute;inset:auto 18px 16px;display:none;justify-content:space-between}.touchBtn{width:74px;height:74px;border:3px solid #fff;background:#fff7;border-radius:50%;font-size:28px;color:#164f63;font-weight:900}.rightBtns{display:flex;gap:12px}@media(pointer:coarse),(max-width:800px){#wrap{width:100vw;height:100vh;aspect-ratio:auto;border-radius:0;border:0}#touch{display:flex}.pill{padding:7px 10px;font-size:13px}#title{top:60px}}
+</style>
+</head>
+<body><main id="wrap"><canvas id="game" width="1180" height="664" aria-label="바다 소풍 게임"></canvas>
+<div id="hud"><div class="pill" id="status"><span id="score">🐟 0</span><span class="divider"></span><span id="timer">⏱ 00:00</span></div><div id="title">바다 소풍</div><div class="pill" id="lives">❤️❤️❤️</div><button id="sound" aria-label="소리 끄기" title="소리 켜기/끄기">🔊</button></div>
+<div id="overlay"></div>
+<div id="touch"><button class="touchBtn" data-key="ArrowLeft">◀</button><div class="rightBtns"><button class="touchBtn" data-key="ArrowRight">▶</button><button class="touchBtn" data-key="Space">↑</button></div></div></main>
+<script>
+(async () => {
+  const modules = ["themes", "game", "ui"];
+  const version = "__BUILD_ID__";
+  const src = file => file + (version.startsWith("__") ? "" : "?v=" + version);
+  for (const name of modules) {
+    await new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = src(name + ".js");
+      script.onload = resolve; script.onerror = reject;
+      document.body.appendChild(script);
+    });
+  }
+})();
+</script>
+</body>
+</html>
