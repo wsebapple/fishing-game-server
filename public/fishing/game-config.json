@@ -238,7 +238,8 @@
       "dash": true,
       "tint": "hue-rotate(200deg) saturate(1.6)",
       "eats": true,
-      "eatCooldownMs": 1200
+      "eatCooldownMs": 1200,
+      "knockback": true
     },
     {
       "emoji": "🐋",

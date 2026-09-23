@@ -303,6 +303,7 @@ function spawnFish(){
   // 사나운 보스가 잡아먹을 물고기를 고를 때 쓰는 정보
   fish._type = type;
   fish._center = () => ({ x: curLeft + Game.config.hitbox.fishHalf, y: curTop + Game.config.hitbox.fishHalf });
+  fish._knock = { x: 0, y: 0 }; // 보스의 물보라/파문에 슬쩍 밀려났다가 되돌아오는 정도 (감쇠)
   let lastFrame = startTime;
 
   function animate(now){
@@ -324,8 +325,7 @@ function spawnFish(){
       const pos = { left: curLeft, top: curTop };
       magnetPull(pos, Game.config.hitbox.fishHalf, dt);
       curLeft = pos.left; curTop = pos.top;
-      fish.style.left = curLeft + 'px';
-      fish.style.top = curTop + 'px';
+      renderFishAt(fish, curLeft, curTop);
       requestAnimationFrame(animate);
       return;
     }
@@ -336,10 +336,22 @@ function spawnFish(){
     curLeft = fromLeft
       ? -50 + progress * distance
       : (Game.view.w + 50) - progress * distance;
-    fish.style.left = curLeft + 'px';
+    renderFishAt(fish, curLeft, curTop);
     requestAnimationFrame(animate);
   }
   requestAnimationFrame(animate);
+}
+
+// 물고기를 (baseLeft, baseTop)에 그리되, 보스의 물보라/파문에 밀려난 정도(_knock)를 더하고
+// 매 프레임 그 정도를 조금씩 줄여요(0에 가까워지면 딱 멈춰서 계속 흔들리지 않게 해요)
+function renderFishAt(fish, baseLeft, baseTop){
+  const k = fish._knock;
+  if(k){
+    k.x *= 0.86; if(Math.abs(k.x) < 0.4) k.x = 0;
+    k.y *= 0.86; if(Math.abs(k.y) < 0.4) k.y = 0;
+  }
+  fish.style.left = (baseLeft + (k ? k.x : 0)) + 'px';
+  fish.style.top = (baseTop + (k ? k.y : 0)) + 'px';
 }
 
 // 대왕게가 뿌린 쓰레기 하나: 멀티와 같은 궤적(trashCenter)으로 가라앉다가 사라져요. 바늘에 걸리면 감점!
@@ -698,21 +710,55 @@ const BOSS_ESCAPE_STYLE = {
 
 
 
-// 보스가 스치고 도망갈 때 시각/음향 효과: 보스 주변만 잠깐 가려요
+// 보스가 스치고 도망갈 때 시각/음향 효과를 내요. 오징어는 화면의 상당 부분을 덮는 불규칙한
+// 먹물을(매번 크기·모양이 달라요), 고래는 점점 커지며 옅어지는 파문 링을, 나머지는 보스마다
+// 다른 색·모양의 구름을 뿜어요 (모양은 index.html의 .bossEscapeCloud.<kind> 참고).
 function spawnBossEscapeEffect(x, y, kind){
   const style = BOSS_ESCAPE_STYLE[kind] || BOSS_ESCAPE_STYLE.ink;
-  const cloud = document.createElement('div');
-  cloud.className = 'bossEscapeCloud';
-  cloud.style.left = x + 'px';
-  cloud.style.top = y + 'px';
-  cloud.style.setProperty('--ec1', style.c1);
-  cloud.style.setProperty('--ec2', style.c2);
-  cloud.style.setProperty('--ec3', style.c3);
-  cloud.style.setProperty('--ec4', style.c4);
-  Game.dom.scene.appendChild(cloud);
-  setTimeout(() => cloud.remove(), 1300);
+  let blobSpread = 70; // 방울이 튀는 거리(px) 기준값. 구름이 크면 같이 늘려요
 
-  const blobCount = 6;
+  if(kind === 'wave'){
+    // 고래: 채워진 구름 대신, 살짝 시간차를 두고 커지며 옅어지는 파문 링을 세 겹 내요
+    for(let i = 0; i < 3; i++){
+      const ring = document.createElement('div');
+      ring.className = 'bossEscapeCloud wave';
+      ring.style.left = x + 'px';
+      ring.style.top = y + 'px';
+      ring.style.setProperty('--ec1', style.c1);
+      ring.style.animationDelay = (i * 0.16) + 's';
+      Game.dom.scene.appendChild(ring);
+      setTimeout(() => ring.remove(), 1500);
+    }
+    blobSpread = 110;
+  } else {
+    const cloud = document.createElement('div');
+    cloud.className = 'bossEscapeCloud ' + kind;
+    cloud.style.left = x + 'px';
+    cloud.style.top = y + 'px';
+    cloud.style.setProperty('--ec1', style.c1);
+    cloud.style.setProperty('--ec2', style.c2);
+    cloud.style.setProperty('--ec3', style.c3);
+    cloud.style.setProperty('--ec4', style.c4);
+    let lifeMs = 1300;
+    if(kind === 'ink'){
+      // 오징어: 한 번 뿜을 때마다 크기(화면 넓이의 약 18~32%)와 번짐 테두리가 매번 랜덤으로 달라요
+      const targetArea = Game.view.w * Game.view.h * (0.18 + Math.random() * 0.14);
+      const cap = Math.min(Game.view.w, Game.view.h) * 1.3; // 너무 거대/길쭉해지지 않게 상한을 둬요
+      const size = Math.min(cap, Math.sqrt(targetArea / Math.PI) * 2);
+      cloud.style.width = size + 'px';
+      cloud.style.height = size + 'px';
+      cloud.style.marginLeft = (-size / 2) + 'px';
+      cloud.style.marginTop = (-size / 2) + 'px';
+      const r = () => (38 + Math.random() * 24) + '%'; // 완전한 원이 아니라 삐뚤빼뚤 번진 모양이 되게
+      cloud.style.borderRadius = r() + ' ' + r() + ' ' + r() + ' ' + r() + ' / ' + r() + ' ' + r() + ' ' + r() + ' ' + r();
+      blobSpread = size * 0.28;
+      lifeMs = 1600;
+    }
+    Game.dom.scene.appendChild(cloud);
+    setTimeout(() => cloud.remove(), lifeMs);
+  }
+
+  const blobCount = kind === 'ink' ? 10 : 6; // 먹물은 튀는 방울도 더 많이
   for(let i = 0; i < blobCount; i++){
     const blob = document.createElement('div');
     blob.className = 'bossEscapeBlob';
@@ -721,13 +767,41 @@ function spawnBossEscapeEffect(x, y, kind){
     blob.style.top = y + 'px';
     blob.style.setProperty('--ebc', style.blob);
     const angle = (Math.PI * 2 * i) / blobCount + Math.random() * 0.5;
-    const dist = 40 + Math.random() * 70;
+    const dist = blobSpread * (0.55 + Math.random() * 0.6);
     blob.style.setProperty('--dx', (Math.cos(angle) * dist) + 'px');
     blob.style.setProperty('--dy', (Math.sin(angle) * dist) + 'px');
     Game.dom.scene.appendChild(blob);
     setTimeout(() => blob.remove(), 850);
   }
   playBossEscapeSound(kind);
+}
+
+// 상어의 물보라/고래의 파문에 맞으면, 근처 물고기들이 바깥쪽으로 슬쩍 밀려났다가 스르르 되돌아와요
+// (물고기 자신의 정상 이동 경로는 그대로 두고, 그 위에 감쇠하는 오프셋만 더해요)
+function pushNearbyFish(cx, cy, radius, strength){
+  document.querySelectorAll('.fish:not(.boss-fish):not(.caught):not(.eaten):not(.trashItem)').forEach(f => {
+    if(!f._center || !f._knock) return;
+    const c = f._center();
+    const dx = c.x - cx, dy = c.y - cy;
+    const dist = Math.max(Math.hypot(dx, dy), 0.01);
+    if(dist > radius) return;
+    const power = strength * (1 - dist / radius);
+    f._knock.x += (dx / dist) * power;
+    f._knock.y += (dy / dist) * power;
+  });
+}
+
+// 바다용에게 맞으면 낚싯줄이 얼어붙는 동안(Game.effects.frozen), 바늘·줄·배에 전기가 지르르 흘러요
+function playShockEffect(durationMs){
+  const boatBody = boat.querySelector('.boatBody');
+  hook.classList.add('shocked');
+  linePath.classList.add('shocked');
+  boatBody.classList.add('shocked');
+  setTimeout(() => {
+    hook.classList.remove('shocked');
+    linePath.classList.remove('shocked');
+    boatBody.classList.remove('shocked');
+  }, durationMs);
 }
 
 // 도망칠 때는 가까운 곳 말고 최대한 먼 곳으로: 후보 몇 개를 뽑아서 제일 먼 곳을 골라요
@@ -861,17 +935,19 @@ function spawnBoss(){
       invulnerableUntil = now + 1500; // 1.5초간은 다시 안 맞아요
 
       if(bossType.knockback){
-        // 고래: 물보라로 내 낚싯바늘을 확 밀쳐내요
+        // 고래·상어: 물보라/파도로 내 낚싯바늘과 근처 물고기들을 확 밀쳐내요
         const kdx = Game.hook.x - (curLeft + half), kdy = Game.hook.y - (curTop + half);
         const kdist = Math.max(Math.hypot(kdx, kdy), 0.01);
         moveRod(Game.hook.x + (kdx / kdist) * 90, Game.hook.y + (kdy / kdist) * 90);
+        pushNearbyFish(curLeft + half, curTop + half, 220, 150);
       }
       if(bossType.freeze){
-        // 바다용: 감전돼서 낚싯줄이 1초간 얼어붙어요
+        // 바다용: 감전돼서 낚싯줄이 1초간 얼어붙고, 바늘·줄·배에 지지직 전기가 흘러요
         Game.effects.frozen = true;
         updateHookIcon();
         clearTimeout(Game.effects.freezeTimeout);
         Game.effects.freezeTimeout = setTimeout(() => { Game.effects.frozen = false; updateHookIcon(); }, 1000);
+        playShockEffect(1000);
       }
       if(bossType.dash){
         // 상어는 맞고 도망갈 때도 곧장 돌진하듯 빠르게 빠져나가요
