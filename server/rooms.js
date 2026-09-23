@@ -168,7 +168,8 @@ function applySpawnRate(code){
   room.spawnTimer = setInterval(() => spawnFishForRoom(code), spawnMs);
 }
 
-// 방에서 가장 점수가 높은 친구를 기준으로 단계를 올려요 (다 같이 더 빠르고 짜릿해져요)
+// 방에서 가장 점수가 높은 친구를 기준으로 단계를 정해요 (다 같이 더 빠르고 짜릿해져요).
+// 감점으로 내려갈 때도 같은 levelUp 이벤트로 알려요. 축하 연출을 할지는 클라이언트가 이전 단계와 비교해 정해요.
 function checkLevelUpForRoom(code){
   const room = rooms[code];
   if(!room) return;
@@ -259,6 +260,8 @@ function endRound(code){
   clearTimeout(room.weatherTimer);
   clearTimeout(room.weatherEndTimer);
   clearTimeout(room.resetTimer);
+  clearInterval(room.timerInterval); // 시간이 다 돼서가 아니라 밖에서 끝냈을 때도 초읽기가 계속 돌지 않게
+  room.timerInterval = null;
   room.spawnTimer = null;
   room.bossTimer = null;
   room.rivalTimer = null;

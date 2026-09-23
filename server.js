@@ -5,8 +5,8 @@ const fs = require('fs');
 const crypto = require('crypto');
 
 // 배포할 때마다 바뀌는 버전 꼬리표: 게임 스크립트·설정 파일 내용으로 만들어요.
-// index.html이 스크립트를 "/js/core.js?v=버전"으로 부르니, 새로 배포하면 주소가 바뀌어서
-// 아이폰 사파리가 예전 파일(캐시)과 새 파일을 섞어 쓰는 일이 없어요.
+// 게임마다 자기 폴더 밑에서 "js/core.js?v=버전"처럼 상대 경로로 스크립트를 부르니, 새로 배포하면
+// 주소가 바뀌어서 아이폰 사파리가 예전 파일(캐시)과 새 파일을 섞어 쓰는 일이 없어요.
 function computeBuildId(publicDir) {
   const hash = crypto.createHash('sha1');
   const walk = dir => fs.readdirSync(dir, { withFileTypes: true })
@@ -31,19 +31,31 @@ function createApp(options = {}) {
   const leaderboard = createLeaderboard(options.leaderboardFile);
   const roomApi = createRooms(io, leaderboard);
 
-  // public/index.html은 여러 게임을 고르는 메인 페이지이고, 게임마다 public/<게임>/ 폴더에 들어 있어요.
-  const publicDir = path.join(__dirname, 'public');
-  const fishingDir = path.join(publicDir, 'fishing');
+  // public/index.html은 여러 게임을 고르는 메인 페이지이고, 게임마다 public/<게임>/ 폴더에 index.html이 있어요.
+  // index.html이 있는 폴더마다 똑같이: /게임 → /게임/ 로 보내고, 첫 화면에 버전 꼬리표를 넣어 매번 새로 확인하게 해요.
+  // 평소엔 이 저장소의 public/ 폴더를 쓰지만, 테스트에서 임시 폴더 구조로 라우팅을 확인할 수 있게 옵션으로 바꿀 수 있어요
+  const publicDir = options.publicDir || path.join(__dirname, 'public');
   const buildId = computeBuildId(publicDir);
-  const fishingHtml = fs.readFileSync(path.join(fishingDir, 'index.html'), 'utf8').replace(/__BUILD_ID__/g, buildId);
-  // 주소 끝에 /가 없으면(/fishing) 게임 안의 상대 경로(js/core.js 등)가 틀어지니 /fishing/으로 보내요
-  // (Express는 기본적으로 끝의 /를 무시해서 '/fishing'으로 등록하면 '/fishing/'까지 잡혀 무한 리다이렉트가 돼요. 정규식으로 딱 맞춰요)
-  app.get(/^\/fishing$/, (req, res) => res.redirect(301, '/fishing/'));
-  // 게임 첫 화면(index.html)은 매번 새로 확인하게 해서, 항상 최신 버전 꼬리표를 받아가게 해요
-  app.get(['/fishing/', '/fishing/index.html'], (req, res) => {
-    res.set('Cache-Control', 'no-cache');
-    res.type('html').send(fishingHtml);
-  });
+  for (const dir of fs.readdirSync(publicDir, { withFileTypes: true })) {
+    const indexFile = path.join(publicDir, dir.name, 'index.html');
+    if (!dir.isDirectory() || !fs.existsSync(indexFile)) continue;
+    const html = fs.readFileSync(indexFile, 'utf8').replace(/__BUILD_ID__/g, buildId);
+    // 폴더 이름을 문자열 경로('/fishing/'처럼)로 등록하면 Express가 그 경로를 자기만의 패턴 문법(path-to-regexp)으로
+    // 다시 해석해서, +·.·:·( 같은 글자가 폴더 이름에 있을 때 다르게(또는 아예 안) 매칭될 수 있어요. 그래서 세 경로
+    // 모두 직접 만든 정규식 하나로 통일하고, 이름은 미리 이스케이프해서 정규식에서 아무 특별한 뜻도 없게 해요.
+    const escapedName = dir.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // 주소 끝에 /가 없으면(/fishing) 게임 안의 상대 경로(js/core.js 등)가 틀어지니 /fishing/으로 보내요
+    // (Express는 기본적으로 끝의 /를 무시해서 '/fishing'으로 등록하면 '/fishing/'까지 잡혀 무한 리다이렉트가 돼요. 정규식으로 딱 맞춰요)
+    // 쿼리스트링(예: ?ref=...)은 리다이렉트 주소에 그대로 옮겨줘야 나중에 그런 값을 쓰는 기능이 생겨도 안 끊겨요.
+    app.get(new RegExp('^/' + escapedName + '$'), (req, res) => {
+      const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+      res.redirect(301, '/' + dir.name + '/' + query);
+    });
+    app.get(new RegExp('^/' + escapedName + '/(?:index\\.html)?$'), (req, res) => {
+      res.set('Cache-Control', 'no-cache');
+      res.type('html').send(html);
+    });
+  }
   app.use(express.static(publicDir, {
     // 파일마다 매번 서버에 "바뀌었나요?"를 물어보게 해요(안 바뀌었으면 304로 가볍게 끝나요)
     setHeaders: res => res.set('Cache-Control', 'no-cache'),

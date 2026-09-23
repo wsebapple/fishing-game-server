@@ -26,7 +26,7 @@ function createLeaderboard(file = path.join(__dirname, '..', 'data', 'leaderboar
     return queue;
   }
   async function list() {
-    await queue;
+    await queue.catch(() => {}); // 직전 저장이 실패했어도 순위 읽기는 계속 되게 해요
     return (await read()).sort((a, b) => b.score - a.score).slice(0, 10);
   }
   return { record, list };

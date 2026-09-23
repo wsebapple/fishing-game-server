@@ -76,6 +76,7 @@ test('two players: invalid catch, valid score, room switch, disconnect and leade
     c.disconnect();
     await new Promise(resolve => setTimeout(resolve, 20));
     roomApi.endRound('ALPHA');
+    assert.equal(room.timerInterval, null, 'ending a round from outside stops the countdown too');
     const entries = await leaderboard.list();
     assert.equal(entries[0].score, room.players[a.id].score);
     assert.equal(entries.length, 2);
@@ -244,6 +245,11 @@ test('the home page lists the games, and the fishing game asks for versioned scr
     assert.equal(redirect.headers.get('location'), '/fishing/');
     await redirect.arrayBuffer();
 
+    // 쿼리스트링을 달고 들어와도 리다이렉트 주소에 그대로 옮겨져야 해요 (예: 공유 링크의 ?ref=...)
+    const redirectWithQuery = await fetch(base + '/fishing?ref=friend', { redirect: 'manual' });
+    assert.equal(redirectWithQuery.headers.get('location'), '/fishing/?ref=friend');
+    await redirectWithQuery.arrayBuffer();
+
     const res = await fetch(base + '/fishing/');
     assert.equal(res.headers.get('cache-control'), 'no-cache');
     const html = await res.text();
@@ -261,3 +267,36 @@ test('the home page lists the games, and the fishing game asks for versioned scr
     await fs.rm(directory, { recursive: true, force: true });
   }
 });
+
+test('a game folder name with regex-special characters does not break routing or crash the server', async () => {
+  // README가 안내하는 대로 "새 게임은 public/<폴더>/ 에 넣으면 된다"고 했을 때, 그 폴더 이름에
+  // 정규식에서 특별한 뜻을 가진 글자(., +)가 있어도 서버가 뜨고 그 게임만 정확히 매칭돼야 해요.
+  const publicDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-routing-'));
+  const gameDir = path.join(publicDir, 'co.op+fun');
+  await fs.mkdir(gameDir);
+  await fs.writeFile(path.join(gameDir, 'index.html'), '<!doctype html><title>__BUILD_ID__</title>');
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-test-'));
+  const { server, io } = createApp({ leaderboardFile: path.join(directory, 'scores.json'), publicDir });
+  await new Promise(resolve => server.listen(0, resolve));
+  try {
+    const base = 'http://127.0.0.1:' + server.address().port;
+    const redirect = await fetch(base + '/co.op+fun', { redirect: 'manual' });
+    assert.equal(redirect.status, 301, 'the exact folder name (with its special characters) redirects');
+    assert.equal(redirect.headers.get('location'), '/co.op+fun/');
+    await redirect.arrayBuffer();
+
+    // 이스케이프가 안 됐다면 '.'이 아무 글자나 매칭해서 이런 엉뚱한 주소도 같이 걸렸을 거예요
+    const unrelated = await fetch(base + '/coXop+fun', { redirect: 'manual' });
+    assert.equal(unrelated.status, 404, 'a similar but different path must not match');
+    await unrelated.arrayBuffer();
+
+    const page = await fetch(base + '/co.op+fun/');
+    assert.equal(page.status, 200);
+    assert.doesNotMatch(await page.text(), /__BUILD_ID__/);
+  } finally {
+    await new Promise(resolve => io.close(resolve));
+    await fs.rm(directory, { recursive: true, force: true });
+    await fs.rm(publicDir, { recursive: true, force: true });
+  }
+});
+
