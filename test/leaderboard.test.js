@@ -27,3 +27,36 @@ test('a failed write does not leave later reads/writes stuck on the old rejectio
     await fs.rm(directory, { recursive: true, force: true });
   }
 });
+
+test('a corrupted scores file is quarantined instead of breaking the leaderboard forever', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-lb-'));
+  try {
+    const file = path.join(directory, 'scores.json');
+    await fs.writeFile(file, '{not valid json', 'utf8');
+    const lb = createLeaderboard(file);
+
+    assert.deepEqual(await lb.list(), [], '손상된 파일은 빈 순위표로 취급해요');
+    const siblings = await fs.readdir(directory);
+    assert.ok(siblings.some(name => name.startsWith('scores.json.corrupt-')), '원본 파일은 지우지 않고 옆으로 격리해요');
+    assert.ok(!siblings.includes('scores.json'), '격리한 뒤엔 원래 자리에 손상된 파일이 남아있지 않아요');
+
+    await lb.record({ a: { name: 'A', score: 9 } });
+    assert.equal((await lb.list())[0].score, 9, '격리 후에도 저장/조회가 정상 동작해요');
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('malformed entries inside an otherwise valid array are dropped, not thrown on', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-lb-'));
+  try {
+    const file = path.join(directory, 'scores.json');
+    await fs.writeFile(file, JSON.stringify([null, { name: 'noScore' }, { name: 'ok', score: 3 }, 'garbage']), 'utf8');
+    const lb = createLeaderboard(file);
+
+    const list = await lb.list();
+    assert.deepEqual(list.map(e => e.name), ['ok'], '이름/점수가 제대로 된 항목만 남아요');
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});

@@ -5,6 +5,8 @@ const TRASH_TYPES = fishTypes.filter(f => f.isBossTrash);
 const TRASH_LIFETIME_MS = 6000;
 const BOSS_ACT_INTERVAL_MS = 100;
 const ROUND_SECONDS = 60, RESET_DELAY_MS = 6000, MAX_ROOMS = 200, MAX_PLAYERS_PER_ROOM = 20;
+// 시계 물고기를 계속 잡아도 라운드가 끝없이 늘어나지 않게 넉넉한 상한을 둬요 (정상 플레이에선 절대 안 걸려요)
+const MAX_TIME_LEFT = ROUND_SECONDS * 3;
 const BOSS_ENCOUNTER_MS = 28000;
 function createRooms(io, leaderboard) {
 const rooms = Object.create(null);
@@ -19,7 +21,9 @@ function normalizeRoomCode(raw){
 
 function normalizeName(raw){
   const str = typeof raw === 'string' ? raw : String(raw || '');
-  return (str.trim() || '친구').slice(0, 12);
+  // 제어문자만 걷어내고, 이모지 같은 문자가 코드포인트 중간에서 잘리지 않게 Array.from으로 잘라요
+  const cleaned = str.trim().replace(/\p{C}/gu, '').trim();
+  return Array.from(cleaned || '친구').slice(0, 12).join('');
 }
 
 function getRoom(code){
@@ -250,6 +254,7 @@ function triggerWeatherForRoom(code){
 
   clearTimeout(room.weatherEndTimer);
   room.weatherEndTimer = setTimeout(() => {
+    if(rooms[code] !== room) return; // 방이 이미 사라졌으면(다른 이유로 정리됐으면) 아무것도 안 해요
     room.activeWeather = null;
     room.weatherEndsAt = 0;
     applySpawnRate(code);
@@ -355,6 +360,6 @@ function removePlayer(code, id) {
   room.fishTimers.clear();
   delete rooms[code];
 }
-return { rooms, getRoom, startRound, endRound, removePlayer, checkLevelUpForRoom, scheduleBossForRoom, stopBossActions, startBossActions, broadcastTime, normalizeRoomCode, normalizeName, MAX_ROOMS, MAX_PLAYERS_PER_ROOM, ROUND_SECONDS };
+return { rooms, getRoom, startRound, endRound, removePlayer, checkLevelUpForRoom, scheduleBossForRoom, stopBossActions, startBossActions, broadcastTime, normalizeRoomCode, normalizeName, tryStealForRoom, MAX_ROOMS, MAX_PLAYERS_PER_ROOM, MAX_TIME_LEFT, ROUND_SECONDS };
 }
 module.exports = { createRooms };
