@@ -1,6 +1,7 @@
 // 시작 화면(테마·난이도 고르기)과 결과 화면을 그리는 부분. game.js가 진짜 게임 루프를 맡아요.
 (function () {
   const THEMES = window.THEMES, DIFFICULTIES = window.DIFFICULTIES;
+  const { rankingHTML } = window.SeaPicnicGame; // 순위 읽기/검증/렌더링은 game.js에 한 곳으로 모아뒀어요
   const overlay = document.querySelector('#overlay');
   const STATE_KEY = 'seaPicnicLastPickV1';
 
@@ -20,14 +21,6 @@
   function diffByKey(key) { return DIFFICULTIES.find(d => d.key === key) || DIFFICULTIES[0]; }
 
   function readSavedName(theme) { try { return localStorage.getItem(theme.nameKey) || ''; } catch { return ''; } }
-  function readScores(theme) { try { return JSON.parse(localStorage.getItem(theme.scoreKey) || '[]'); } catch { return []; } }
-  function formatTime(sec) { let m = Math.floor(sec / 60), s = Math.floor(sec % 60); return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`; }
-  function safeName(v, theme) { return String(v || theme.defaultName).replace(/[<>&"']/g, '').trim().slice(0, 10) || theme.defaultName; }
-  function rankingHTML(theme) {
-    const list = readScores(theme);
-    if (!list.length) return '<div class="ranking"><h2>🏆 TOP 10</h2><div class="empty">아직 기록이 없어요</div></div>';
-    return `<div class="ranking"><h2>🏆 TOP 10</h2><table><thead><tr><th>순위</th><th>이름</th><th>친구</th><th>시간</th><th>날짜</th></tr></thead><tbody>${list.map((r, i) => `<tr><td>${i + 1}</td><td>${safeName(r.name, theme)}</td><td>${r.score}마리</td><td>${formatTime(r.time)}</td><td>${new Date(r.date).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}</td></tr>`).join('')}</tbody></table></div>`;
-  }
 
   function renderSelect() {
     const theme = themeByKey(picked.themeKey), diff = diffByKey(picked.diffKey);
@@ -91,6 +84,16 @@
     overlay.querySelector('#again').onclick = renderSelect;
   }
 
-  window.SeaPicnicUI = { renderSelect, showResult };
+  // 게임 시작 도중(테마 이미지 로딩 등) 실패해서 테마 고르기로 되돌아왔을 때, 왜 돌아왔는지 알려줘요
+  function showLoadError() {
+    const card = overlay.querySelector('.card');
+    if (!card) return;
+    const msg = document.createElement('p');
+    msg.style.cssText = 'color:#d63838;font-weight:900';
+    msg.textContent = '이미지를 불러오지 못했어요. 인터넷 연결을 확인하고 다시 시작해보세요.';
+    card.insertBefore(msg, card.querySelector('.themeGrid'));
+  }
+
+  window.SeaPicnicUI = { renderSelect, showResult, showLoadError };
   renderSelect();
 })();
