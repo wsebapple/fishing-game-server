@@ -76,6 +76,7 @@ test('two players: invalid catch, valid score, room switch, disconnect and leade
     c.disconnect();
     await new Promise(resolve => setTimeout(resolve, 20));
     roomApi.endRound('ALPHA');
+    assert.equal(room.timerInterval, null, 'ending a round from outside stops the countdown too');
     const entries = await leaderboard.list();
     assert.equal(entries[0].score, room.players[a.id].score);
     assert.equal(entries.length, 2);

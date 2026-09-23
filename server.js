@@ -31,19 +31,22 @@ function createApp(options = {}) {
   const leaderboard = createLeaderboard(options.leaderboardFile);
   const roomApi = createRooms(io, leaderboard);
 
-  // public/index.html은 여러 게임을 고르는 메인 페이지이고, 게임마다 public/<게임>/ 폴더에 들어 있어요.
+  // public/index.html은 여러 게임을 고르는 메인 페이지이고, 게임마다 public/<게임>/ 폴더에 index.html이 있어요.
+  // index.html이 있는 폴더마다 똑같이: /게임 → /게임/ 로 보내고, 첫 화면에 버전 꼬리표를 넣어 매번 새로 확인하게 해요.
   const publicDir = path.join(__dirname, 'public');
-  const fishingDir = path.join(publicDir, 'fishing');
   const buildId = computeBuildId(publicDir);
-  const fishingHtml = fs.readFileSync(path.join(fishingDir, 'index.html'), 'utf8').replace(/__BUILD_ID__/g, buildId);
-  // 주소 끝에 /가 없으면(/fishing) 게임 안의 상대 경로(js/core.js 등)가 틀어지니 /fishing/으로 보내요
-  // (Express는 기본적으로 끝의 /를 무시해서 '/fishing'으로 등록하면 '/fishing/'까지 잡혀 무한 리다이렉트가 돼요. 정규식으로 딱 맞춰요)
-  app.get(/^\/fishing$/, (req, res) => res.redirect(301, '/fishing/'));
-  // 게임 첫 화면(index.html)은 매번 새로 확인하게 해서, 항상 최신 버전 꼬리표를 받아가게 해요
-  app.get(['/fishing/', '/fishing/index.html'], (req, res) => {
-    res.set('Cache-Control', 'no-cache');
-    res.type('html').send(fishingHtml);
-  });
+  for (const dir of fs.readdirSync(publicDir, { withFileTypes: true })) {
+    const indexFile = path.join(publicDir, dir.name, 'index.html');
+    if (!dir.isDirectory() || !fs.existsSync(indexFile)) continue;
+    const html = fs.readFileSync(indexFile, 'utf8').replace(/__BUILD_ID__/g, buildId);
+    // 주소 끝에 /가 없으면(/fishing) 게임 안의 상대 경로(js/core.js 등)가 틀어지니 /fishing/으로 보내요
+    // (Express는 기본적으로 끝의 /를 무시해서 '/fishing'으로 등록하면 '/fishing/'까지 잡혀 무한 리다이렉트가 돼요. 정규식으로 딱 맞춰요)
+    app.get(new RegExp('^/' + dir.name + '$'), (req, res) => res.redirect(301, '/' + dir.name + '/'));
+    app.get(['/' + dir.name + '/', '/' + dir.name + '/index.html'], (req, res) => {
+      res.set('Cache-Control', 'no-cache');
+      res.type('html').send(html);
+    });
+  }
   app.use(express.static(publicDir, {
     // 파일마다 매번 서버에 "바뀌었나요?"를 물어보게 해요(안 바뀌었으면 304로 가볍게 끝나요)
     setHeaders: res => res.set('Cache-Control', 'no-cache'),

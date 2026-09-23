@@ -27,13 +27,16 @@ function applyLevelSpawnRate(){
 
 function checkLevelUp(){
   const stage = getLevelForScore(Game.state.score);
-  if(stage.level !== Game.state.currentLevel){
-    Game.state.currentLevel = stage.level;
-    document.getElementById('level').textContent = Game.state.currentLevel;
+  if(stage.level === Game.state.currentLevel) return;
+  const wentUp = stage.level > Game.state.currentLevel;
+  Game.state.currentLevel = stage.level;
+  document.getElementById('level').textContent = Game.state.currentLevel;
 
-    // 물고기 스폰 속도를 새 단계(+현재 날씨)에 맞게 조정
-    applyLevelSpawnRate();
+  // 물고기 스폰 속도를 새 단계(+현재 날씨)에 맞게 조정
+  applyLevelSpawnRate();
 
+  // 감점 생물을 잡아 점수가 줄어 단계가 내려갈 때는 축하 연출을 하지 않아요
+  if(wentUp){
     showBanner('🌟 ' + Game.state.currentLevel + '단계! 🌟');
     playLevelUpSound();
   }
@@ -528,37 +531,66 @@ function tryStealFish(){
   const target = pool[Math.floor(Math.random() * pool.length)];
   const targetX = Math.max(80, Math.min(Game.view.w - 80, parseFloat(target.style.left) || Game.view.w/2));
 
+  playStealAnimation(target, target.dataset.name, targetX);
+  scheduleRival();
+}
+
+// 해적 배가 나타나 물고기 el을 채가는 연출 (싱글·멀티 공통). 다 끝나면 el을 지우고 onRemoved를 불러요.
+function playStealAnimation(el, name, boatX, onRemoved){
   const rival = document.getElementById('rivalBoat');
-  rival.style.left = targetX + 'px';
+  rival.style.left = boatX + 'px';
   rival.classList.add('show');
 
   setTimeout(() => {
-    if(target.isConnected){
+    if(el.isConnected){
       playStealSound();
-      target.style.transition = 'transform .3s ease, opacity .3s ease';
-      target.style.transform = (target.style.transform || '') + ' scale(0.3)';
-      target.style.opacity = '0';
+      el.style.transition = 'transform .3s ease, opacity .3s ease';
+      el.style.transform = (el.style.transform || '') + ' scale(0.3)';
+      el.style.opacity = '0';
 
       const steal = document.createElement('div');
       steal.className = 'caughtPop';
-      steal.textContent = target.dataset.name === '보물통'
+      steal.textContent = name === '보물통'
         ? '🏴‍☠️ 해적이 보물통을 가져갔어요!'
         : '🏴‍☠️ 다른 배가 채갔어요!';
       steal.style.color = '#ff9b9b';
       steal.style.fontSize = '16px';
-      steal.style.left = target.style.left;
-      steal.style.top = target.style.top;
+      steal.style.left = el.style.left;
+      steal.style.top = el.style.top;
       Game.dom.scene.appendChild(steal);
       setTimeout(() => steal.remove(), 900);
-      setTimeout(() => target.remove(), 300);
+      setTimeout(() => { el.remove(); if(onRemoved) onRemoved(); }, 300);
     }
     setTimeout(() => rival.classList.remove('show'), 500);
   }, 700);
-
-  scheduleRival();
 }
 
 
+
+// 폭풍우 번개: 가끔 화면이 번쩍이며 천둥이 쳐요 (싱글·멀티 공통, 돌려준 interval은 호출한 쪽이 보관/정리해요)
+function startLightningFlashes(){
+  return setInterval(() => {
+    const flash = document.getElementById('lightningFlash');
+    flash.classList.remove('flash');
+    void flash.offsetWidth;
+    flash.classList.add('flash');
+    playThunderSound();
+  }, 1800 + Math.random() * 1200);
+}
+
+// 눈송이가 계속 내려요 (싱글·멀티 공통)
+function startSnowflakes(){
+  return setInterval(() => {
+    const flake = document.createElement('div');
+    flake.className = 'snowflake';
+    flake.textContent = '❄️';
+    flake.style.left = Math.random() * 100 + '%';
+    flake.style.fontSize = (10 + Math.random() * 14) + 'px';
+    flake.style.animationDuration = (4 + Math.random() * 3) + 's';
+    Game.dom.scene.appendChild(flake);
+    setTimeout(() => flake.remove(), 8000);
+  }, 220);
+}
 
 function scheduleWeather(){
   if(!Game.state.running) return;
@@ -591,19 +623,11 @@ function triggerSnow(){
   applyLevelSpawnRate();
 
   clearInterval(Game.timers.snowFlakeInterval);
-  Game.timers.snowFlakeInterval = setInterval(() => {
-    const flake = document.createElement('div');
-    flake.className = 'snowflake';
-    flake.textContent = '❄️';
-    flake.style.left = Math.random() * 100 + '%';
-    flake.style.fontSize = (10 + Math.random() * 14) + 'px';
-    flake.style.animationDuration = (4 + Math.random() * 3) + 's';
-    Game.dom.scene.appendChild(flake);
-    setTimeout(() => flake.remove(), 8000);
-  }, 220);
+  Game.timers.snowFlakeInterval = startSnowflakes();
 
   const duration = 7000 + Math.random() * 3000;
-  setTimeout(() => {
+  clearTimeout(Game.timers.weatherEndTimeout);
+  Game.timers.weatherEndTimeout = setTimeout(() => {
     clearInterval(Game.timers.snowFlakeInterval); Game.timers.snowFlakeInterval = null;
     document.getElementById('snowTint').classList.remove('active');
     showBanner('☀️ 눈이 그쳤어요!');
@@ -625,18 +649,12 @@ function triggerStorm(){
   // 폭풍우 동안 물고기가 더 빨리, 자주 나와요
   applyLevelSpawnRate();
 
-  // 가끔 번개가 번쩍여요
   clearInterval(Game.timers.stormFlashInterval);
-  Game.timers.stormFlashInterval = setInterval(() => {
-    const flash = document.getElementById('lightningFlash');
-    flash.classList.remove('flash');
-    void flash.offsetWidth;
-    flash.classList.add('flash');
-    playThunderSound();
-  }, 1800 + Math.random() * 1200);
+  Game.timers.stormFlashInterval = startLightningFlashes();
 
   const stormDuration = 6000 + Math.random() * 3000;
-  setTimeout(() => {
+  clearTimeout(Game.timers.weatherEndTimeout);
+  Game.timers.weatherEndTimeout = setTimeout(() => {
     clearInterval(Game.timers.stormFlashInterval); Game.timers.stormFlashInterval = null;
     Game.effects.stormActive = false;
     document.getElementById('stormOverlay').classList.remove('active');
@@ -754,7 +772,7 @@ function spawnBoss(){
   let nextDashAt = lastTime + 1500 + Math.random() * 2000;
   let nextJitterPickAt = lastTime;
   // 사나운 보스(eats)는 점수 물고기를 잡아먹고, 대왕게(throwsTrash)는 감점 쓰레기를 뿌려요
-  let nextEatAt = 0;
+  let nextEatAt = 0, nextPreyScanAt = 0;
   let nextThrowAt = lastTime + (bossType.throwsTrash ? bossType.throwsTrash.everyMs : 0);
   let warnedAt = 0; // 쓰레기 예고를 한 시각 (0이면 아직 예고 전)
   // 대왕게: 주기적으로 모래 속에 잠깐 숨어서 무적이 돼요
@@ -783,7 +801,9 @@ function spawnBoss(){
       fish.style.filter = (bossType.tint ? bossType.tint + ' ' : '') + (stealthed ? 'blur(1.5px) ' : '') + 'drop-shadow(0 3px 3px rgba(0,0,0,0.25))';
     }
 
-    if(!stealthed && bossType.eats && now >= nextEatAt){
+    // 먹잇감 찾기는 서버(BOSS_ACT_INTERVAL_MS)처럼 100ms마다만 해요. 매 프레임 DOM을 훑으면 폰이 버벅여요.
+    if(!stealthed && bossType.eats && now >= nextEatAt && now >= nextPreyScanAt){
+      nextPreyScanAt = now + 100;
       const bx = curLeft + half, by = curTop + half;
       let prey = null, preyDist = Infinity;
       document.querySelectorAll('.fish:not(.boss-fish):not(.caught):not(.eaten)').forEach(f => {
@@ -897,6 +917,7 @@ function startGame(){
   // 새 판을 시작하기 전에 전부 확실히 정리해요
   clearInterval(Game.timers.spawnTimer); clearInterval(Game.timers.gameTimer);
   clearTimeout(Game.timers.rivalTimeout); clearTimeout(Game.timers.stormTimeout); clearTimeout(Game.timers.bossTimeout);
+  clearTimeout(Game.timers.weatherEndTimeout); Game.timers.weatherEndTimeout = null;
   clearTimeout(Game.effects.magnetTimer); clearTimeout(Game.effects.freezeTimeout);
   clearInterval(Game.timers.stormFlashInterval); Game.timers.stormFlashInterval = null;
   clearInterval(Game.timers.snowFlakeInterval); Game.timers.snowFlakeInterval = null;
@@ -943,6 +964,7 @@ function endGame(){
   clearInterval(Game.timers.gameTimer);
   clearTimeout(Game.timers.rivalTimeout);
   clearTimeout(Game.timers.stormTimeout);
+  clearTimeout(Game.timers.weatherEndTimeout); Game.timers.weatherEndTimeout = null;
   clearTimeout(Game.effects.magnetTimer);
   clearTimeout(Game.timers.bossTimeout);
   clearTimeout(Game.effects.freezeTimeout);

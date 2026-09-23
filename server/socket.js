@@ -131,7 +131,8 @@ io.on('connection', (socket) => {
     const xRatio = payload && payload.xRatio;
     const yRatio = payload && payload.yRatio;
     const width = payload && payload.width, height = payload && payload.height;
-    if (![xRatio, yRatio, width, height].every(Number.isFinite) || xRatio < 0 || xRatio > 1 || yRatio < 0 || yRatio > 1 || width < 200 || width > 3840 || height < 200 || height > 2160) return;
+    // 화면 크기는 판정 계산에만 쓰니 말이 되는 양수면 다 받아요 (아주 넓은 모니터나 좁은 창도 못 잡는 일이 없게)
+    if (![xRatio, yRatio, width, height].every(Number.isFinite) || xRatio < 0 || xRatio > 1 || yRatio < 0 || yRatio > 1 || width <= 0 || width > 16384 || height <= 0 || height > 16384) return;
     // yRatio(낚싯바늘이 얼마나 내려가 있는지)도 같이 알려줘서, 친구들 화면에 낚싯줄까지 보이게 해요
     socket.data.position = { xRatio, yRatio, width, height, at: Date.now() };
     socket.to(code).emit('boatMove', { id: socket.id, xRatio, yRatio });

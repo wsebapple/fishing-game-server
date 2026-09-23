@@ -15,6 +15,7 @@ function loadSocketIoScript(callback){
   script.src = getMpServerUrl() + '/socket.io/socket.io.js';
   script.onload = callback;
   script.onerror = () => {
+    Game.mp.connecting = false; // 다시 '입장하기'를 누를 수 있게 해요
     document.getElementById('mpStatus').textContent = '서버에 연결할 수 없어요.';
   };
   document.head.appendChild(script);
@@ -179,9 +180,13 @@ function joinMultiplayer(roomCodeOverride){
     Game.mp.socket.on('timeUpdate', ({ timeLeft }) => updateMpTime(timeLeft));
 
     Game.mp.socket.on('levelUp', ({ level }) => {
+      // 서버는 단계가 바뀔 때마다 보내요(감점으로 내려갈 때 포함). 올라갈 때만 축하 연출을 해요.
+      const wentUp = level > Game.state.currentLevel;
       updateMpLevel(level);
-      showBanner('🌟 ' + level + '단계! 🌟');
-      playLevelUpSound();
+      if(wentUp){
+        showBanner('🌟 ' + level + '단계! 🌟');
+        playLevelUpSound();
+      }
     });
 
     Game.mp.socket.on('roundReset', ({ players, timeLeft, level }) => {
@@ -232,32 +237,7 @@ function joinMultiplayer(roomCodeOverride){
       const el = Game.mp.fishEls[id];
       if(!el) return;
       const targetX = Math.max(80, Math.min(Game.view.w - 80, parseFloat(el.style.left) || Game.view.w/2));
-      const rival = document.getElementById('rivalBoat');
-      rival.style.left = targetX + 'px';
-      rival.classList.add('show');
-
-      setTimeout(() => {
-        if(el.isConnected){
-          playStealSound();
-          el.style.transition = 'transform .3s ease, opacity .3s ease';
-          el.style.transform = (el.style.transform || '') + ' scale(0.3)';
-          el.style.opacity = '0';
-
-          const steal = document.createElement('div');
-          steal.className = 'caughtPop';
-          steal.textContent = name === '보물통'
-            ? '🏴‍☠️ 해적이 보물통을 가져갔어요!'
-            : '🏴‍☠️ 다른 배가 채갔어요!';
-          steal.style.color = '#ff9b9b';
-          steal.style.fontSize = '16px';
-          steal.style.left = el.style.left;
-          steal.style.top = el.style.top;
-          Game.dom.scene.appendChild(steal);
-          setTimeout(() => steal.remove(), 900);
-          setTimeout(() => { el.remove(); delete Game.mp.fishEls[id]; }, 300);
-        }
-        setTimeout(() => rival.classList.remove('show'), 500);
-      }, 700);
+      playStealAnimation(el, name, targetX, () => { delete Game.mp.fishEls[id]; });
     });
 
     Game.mp.socket.on('fishCaught', (info) => {
@@ -312,21 +292,10 @@ function joinMultiplayer(roomCodeOverride){
         // animate() 루프가 계속 돌아요. 그새 mpCaughtSent를 풀어버리면 이미 사라진
         // 물고기에 대해 catchAttempt를 한 번 더 헛되이 보낼 수 있으니, 완전히 사라진
         // 뒤에 정리해요.
-        setTimeout(() => {
-          el.remove();
-          delete Game.mp.caughtSent[fishId];
-          delete Game.mp.bossInvulnUntil[fishId]; delete Game.mp.catchRetryAt[fishId];
-          delete Game.mp.fishTypeById[fishId];
-          delete Game.mp.bossSeedById[fishId];
-          delete Game.mp.bossSeedTransitionById[fishId];
-        }, 350);
+        setTimeout(() => { el.remove(); forgetMpFish(fishId); }, 350);
         delete Game.mp.fishEls[fishId];
       } else {
-        delete Game.mp.caughtSent[fishId];
-        delete Game.mp.bossInvulnUntil[fishId]; delete Game.mp.catchRetryAt[fishId];
-      delete Game.mp.fishTypeById[fishId];
-      delete Game.mp.bossSeedById[fishId];
-      delete Game.mp.bossSeedTransitionById[fishId];
+        forgetMpFish(fishId);
       }
     });
 
@@ -352,13 +321,7 @@ function startMpWeather(kind){
     showBanner('⛈️ 폭풍우가 몰아쳐요!');
     playThunderSound();
     clearInterval(Game.mp.flashInterval);
-    Game.mp.flashInterval = setInterval(() => {
-      const flash = document.getElementById('lightningFlash');
-      flash.classList.remove('flash');
-      void flash.offsetWidth;
-      flash.classList.add('flash');
-      playThunderSound();
-    }, 1800 + Math.random() * 1200);
+    Game.mp.flashInterval = startLightningFlashes();
   } else if(kind === 'snow'){
     document.getElementById('snowTint').classList.add('active');
     showBanner('❄️ 눈이 내려요! 낚싯줄이 얼었어요 🥶');
@@ -367,16 +330,7 @@ function startMpWeather(kind){
     clearTimeout(Game.effects.freezeTimeout);
     Game.effects.freezeTimeout = setTimeout(() => { Game.effects.frozen = false; updateHookIcon(); }, 5000);
     clearInterval(Game.mp.snowInterval);
-    Game.mp.snowInterval = setInterval(() => {
-      const flake = document.createElement('div');
-      flake.className = 'snowflake';
-      flake.textContent = '❄️';
-      flake.style.left = Math.random() * 100 + '%';
-      flake.style.fontSize = (10 + Math.random() * 14) + 'px';
-      flake.style.animationDuration = (4 + Math.random() * 3) + 's';
-      Game.dom.scene.appendChild(flake);
-      setTimeout(() => flake.remove(), 8000);
-    }, 220);
+    Game.mp.snowInterval = startSnowflakes();
   }
 }
 

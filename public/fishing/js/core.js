@@ -92,7 +92,8 @@ Game.timers = {
   gameTimer: null,
   spawnTimer: null,
   rivalTimeout: null,
-  stormTimeout: null,
+  stormTimeout: null, // 다음 날씨 이벤트 예약
+  weatherEndTimeout: null, // 지금 오는 폭풍우/눈이 끝나는 시각 (게임을 끝내면 같이 지워야 다음 판에 안 튀어나와요)
   stormFlashInterval: null, // 번개 번쩍임 반복
   snowFlakeInterval: null, // 눈송이 생성 반복
   bossTimeout: null,
