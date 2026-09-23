@@ -712,15 +712,24 @@ const BOSS_ESCAPE_STYLE = {
 
 
 
+// 수면(#waterline, top:76px + height:20px = 96px)이 대략 이 y(px)에 있어요. 구름이 이보다
+// 위로 번지면 하늘까지 삐져나가 보여서, 구름을 그릴 때는 (모양이 다 그려졌을 때 기준) 위쪽
+// 끝이 이 선을 넘지 않도록 중심을 아래로 눌러줘요. 여유를 조금 둬서 물결 경계선도 침범하지 않게 해요.
+const WATER_SURFACE_Y = 104;
+
 // 보스가 스치고 도망갈 때 시각/음향 효과를 내요. 오징어는 화면의 상당 부분을 덮는 불규칙한
 // 먹물을(매번 크기·모양이 달라요), 고래는 점점 커지며 옅어지는 파문 링을, 나머지는 보스마다
 // 다른 색·모양의 구름을 뿜어요 (모양은 index.html의 .bossEscapeCloud.<kind> 참고).
-function spawnBossEscapeEffect(x, y, kind){
+function spawnBossEscapeEffect(x, rawY, kind){
   const style = BOSS_ESCAPE_STYLE[kind] || BOSS_ESCAPE_STYLE.ink;
   let blobSpread = 70; // 방울이 튀는 거리(px) 기준값. 구름이 크면 같이 늘려요
 
   if(kind === 'wave'){
-    // 고래: 채워진 구름 대신, 살짝 시간차를 두고 커지며 옅어지는 파문 링을 세 겹 내요
+    // 고래: 채워진 구름 대신, 살짝 시간차를 두고 커지며 옅어지는 파문 링을 세 겹 내요.
+    // 기본 반지름 60px가 애니메이션 끝에 3.4배(204px)까지 퍼지니, 튀는 방울(blobSpread*1.15)과
+    // 둘 중 더 크게 번지는 쪽 기준으로 여유를 두고 y를 눌러요
+    blobSpread = 110;
+    const y = Math.max(rawY, WATER_SURFACE_Y + Math.max(60 * 3.4, blobSpread * 1.15));
     for(let i = 0; i < 3; i++){
       const ring = document.createElement('div');
       ring.className = 'bossEscapeCloud wave';
@@ -731,35 +740,48 @@ function spawnBossEscapeEffect(x, y, kind){
       Game.dom.scene.appendChild(ring);
       setTimeout(() => ring.remove(), 1500);
     }
-    blobSpread = 110;
-  } else {
-    const cloud = document.createElement('div');
-    cloud.className = 'bossEscapeCloud ' + kind;
-    cloud.style.left = x + 'px';
-    cloud.style.top = y + 'px';
-    cloud.style.setProperty('--ec1', style.c1);
-    cloud.style.setProperty('--ec2', style.c2);
-    cloud.style.setProperty('--ec3', style.c3);
-    cloud.style.setProperty('--ec4', style.c4);
-    let lifeMs = 1300;
-    if(kind === 'ink'){
-      // 오징어: 한 번 뿜을 때마다 크기(화면 넓이의 약 18~32%)와 번짐 테두리가 매번 랜덤으로 달라요
-      const targetArea = Game.view.w * Game.view.h * (0.18 + Math.random() * 0.14);
-      const cap = Math.min(Game.view.w, Game.view.h) * 1.3; // 너무 거대/길쭉해지지 않게 상한을 둬요
-      const size = Math.min(cap, Math.sqrt(targetArea / Math.PI) * 2);
-      cloud.style.width = size + 'px';
-      cloud.style.height = size + 'px';
-      cloud.style.marginLeft = (-size / 2) + 'px';
-      cloud.style.marginTop = (-size / 2) + 'px';
-      const r = () => (38 + Math.random() * 24) + '%'; // 완전한 원이 아니라 삐뚤빼뚤 번진 모양이 되게
-      cloud.style.borderRadius = r() + ' ' + r() + ' ' + r() + ' ' + r() + ' / ' + r() + ' ' + r() + ' ' + r() + ' ' + r();
-      blobSpread = size * 0.28;
-      lifeMs = 1600;
-    }
-    Game.dom.scene.appendChild(cloud);
-    setTimeout(() => cloud.remove(), lifeMs);
+    spawnBossEscapeBlobs(x, y, kind, style, blobSpread);
+    playBossEscapeSound(kind);
+    return;
   }
 
+  const cloud = document.createElement('div');
+  cloud.className = 'bossEscapeCloud ' + kind;
+  cloud.style.setProperty('--ec1', style.c1);
+  cloud.style.setProperty('--ec2', style.c2);
+  cloud.style.setProperty('--ec3', style.c3);
+  cloud.style.setProperty('--ec4', style.c4);
+  let lifeMs = 1300;
+  // 구름 모양별 기본 세로 반지름(px). inkPuff 애니메이션이 최대 1.15배까지 커지므로 그만큼 곱해요.
+  let vRadius = 170; // shock(번개 별): 기본 원 340px 기준
+  if(kind === 'splash') vRadius = 100;
+  if(kind === 'sand') vRadius = 40;
+  if(kind === 'ink'){
+    // 오징어: 한 번 뿜을 때마다 크기(화면 넓이의 약 18~32%)와 번짐 테두리가 매번 랜덤으로 달라요
+    const targetArea = Game.view.w * Game.view.h * (0.18 + Math.random() * 0.14);
+    const cap = Math.min(Game.view.w, Game.view.h) * 1.3; // 너무 거대/길쭉해지지 않게 상한을 둬요
+    const size = Math.min(cap, Math.sqrt(targetArea / Math.PI) * 2);
+    cloud.style.width = size + 'px';
+    cloud.style.height = size + 'px';
+    cloud.style.marginLeft = (-size / 2) + 'px';
+    cloud.style.marginTop = (-size / 2) + 'px';
+    const r = () => (38 + Math.random() * 24) + '%'; // 완전한 원이 아니라 삐뚤빼뚤 번진 모양이 되게
+    cloud.style.borderRadius = r() + ' ' + r() + ' ' + r() + ' ' + r() + ' / ' + r() + ' ' + r() + ' ' + r() + ' ' + r();
+    blobSpread = size * 0.28;
+    lifeMs = 1600;
+    vRadius = size / 2;
+  }
+  const y = Math.max(rawY, WATER_SURFACE_Y + Math.max(vRadius * 1.15, blobSpread * 1.15));
+  cloud.style.left = x + 'px';
+  cloud.style.top = y + 'px';
+  Game.dom.scene.appendChild(cloud);
+  setTimeout(() => cloud.remove(), lifeMs);
+
+  spawnBossEscapeBlobs(x, y, kind, style, blobSpread);
+  playBossEscapeSound(kind);
+}
+
+function spawnBossEscapeBlobs(x, y, kind, style, blobSpread){
   const blobCount = kind === 'ink' ? 10 : 6; // 먹물은 튀는 방울도 더 많이
   for(let i = 0; i < blobCount; i++){
     const blob = document.createElement('div');
@@ -775,7 +797,6 @@ function spawnBossEscapeEffect(x, y, kind){
     Game.dom.scene.appendChild(blob);
     setTimeout(() => blob.remove(), 850);
   }
-  playBossEscapeSound(kind);
 }
 
 // 상어의 물보라/고래의 파문에 맞으면, 근처 물고기들이 바깥쪽으로 슬쩍 밀려났다가 스르르 되돌아와요
