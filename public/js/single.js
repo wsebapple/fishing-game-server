@@ -50,8 +50,8 @@ function updateHookIcon(){
 
 function moveRod(x, y){
   if(Game.effects.frozen) return; // 얼어있는 동안엔 낚싯줄을 움직일 수 없어요
-  const clampedX = Math.max(80, Math.min(window.innerWidth - 80, x));
-  const clampedY = Math.max(110, Math.min(window.innerHeight - 110, y || 330));
+  const clampedX = Math.max(80, Math.min(Game.view.w - 80, x));
+  const clampedY = Math.max(110, Math.min(Game.view.h - 110, y || 330));
   // 바늘(잡는 판정 기준)은 커서를 그대로 따라가야 정확하니 즉시 움직여요.
   // 배/낚싯줄의 "뒤늦게 따라오는" 연출은 updateBoatAndLine()이 따로 매 프레임 처리해요.
   Game.hook.x = clampedX; Game.hook.y = clampedY;
@@ -75,7 +75,7 @@ function stepBoat(b, hookX, bobY){
   const behind = (hookX - b.x) * b.facing < -Game.boat.turnSlack;
   if(behind || b.hookVel * b.facing < -Game.boat.turnSpeed) b.facing = -b.facing;
   const half = 50 * s; // 화면 가장자리에서 배가 반 넘게 잘리지 않게 해요
-  const targetX = Math.max(half, Math.min(window.innerWidth - half, hookX - b.facing * reach));
+  const targetX = Math.max(half, Math.min(Game.view.w - half, hookX - b.facing * reach));
   b.x += (targetX - b.x) * 0.1;
   if(Math.abs(targetX - b.x) < 0.3) b.x = targetX;
   b.turn += (b.facing - b.turn) * 0.18; // 좌우를 확 뒤집지 않고 납작해졌다가 돌아서게 해요
@@ -128,9 +128,10 @@ requestAnimationFrame(updateBoatAndLine);
 // 경쟁 배(해적)도 내 배 그림을 복제해서 써요 (색은 CSS에서 바꿔요)
 document.getElementById('rivalBoat').appendChild(boat.querySelector('.boatBody').cloneNode(true));
 
-// 자석이 물고기를 바늘로 끌어오는 속도(초당 px). 조이스틱 최고 속도(420px/s)보다 확실히 빨라야
-// 바늘을 움직이는 중에도 끌려오던 물고기가 따라잡아서 잡혀요. 프레임 수와 상관없이 같은 속도로 움직여요.
-const MAGNET_PULL_SPEED = 1100;
+// 자석이 물고기를 바늘로 끌어오는 속도(초당 px). 끌려오는 모습이 보이도록 천천히 하되,
+// 조이스틱 최고 속도(420px/s)보다는 빨라야 바늘을 움직이는 중에도 끌려오던 물고기가 결국 따라잡아서 잡혀요.
+// (이보다 느리면 물고기가 바늘 뒤에 쌓였다가 점수 없이 사라지던 버그가 다시 생겨요) 프레임 수와 상관없이 같은 속도예요.
+const MAGNET_PULL_SPEED = 500;
 // pos(왼쪽 위 모서리 {left, top})를 중심이 바늘에 겹치도록 dt초만큼 끌어와요
 function magnetPull(pos, half, dt){
   const dx = (Game.hook.x - half) - pos.left, dy = (Game.hook.y - half) - pos.top;
@@ -154,7 +155,7 @@ Game.dom.scene.addEventListener('pointermove', e => { if(e.pointerType === 'mous
 // 대신 화면 아래 가상 조이스틱으로 배를 "조종"하게 해요 (아래 조이스틱 코드 참고)
 // 한 손가락 끌기로 화면이 스크롤되는 건 막고, 두 손가락 확대(핀치줌)는 막지 않아요
 Game.dom.scene.addEventListener('touchmove', e => { if(e.touches.length < 2) e.preventDefault(); }, {passive:false});
-moveRod(window.innerWidth/2, 330);
+moveRod(Game.view.w/2, 330);
 
 /* ------------------------------------------------------
    터치 기기용 가상 조이스틱: 화면 아래 왼쪽 원을 손가락으로 밀면
@@ -232,7 +233,7 @@ if(isTouchDevice){
     if(Game.joystick.active && (Game.joystick.dx !== 0 || Game.joystick.dy !== 0)){
       if(lastSteerTime !== null){
         const dt = Math.min((now - lastSteerTime) / 1000, 0.05);
-        const curX = parseFloat(hook.style.left) || window.innerWidth / 2;
+        const curX = parseFloat(hook.style.left) || Game.view.w / 2;
         const curY = parseFloat(hook.style.top) || 330;
         moveRod(curX + Game.joystick.dx * JOYSTICK_SPEED * dt, curY + Game.joystick.dy * JOYSTICK_SPEED * dt);
       }
@@ -264,18 +265,18 @@ function spawnFish(){
   fish.dataset.name = type.name;
 
   const fromLeft = Math.random() < 0.5;
-  const y = 120 + Math.random() * (window.innerHeight - 260);
+  const y = 120 + Math.random() * (Game.view.h - 260);
   fish.style.top = y + 'px';
-  fish.style.left = (fromLeft ? -50 : window.innerWidth + 50) + 'px';
+  fish.style.left = (fromLeft ? -50 : Game.view.w + 50) + 'px';
   // 물고기 이모지는 기본적으로 왼쪽을 보므로, 왼쪽에서 오른쪽으로 갈 때 뒤집어요.
   if(fromLeft) fish.style.transform = 'scaleX(-1)';
   Game.dom.scene.appendChild(fish);
 
-  const distance = window.innerWidth + 100;
+  const distance = Game.view.w + 100;
   const duration = distance / (type.speed * 40); // 초 단위 대략치
   const startTime = performance.now();
   // 물고기의 지금 위치를 우리가 직접 계산해서 알고 있으니, DOM에서 다시 읽지 않아요
-  let curLeft = fromLeft ? -50 : window.innerWidth + 50;
+  let curLeft = fromLeft ? -50 : Game.view.w + 50;
   let curTop = y;
   // 사나운 보스가 잡아먹을 물고기를 고를 때 쓰는 정보
   fish._type = type;
@@ -312,7 +313,7 @@ function spawnFish(){
     if(progress >= 1){ fish.remove(); return; }
     curLeft = fromLeft
       ? -50 + progress * distance
-      : (window.innerWidth + 50) - progress * distance;
+      : (Game.view.w + 50) - progress * distance;
     fish.style.left = curLeft + 'px';
     requestAnimationFrame(animate);
   }
@@ -330,7 +331,7 @@ function spawnTrash(trash){
   fish.className = 'fish trashItem';
   fish.textContent = type.emoji;
   fish.dataset.name = type.name;
-  const start = trashCenter(trash, 0, window.innerWidth, window.innerHeight);
+  const start = trashCenter(trash, 0, Game.view.w, Game.view.h);
   let curLeft = start.x - half, curTop = start.y - half;
   fish.style.left = curLeft + 'px';
   fish.style.top = curTop + 'px';
@@ -352,7 +353,7 @@ function spawnTrash(trash){
       magnetPull(pos, half, dt);
       curLeft = pos.left; curTop = pos.top;
     } else {
-      const c = trashCenter(trash, (now - startTime) / 1000, window.innerWidth, window.innerHeight);
+      const c = trashCenter(trash, (now - startTime) / 1000, Game.view.w, Game.view.h);
       curLeft = c.x - half; curTop = c.y - half;
     }
     fish.style.left = curLeft + 'px';
@@ -362,10 +363,45 @@ function spawnTrash(trash){
   requestAnimationFrame(animate);
 }
 
+// 잠깐 떴다가 사라지는 연출용 글자/이모지 하나를 (x, y)에 띄워요
+function spawnEffectText(className, text, x, y, lifeMs){
+  const el = document.createElement('div');
+  el.className = className;
+  el.textContent = text;
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+  Game.dom.scene.appendChild(el);
+  setTimeout(() => el.remove(), lifeMs);
+}
+
+// 보스 엘리먼트에 연출용 class를 잠깐 붙였다 떼요 (같은 연출을 연달아 다시 틀 수 있게 reflow로 되감아요)
+function flashBossClass(bossEl, className, ms){
+  if(!bossEl || !bossEl.isConnected) return;
+  bossEl.classList.remove(className);
+  void bossEl.offsetWidth;
+  bossEl.classList.add(className);
+  setTimeout(() => bossEl.classList.remove(className), ms);
+}
+
 // 사나운 보스가 물고기를 삼키는 연출 (싱글·멀티 공통). 점수는 아무도 못 받아요.
-function playEatEffect(fishEl, bossCenterX, bossCenterY, bossType){
+// 보스가 물고기 쪽으로 덥석 튀어나가고(💥), 물고기는 빙글빙글 돌며 입으로 빨려 들어가요.
+// 머리 위엔 😋, 바늘이 가까우면 화면도 살짝 흔들려요.
+function playEatEffect(fishEl, bossCenterX, bossCenterY, bossType, bossEl){
   if(!fishEl || !fishEl.isConnected || fishEl.classList.contains('eaten')) return;
   const half = Game.config.hitbox.fishHalf;
+  const fishX = (parseFloat(fishEl.style.left) || 0) + half, fishY = (parseFloat(fishEl.style.top) || 0) + half;
+  const bossHalf = bossType.half || Game.config.hitbox.bossHalf;
+
+  if(bossEl){
+    const dx = fishX - bossCenterX, dy = fishY - bossCenterY;
+    const dist = Math.max(Math.hypot(dx, dy), 1);
+    const reach = Math.min(dist * 0.6, 40);
+    bossEl.style.setProperty('--lx', (dx / dist * reach).toFixed(1) + 'px');
+    bossEl.style.setProperty('--ly', (dy / dist * reach).toFixed(1) + 'px');
+    flashBossClass(bossEl, 'lunge', 360);
+  }
+  spawnEffectText('chompBurst', '💥', (fishX + bossCenterX) / 2, (fishY + bossCenterY) / 2, 520);
+  spawnEffectText('bossEmote', '😋', bossCenterX, bossCenterY - bossHalf, 920);
   const pop = document.createElement('div');
   pop.className = 'caughtPop';
   pop.textContent = bossType.emoji + ' 냠! 먹혔어요';
@@ -375,12 +411,31 @@ function playEatEffect(fishEl, bossCenterX, bossCenterY, bossType){
   pop.style.top = fishEl.style.top;
   Game.dom.scene.appendChild(pop);
   setTimeout(() => pop.remove(), 900);
+
+  if(Math.hypot(Game.hook.x - bossCenterX, Game.hook.y - bossCenterY) < 200) flashBossClass(Game.dom.scene, 'shake', 320);
+
   fishEl.classList.add('eaten');
   fishEl.style.left = (bossCenterX - half) + 'px';
   fishEl.style.top = (bossCenterY - half) + 'px';
-  fishEl.style.transform = 'scale(0.2)';
-  setTimeout(() => fishEl.remove(), 260);
+  setTimeout(() => fishEl.remove(), 420);
   playEatSound();
+}
+
+// 대왕게가 쓰레기를 뿌리기 직전 예고: 빨갛게 깜빡이고 머리 위에 ❗가 떠요
+function playTrashWarnEffect(bossEl, bossCenterX, bossCenterY, bossType){
+  flashBossClass(bossEl, 'warn', 620);
+  spawnEffectText('bossEmote', '❗', bossCenterX, bossCenterY - (bossType.half || Game.config.hitbox.bossHalf), 920);
+}
+
+// 대왕게가 쓰레기를 던지는 순간: 몸을 휘두르고 흙탕물 구름이 퍼져요
+function playTrashThrowEffect(bossEl, bossCenterX, bossCenterY){
+  flashBossClass(bossEl, 'throwing', 420);
+  const cloud = document.createElement('div');
+  cloud.className = 'mudCloud';
+  cloud.style.left = bossCenterX + 'px';
+  cloud.style.top = bossCenterY + 'px';
+  Game.dom.scene.appendChild(cloud);
+  setTimeout(() => cloud.remove(), 950);
 }
 
 function catchFish(fish, type){
@@ -471,7 +526,7 @@ function tryStealFish(){
   const treasures = fishes.filter(f => f.dataset.name === '보물통');
   const pool = treasures.length > 0 ? treasures : fishes;
   const target = pool[Math.floor(Math.random() * pool.length)];
-  const targetX = Math.max(80, Math.min(window.innerWidth - 80, parseFloat(target.style.left) || window.innerWidth/2));
+  const targetX = Math.max(80, Math.min(Game.view.w - 80, parseFloat(target.style.left) || Game.view.w/2));
 
   const rival = document.getElementById('rivalBoat');
   rival.style.left = targetX + 'px';
@@ -666,18 +721,18 @@ function spawnBoss(){
   playBossSound();
 
   const fromLeft = Math.random() < 0.5;
-  const startY = 150 + Math.random() * (window.innerHeight - 320);
+  const startY = 150 + Math.random() * (Game.view.h - 320);
   const fish = document.createElement('div');
   fish.className = 'fish boss-fish';
   fish.textContent = bossType.emoji;
   fish.dataset.name = bossType.name;
   fish.style.top = startY + 'px';
-  fish.style.left = (fromLeft ? -100 : window.innerWidth + 100) + 'px';
+  fish.style.left = (fromLeft ? -100 : Game.view.w + 100) + 'px';
   fish.style.fontSize = '86px';
   if(bossType.tint) fish.style.filter = bossType.tint + ' drop-shadow(0 3px 3px rgba(0,0,0,0.25))';
   Game.dom.scene.appendChild(fish);
 
-  let curLeft = fromLeft ? -100 : window.innerWidth + 100;
+  let curLeft = fromLeft ? -100 : Game.view.w + 100;
   let curTop = startY;
 
   // 몇 번 낚싯바늘에 스칠 때까지는 안 잡히고, 스칠 때마다 도망가요 (보스마다 필요 횟수가 달라요)
@@ -685,10 +740,10 @@ function spawnBoss(){
   let hitsLanded = 0;
   let invulnerableUntil = 0;
 
-  const minX = -80, maxX = window.innerWidth + 80;
-  const minY = 130, maxY = window.innerHeight - 160;
+  const minX = -80, maxX = Game.view.w + 80;
+  const minY = 130, maxY = Game.view.h - 160;
   // 처음에는 화면 안쪽으로 헤엄쳐 들어와요
-  let target = { x: window.innerWidth * (0.3 + Math.random() * 0.4), y: startY };
+  let target = { x: Game.view.w * (0.3 + Math.random() * 0.4), y: startY };
 
   const speedPxPerSec = 90 * (bossType.speedMul || 1) * 1.25; // 보스는 일반 물고기보다 빠르게 움직여요
   const encounterDeadline = performance.now() + 28000; // 28초 안에 다 못 잡으면 완전히 도망가요
@@ -701,6 +756,7 @@ function spawnBoss(){
   // 사나운 보스(eats)는 점수 물고기를 잡아먹고, 대왕게(throwsTrash)는 감점 쓰레기를 뿌려요
   let nextEatAt = 0;
   let nextThrowAt = lastTime + (bossType.throwsTrash ? bossType.throwsTrash.everyMs : 0);
+  let warnedAt = 0; // 쓰레기 예고를 한 시각 (0이면 아직 예고 전)
   // 대왕게: 주기적으로 모래 속에 잠깐 숨어서 무적이 돼요
   const stealthCycleStart = lastTime + 1500 + Math.random() * 1500;
   function isStealthedNow(now){
@@ -737,13 +793,20 @@ function spawnBoss(){
         if(d <= catchRadius && d < preyDist){ prey = f; preyDist = d; }
       });
       if(prey){
-        playEatEffect(prey, bx, by, bossType);
+        playEatEffect(prey, bx, by, bossType, fish);
         nextEatAt = now + bossType.eatCooldownMs;
       }
     }
-    if(!stealthed && bossType.throwsTrash && now >= nextThrowAt){
+    // 대왕게: 뿌리기 TRASH_WARN_MS 전에 예고하고, 예고가 끝난 뒤에만 뿌려요 (숨어 있는 동안은 미뤄요)
+    if(!stealthed && bossType.throwsTrash && !warnedAt && now >= nextThrowAt - TRASH_WARN_MS){
+      warnedAt = now;
+      playTrashWarnEffect(fish, curLeft + half, curTop + half, bossType);
+    }
+    if(!stealthed && bossType.throwsTrash && warnedAt && now >= Math.max(nextThrowAt, warnedAt + TRASH_WARN_MS)){
       nextThrowAt = now + bossType.throwsTrash.everyMs;
-      const pos = { xRatio: curLeft / window.innerWidth, yRatio: curTop / window.innerHeight };
+      warnedAt = 0;
+      const pos = { xRatio: curLeft / Game.view.w, yRatio: curTop / Game.view.h };
+      playTrashThrowEffect(fish, curLeft + half, curTop + half);
       makeTrashThrows(pos, half, bossType.throwsTrash.count).forEach(spawnTrash);
     }
 

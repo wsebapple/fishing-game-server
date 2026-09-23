@@ -56,6 +56,12 @@ Game.config = (() => {
 
 Game.dom = { scene: document.getElementById('scene') };
 
+// 화면 크기. window.innerWidth/innerHeight는 읽을 때마다 브라우저가 레이아웃을 다시 계산할 수 있어서
+// (물고기 위치를 바꾼 직후 읽으면 매번 강제 계산 → 아이폰에서 끊김), 창 크기가 바뀔 때만 읽어 여기 저장해둬요.
+// 게임 코드는 매 프레임 이 값만 써요.
+Game.view = { w: window.innerWidth, h: window.innerHeight };
+window.addEventListener('resize', () => { Game.view.w = window.innerWidth; Game.view.h = window.innerHeight; });
+
 // 한 판(또는 온라인 한 라운드) 동안의 진행 상황
 Game.state = {
   score: 0,
@@ -95,11 +101,11 @@ Game.timers = {
 // 낚싯바늘 위치. 물고기가 바늘에 닿았는지 확인할 때마다 getBoundingClientRect()로 DOM을
 // 다시 읽으면 강제로 레이아웃을 다시 계산해서(reflow) 버벅이니, 계산해둔 이 숫자만 비교해요.
 Game.hook = {
-  x: window.innerWidth / 2,
+  x: Game.view.w / 2,
   y: 330,
   // 내 배. 바늘을 곧장 따라가지 않고 뒤늦게 쫓아가요.
   // facing: 뱃머리 방향(1=오른쪽, -1=왼쪽), turn: 그쪽으로 돌아가는 중인 값(-1~1, 0이면 정면으로 반쯤 돈 상태)
-  boat: { x: window.innerWidth / 2, facing: 1, turn: 1 },
+  boat: { x: Game.view.w / 2, facing: 1, turn: 1 },
   lastDrawnLine: '', // 마지막으로 그린 낚싯줄 모양 (안 바뀌었으면 다시 안 그려요)
 };
 
@@ -132,4 +138,5 @@ Game.mp = {
   roundEndCountdownTimer: null,
   ghostBoats: {}, // socket.id -> 그 친구의 배 { el, hookEl, path, boat, hookX, hookY ... }
   boatSendTimer: null,
+  lastThrowKey: '', // 대왕게 던지기 연출을 한 번에 여러 개 오는 쓰레기마다 반복하지 않게 기억해요
 };

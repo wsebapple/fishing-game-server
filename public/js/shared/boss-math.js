@@ -52,12 +52,19 @@ function regularFishCenter(fish, elapsedMs, width, height, half){
 
 // 대왕게가 뿌린 쓰레기: 게가 있던 자리에서 옆으로 퍼지며 천천히 가라앉아요. 중심 좌표(px)를 돌려줘요.
 // 위치(비율)는 화면 크기에 맞춰 늘어나고, 게 몸 크기만큼의 오프셋과 이동 속도는 px 그대로예요.
+// 던지는 순간엔 위로 톡 튀었다가(TRASH_HOP_SEC 동안 TRASH_HOP_PX만큼 포물선) 그다음부터 가라앉아요.
+const TRASH_HOP_SEC = 0.6, TRASH_HOP_PX = 50;
 function trashCenter(trash, elapsedSec, width, height){
+  const h = elapsedSec < TRASH_HOP_SEC ? elapsedSec / TRASH_HOP_SEC : 1;
+  const hop = -4 * TRASH_HOP_PX * h * (1 - h);
   return {
     x: trash.xRatio * width + trash.offX + trash.vx * elapsedSec,
-    y: trash.yRatio * height + trash.offY + trash.vy * elapsedSec,
+    y: trash.yRatio * height + trash.offY + trash.vy * elapsedSec + hop,
   };
 }
+
+// 대왕게는 쓰레기를 뿌리기 이만큼 전에 빨갛게 깜빡이며 예고해요 (싱글·서버 공통)
+const TRASH_WARN_MS = 600;
 
 // 대왕게가 (bossPos 비율, half px) 자리에서 count개를 부채꼴로 뿌릴 때 각 쓰레기의 궤적
 function makeTrashThrows(bossPos, half, count, random = Math.random){
@@ -75,5 +82,5 @@ function makeTrashThrows(bossPos, half, count, random = Math.random){
 }
 
 if(typeof module !== 'undefined' && module.exports){
-  module.exports = { bossWanderPosition, isBossStealthed, isEdible, regularFishCenter, trashCenter, makeTrashThrows };
+  module.exports = { bossWanderPosition, isBossStealthed, isEdible, regularFishCenter, trashCenter, makeTrashThrows, TRASH_WARN_MS };
 }

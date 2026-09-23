@@ -118,6 +118,14 @@ function joinMultiplayer(roomCodeOverride){
       forgetMpFish(id);
     });
 
+    // 대왕게가 곧 쓰레기를 뿌려요: 빨갛게 깜빡이며 ❗로 예고해요
+    Game.mp.socket.on('bossWarn', ({ id }) => {
+      const bossEl = Game.mp.fishEls[id], bossType = Game.mp.fishTypeById[id];
+      if(!bossEl || !bossType) return;
+      const half = bossType.half || Game.config.hitbox.bossHalf;
+      playTrashWarnEffect(bossEl, (parseFloat(bossEl.style.left) || 0) + half, (parseFloat(bossEl.style.top) || 0) + half, bossType);
+    });
+
     // 사나운 보스(상어·바다용·오징어)가 점수 물고기를 먼저 삼켰어요 (서버가 정해요)
     Game.mp.socket.on('fishEaten', ({ id, bossId }) => {
       const el = Game.mp.fishEls[id];
@@ -126,7 +134,7 @@ function joinMultiplayer(roomCodeOverride){
       if(el){
         if(bossEl && bossType){
           const half = bossType.half || Game.config.hitbox.bossHalf;
-          playEatEffect(el, (parseFloat(bossEl.style.left) || 0) + half, (parseFloat(bossEl.style.top) || 0) + half, bossType);
+          playEatEffect(el, (parseFloat(bossEl.style.left) || 0) + half, (parseFloat(bossEl.style.top) || 0) + half, bossType, bossEl);
         } else el.remove();
         delete Game.mp.fishEls[id];
       }
@@ -223,7 +231,7 @@ function joinMultiplayer(roomCodeOverride){
     Game.mp.socket.on('fishStolen', ({ id, name }) => {
       const el = Game.mp.fishEls[id];
       if(!el) return;
-      const targetX = Math.max(80, Math.min(window.innerWidth - 80, parseFloat(el.style.left) || window.innerWidth/2));
+      const targetX = Math.max(80, Math.min(Game.view.w - 80, parseFloat(el.style.left) || Game.view.w/2));
       const rival = document.getElementById('rivalBoat');
       rival.style.left = targetX + 'px';
       rival.classList.add('show');
@@ -328,8 +336,8 @@ function joinMultiplayer(roomCodeOverride){
       const g = Game.mp.ghostBoats[id];
       if(!g) return;
       // 바늘 목표 위치만 기억하고, 배·줄·바늘은 updateGhostBoats()가 매 프레임 부드럽게 따라가게 해요
-      g.hookX = xRatio * window.innerWidth;
-      if(typeof yRatio === 'number') g.hookY = yRatio * window.innerHeight;
+      g.hookX = xRatio * Game.view.w;
+      if(typeof yRatio === 'number') g.hookY = yRatio * Game.view.h;
       if(!g.seen){ g.seen = true; g.shownX = g.hookX; g.shownY = g.hookY; g.hookEl.hidden = false; }
     });
   });
@@ -441,7 +449,7 @@ function spawnMpFish(data){
   const half = type.isBoss ? (type.half || hb.bossHalf) : (data.trash ? hb.trashHalf : hb.fishHalf);
   const catchRadius = type.isBoss ? (type.catchRadius || hb.bossCatchRadius) : (data.trash ? hb.trashCatchRadius : hb.fishCatchRadius);
 
-  const distance = window.innerWidth + 100;
+  const distance = Game.view.w + 100;
   const duration = data.durationMs; // 서버가 정해준 "화면을 가로지르는 시간"(또는 보스의 전체 등장 시간)을 그대로 써서 서버 만료 시점과 맞춰요
   // 내 기기 시계와 서버 시계가 어긋나 있어도 문제가 없도록, Date.now() 대신
   // "이 물고기를 화면에 그리기 시작한 내 브라우저 시각"을 기준으로 흐른 시간을 재요.
@@ -451,14 +459,22 @@ function spawnMpFish(data){
   let curLeft, curTop;
   if(type.isBoss){
     const pos = bossWanderPosition(getMpBossSeed(data.id, data.seed), (data.elapsedMs || 0) / 1000, type);
-    curLeft = pos.xRatio * window.innerWidth;
-    curTop = pos.yRatio * window.innerHeight;
+    curLeft = pos.xRatio * Game.view.w;
+    curTop = pos.yRatio * Game.view.h;
   } else if(data.trash){
-    const c = trashCenter(data.trash, (data.elapsedMs || 0) / 1000, window.innerWidth, window.innerHeight);
+    const c = trashCenter(data.trash, (data.elapsedMs || 0) / 1000, Game.view.w, Game.view.h);
     curLeft = c.x - half; curTop = c.y - half;
+    // 방금 던진 쓰레기라면 던진 대왕게가 몸을 휘두르고 흙탕물이 퍼져요 (한 번에 여러 개를 던져도 연출은 한 번만)
+    const thrower = Game.mp.fishEls[data.fromBossId], throwerType = Game.mp.fishTypeById[data.fromBossId];
+    const throwKey = data.fromBossId + '@' + data.startTime;
+    if(thrower && throwerType && !data.elapsedMs && Game.mp.lastThrowKey !== throwKey){
+      Game.mp.lastThrowKey = throwKey;
+      const bh = throwerType.half || hb.bossHalf;
+      playTrashThrowEffect(thrower, (parseFloat(thrower.style.left) || 0) + bh, (parseFloat(thrower.style.top) || 0) + bh);
+    }
   } else {
-    curTop = data.y * window.innerHeight;
-    curLeft = data.fromLeft ? -50 : window.innerWidth + 50;
+    curTop = data.y * Game.view.h;
+    curLeft = data.fromLeft ? -50 : Game.view.w + 50;
     // 물고기 이모지는 기본적으로 왼쪽을 보므로, 오른쪽으로 이동할 때 뒤집어요.
     if(data.fromLeft) fish.style.transform = 'scaleX(-1)';
   }
@@ -517,10 +533,10 @@ function spawnMpFish(data){
         fish.style.filter = (type.tint ? type.tint + ' ' : '') + (stealthed ? 'blur(1.5px) ' : '') + 'drop-shadow(0 3px 3px rgba(0,0,0,0.25))';
       }
       const pos = bossWanderPosition(getMpBossSeed(data.id, data.seed), elapsedSec, type);
-      const nextLeft = pos.xRatio * window.innerWidth;
+      const nextLeft = pos.xRatio * Game.view.w;
       fish.style.transform = nextLeft < curLeft ? 'scaleX(1)' : 'scaleX(-1)';
       curLeft = nextLeft;
-      curTop = pos.yRatio * window.innerHeight;
+      curTop = pos.yRatio * Game.view.h;
       fish.style.left = curLeft + 'px';
       fish.style.top = curTop + 'px';
       requestAnimationFrame(animate);
@@ -536,7 +552,7 @@ function spawnMpFish(data){
     const elapsed = performance.now() - localStart;
     if(data.trash){
       if(elapsed >= duration) return; // 서버의 fishExpire 이벤트가 제거를 처리해요
-      const c = trashCenter(data.trash, elapsed / 1000, window.innerWidth, window.innerHeight);
+      const c = trashCenter(data.trash, elapsed / 1000, Game.view.w, Game.view.h);
       curLeft = c.x - half; curTop = c.y - half;
       fish.style.left = curLeft + 'px';
       fish.style.top = curTop + 'px';
@@ -547,7 +563,7 @@ function spawnMpFish(data){
     if(progress >= 1) return; // 서버의 fishExpire 이벤트가 제거를 처리해요
     curLeft = data.fromLeft
       ? -50 + progress * distance
-      : (window.innerWidth + 50) - progress * distance;
+      : (Game.view.w + 50) - progress * distance;
     fish.style.left = curLeft + 'px';
     requestAnimationFrame(animate);
   }
@@ -629,7 +645,7 @@ function ensureGhostBoat(id, name){
     Game.dom.scene.appendChild(hookEl);
     const lineSvg = document.getElementById('lineSvg');
     lineSvg.insertBefore(path, lineSvg.firstChild); // 내 줄(#linePath)보다 아래 겹에 그려요
-    const x = window.innerWidth / 2; // 위치를 아직 모를 때는 가운데에 둬요
+    const x = Game.view.w / 2; // 위치를 아직 모를 때는 가운데에 둬요
     g = { el, label, hookEl, path, seen: false, hookX: x, hookY: 330, shownX: x, shownY: 330,
       boat: { x, facing: 1, turn: 1 }, phase: Math.random() * Math.PI * 2 };
     Game.mp.ghostBoats[id] = g;
@@ -676,9 +692,9 @@ function clearGhostBoats(){
 
 function sendBoatPosition(){
   if(!Game.mp.socket || !Game.mp.active) return;
-  Game.mp.socket.emit('boatMove', { xRatio: Math.max(0, Math.min(1, Game.hook.x / window.innerWidth)),
-    yRatio: Math.max(0, Math.min(1, Game.hook.y / window.innerHeight)),
-    width: window.innerWidth, height: window.innerHeight });
+  Game.mp.socket.emit('boatMove', { xRatio: Math.max(0, Math.min(1, Game.hook.x / Game.view.w)),
+    yRatio: Math.max(0, Math.min(1, Game.hook.y / Game.view.h)),
+    width: Game.view.w, height: Game.view.h });
 }
 
 function startMultiplayerMode(){

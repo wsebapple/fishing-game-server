@@ -1,6 +1,6 @@
 const { levelStages, bossTypes, fishTypes, hitbox } = require('../public/game-config.json');
 const { pickFishType, fishDurationMs } = require("./fish");
-const { bossWanderPosition, isBossStealthed, isEdible, regularFishCenter, makeTrashThrows } = require('../public/js/shared/boss-math');
+const { bossWanderPosition, isBossStealthed, isEdible, regularFishCenter, makeTrashThrows, TRASH_WARN_MS } = require('../public/js/shared/boss-math');
 const TRASH_TYPES = fishTypes.filter(f => f.isBossTrash);
 const TRASH_LIFETIME_MS = 6000;
 const BOSS_ACT_INTERVAL_MS = 100;
@@ -113,6 +113,7 @@ function startBossActions(code, room, boss){
   if(!type.eats && !type.throwsTrash) return;
   let nextEatAt = 0;
   let nextThrowAt = Date.now() + (type.throwsTrash ? type.throwsTrash.everyMs : 0);
+  let warnedAt = 0; // 쓰레기 예고를 보낸 시각 (0이면 아직 예고 전)
   room.bossActTimer = setInterval(() => {
     if(rooms[code] !== room || room.fish[boss.id] !== boss){ stopBossActions(room); return; }
     const now = Date.now();
@@ -137,11 +138,18 @@ function startBossActions(code, room, boss){
       }
     }
 
-    if(type.throwsTrash && now >= nextThrowAt && TRASH_TYPES.length){
+    // 대왕게: 뿌리기 TRASH_WARN_MS 전에 친구들 화면에 예고(빨갛게 깜빡임)를 보내고, 예고가 끝난 뒤에만 뿌려요
+    if(type.throwsTrash && !warnedAt && now >= nextThrowAt - TRASH_WARN_MS){
+      warnedAt = now;
+      io.to(code).emit('bossWarn', { id: boss.id });
+    }
+    if(type.throwsTrash && warnedAt && now >= Math.max(nextThrowAt, warnedAt + TRASH_WARN_MS) && TRASH_TYPES.length){
       nextThrowAt = now + type.throwsTrash.everyMs;
+      warnedAt = 0;
       makeTrashThrows(pos, type.half, type.throwsTrash.count).forEach(trash => {
         const trashType = TRASH_TYPES[Math.floor(Math.random() * TRASH_TYPES.length)];
-        addFishToRoom(code, room, { id: 'f' + (room.fishIdCounter++), type: trashType, trash, startTime: now, durationMs: TRASH_LIFETIME_MS });
+        // fromBossId: 클라이언트가 어느 보스가 던졌는지 알고 던지는 연출을 보여줘요
+        addFishToRoom(code, room, { id: 'f' + (room.fishIdCounter++), type: trashType, trash, fromBossId: boss.id, startTime: now, durationMs: TRASH_LIFETIME_MS });
       });
     }
   }, BOSS_ACT_INTERVAL_MS);
