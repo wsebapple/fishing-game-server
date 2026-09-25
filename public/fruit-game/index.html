@@ -166,8 +166,10 @@
          (방향키로 움직이고 스페이스바로 떨어뜨릴 수도 있어요)<br>
          빨간 줄 위로 과일이 쌓이면 게임이 끝나요. 두리안까지 만들어봐요!<br>
          ✨ 정해진 순서대로 과일을 떨어뜨리면 폭탄이나 무지개 과일이 나와요(아래 조합표 참고)!<br>
+         💣 폭탄은 혼자 있으면 안 터지고, 폭탄끼리 맞닿아야 터져요.<br>
          빠르게 연속으로 합치면 콤보 점수와 보너스가 생기고, 콤보를 많이 쌓아도 폭탄을 얻어요!<br>
          🍑 복숭아 등급부터는 배경음악이 빨라지고 자동으로도 더 빨리 떨어져요.<br>
+         점수가 쌓일수록 떨어지는 속도도 점점 빨라져요!<br>
          두리안 두 개를 합치면 보너스와 함께 화면이 싹 비워져요!</p>
       <p class="best">최고 점수: <span id="bestStart">0</span></p>
       <button id="startBtn">시작하기</button>
@@ -204,12 +206,14 @@
 // =====================================================
 const SETTINGS = {
   gravity: 1500,       // 중력 (크면 더 빨리 떨어져요)
+  gravityScorePer: 500,  // 점수가 이만큼 쌓일 때마다 중력이 조금씩 세져요(체감 난이도 상승)
+  gravityMaxMult: 2.2,   // 중력은 최대 이 배수까지만 세져요
   airDamp: 0.995,      // 공기 저항(가로 속도를 아주 조금씩 줄여요)
+  maxFallSpeed: 1300,  // 아무리 중력이 세져도 이 속도보다 빨리 떨어지진 않아요(너무 세게 부딪혀서 서로 파고드는 걸 막아줘요)
   moveSpeed: 420,      // 방향키로 움직이는 빠르기
   dropCooldown: 0.45,  // 떨어뜨린 뒤 다음 과일이 준비될 때까지 쉬는 시간(초)
   dangerLimit: 1.2,    // 빨간 줄 위에 이만큼(초) 쌓여 있으면 게임 끝
   bombBodyR: 32,       // 폭탄의 크기(부딪히는 반지름)
-  bombFuse: 0.55,      // 폭탄이 가만히 멈춘 뒤 터지기까지 걸리는 시간(초)
   bombBlastR: 130,      // 폭탄이 터질 때 영향을 주는 반경
   rainbowBodyR: 30,     // 무지개 과일의 크기(부딪히는 반지름)
   recipeHistoryLen: 5,  // 조합을 확인할 때 최근 몇 번 떨어뜨린 것까지 기억할지
@@ -625,6 +629,7 @@ function checkRecipes() {
       const r = recipe.item === 'bomb' ? SETTINGS.bombBodyR : SETTINGS.rainbowBodyR;
       current = { special: recipe.item, level: null, r };
       dropX = clampDropX(dropX, current);
+      autoDropTimer = 0;   // 막 받은 아이템이 자동 낙하로 바로 떨어져버리지 않게 시간을 다시 줘요
       popText(W / 2, JAR.top - 20, recipe.icon + ' ' + recipe.name + ' 획득!');
       Music.sfx('combo', 4);
       dropHistory = [];
@@ -674,7 +679,7 @@ function tryDrop() {
   // 가로 속도를 살짝 무작위로 줘요: 정확히 0으로 떨어지면 원기둥처럼 완벽하게 일직선으로 쌓일 수 있는데,
   // 실제로는 그렇게 완벽한 균형이 불안정해서 무너져야 해요(회전이 없는 모델이라 한 번 완벽히 겹치면
   // 스스로는 절대 안 무너지니, 시작부터 살짝 어긋나게 만들어요)
-  fruits.push({ id: uid++, level: current.level, special: current.special, x: dropX, y: DROP_Y, vx: (Math.random() - 0.5) * 8, vy: 0, r: current.r, fuse: 0, aboveTimer: 0 });
+  fruits.push({ id: uid++, level: current.level, special: current.special, x: dropX, y: DROP_Y, vx: (Math.random() - 0.5) * 8, vy: 0, r: current.r, aboveTimer: 0 });
   Music.sfx('drop');
   const droppedLevel = current.special ? null : current.level;
   current = next;
@@ -706,7 +711,7 @@ function resolveCollisions() {
   // 아래에서 위로 쭉 전달돼요(순서 없이 풀면 위쪽까지 다 전달되는 데 훨씬 더 많이 반복해야 해요).
   const ordered = fruits.slice().sort((a, b) => b.y - a.y);
   const n = ordered.length;
-  for (let iter = 0; iter < 16; iter++) {
+  for (let iter = 0; iter < 24; iter++) {
     for (let i = 0; i < n; i++) {
       const a = ordered[i];
       for (let j = i + 1; j < n; j++) {
@@ -789,6 +794,7 @@ function mergeCheck(now) {
         if (comboCount >= SETTINGS.comboBombAt && current.special !== 'bomb') {
           current = { special: 'bomb', level: null, r: SETTINGS.bombBodyR };
           dropX = clampDropX(dropX, current);
+          autoDropTimer = 0;   // 막 받은 폭탄이 자동 낙하로 바로 떨어져버리지 않게 시간을 다시 줘요
           popText(W / 2, JAR.top - 20, '콤보 스킬! 폭탄 과일 등장 💣');
         }
       }
@@ -801,15 +807,18 @@ function mergeCheck(now) {
   }
 }
 
-// 폭탄이 가만히 멈추면 심지가 타들어가다가 터져요. 터지면 반경 안의 과일(다른 폭탄 포함)을 없애요.
+// 폭탄은 혼자 있으면 절대 안 터져요 — 폭탄끼리 맞닿아야 터져요. 터지면 반경 안의 과일도 같이 없애요.
 function updateBombs(dt, now) {
+  const bombs = fruits.filter(f => f.special === 'bomb');
   const toExplode = [];
-  for (const f of fruits) {
-    if (f.special !== 'bomb') continue;
-    const settled = Math.abs(f.vx) < 14 && Math.abs(f.vy) < 14;
-    f.fuse = settled ? (f.fuse || 0) + dt : 0;
-    if (f.fuse > SETTINGS.bombFuse) toExplode.push(f);
-    else if (settled && Math.random() < dt * 6) burst(f.x, f.y - f.r, '#ffb43c', 1);
+  for (let i = 0; i < bombs.length; i++) {
+    const a = bombs[i];
+    for (let j = i + 1; j < bombs.length; j++) {
+      const b = bombs[j];
+      if (Math.hypot(a.x - b.x, a.y - b.y) < (a.r + b.r) * 1.05) { toExplode.push(a, b); }
+    }
+    const settled = Math.abs(a.vx) < 14 && Math.abs(a.vy) < 14;
+    if (settled && Math.random() < dt * 3) burst(a.x, a.y - a.r, '#ffb43c', 1);   // 장식용 불꽃
   }
   if (toExplode.length) explodeBombs(toExplode, now);
 }
@@ -878,8 +887,10 @@ function update(dt, now) {
     if (autoDropTimer >= autoLimit && dropCooldown <= 0) tryDrop();
   }
 
+  // 점수가 쌓일수록 중력이 조금씩 세져서, 잘할수록 오히려 더 급해져요
+  const gravity = SETTINGS.gravity * Math.min(SETTINGS.gravityMaxMult, 1 + score / SETTINGS.gravityScorePer);
   for (const f of fruits) {
-    f.vy += SETTINGS.gravity * dt;
+    f.vy = Math.min(SETTINGS.maxFallSpeed, f.vy + gravity * dt);
     f.vx *= SETTINGS.airDamp;
     f.x += f.vx * dt; f.y += f.vy * dt;
     clampFruit(f);
