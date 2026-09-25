@@ -207,9 +207,12 @@
 const SETTINGS = {
   gravity: 1500,       // 중력 (크면 더 빨리 떨어져요)
   gravityScorePer: 500,  // 점수가 이만큼 쌓일 때마다 중력이 조금씩 세져요(체감 난이도 상승)
-  gravityMaxMult: 2.2,   // 중력은 최대 이 배수까지만 세져요
+  gravityMaxMult: 2.5,   // 중력은 최대 이 배수까지만 세져요
   airDamp: 0.995,      // 공기 저항(가로 속도를 아주 조금씩 줄여요)
-  maxFallSpeed: 1300,  // 아무리 중력이 세져도 이 속도보다 빨리 떨어지진 않아요(너무 세게 부딪혀서 서로 파고드는 걸 막아줘요)
+  // 아무리 중력이 세져도 이 속도보다 빨리 떨어지진 않아요(너무 세게 부딪혀서 서로 파고드는 걸 막아줘요).
+  // 기본 중력(배수 1배)으로 항아리 끝까지 떨어져도 자연스럽게 도달하는 속도(약 1450)보다는 높게 잡아야
+  // 점수가 낮을 때는 이 상한이 아예 안 걸려서(원래 느낌 그대로), 점수가 오를수록만 체감되게 돼요.
+  maxFallSpeed: 1900,
   moveSpeed: 420,      // 방향키로 움직이는 빠르기
   dropCooldown: 0.45,  // 떨어뜨린 뒤 다음 과일이 준비될 때까지 쉬는 시간(초)
   dangerLimit: 1.2,    // 빨간 줄 위에 이만큼(초) 쌓여 있으면 게임 끝
@@ -901,15 +904,21 @@ function update(dt, now) {
     if (autoDropTimer >= autoLimit && dropCooldown <= 0) tryDrop();
   }
 
-  // 점수가 쌓일수록 중력이 조금씩 세져서, 잘할수록 오히려 더 급해져요
+  // 점수가 쌓일수록 중력이 조금씩 세져서, 잘할수록 오히려 더 급해져요.
+  // 한 프레임을 여러 조각(substep)으로 나눠서 조금씩 움직이고 그때마다 겹침을 풀어줘요 — 빨리 떨어질수록
+  // 한 번에 많이 움직여서 서로 깊이 파고들 수 있는데, 잘게 나누면 그런 일이 훨씬 줄어들어요.
   const gravity = SETTINGS.gravity * Math.min(SETTINGS.gravityMaxMult, 1 + score / SETTINGS.gravityScorePer);
-  for (const f of fruits) {
-    f.vy = Math.min(SETTINGS.maxFallSpeed, f.vy + gravity * dt);
-    f.vx *= SETTINGS.airDamp;
-    f.x += f.vx * dt; f.y += f.vy * dt;
-    clampFruit(f);
+  const substeps = 3;
+  const subDt = dt / substeps;
+  for (let s = 0; s < substeps; s++) {
+    for (const f of fruits) {
+      f.vy = Math.min(SETTINGS.maxFallSpeed, f.vy + gravity * subDt);
+      f.vx *= SETTINGS.airDamp;
+      f.x += f.vx * subDt; f.y += f.vy * subDt;
+      clampFruit(f);
+    }
+    resolveCollisions();
   }
-  resolveCollisions();
   mergeCheck(now);
   updateBombs(dt, now);
 
