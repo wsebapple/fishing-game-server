@@ -150,6 +150,8 @@
   .listenBtn:active { transform: translateY(2px); box-shadow: 0 2px 0 #1f6fa8; }
   .listenBtn.hidden { display: none; }
 
+  .reviewWord { font-size: clamp(28px, 7vw, 42px); font-weight: bold; margin: 6px 0; text-align: center; word-break: break-word; }
+
   @keyframes shake { 10%,90%{transform:translateX(-1px)} 20%,80%{transform:translateX(2px)} 30%,50%,70%{transform:translateX(-7px)} 40%,60%{transform:translateX(7px)} }
   @keyframes charBounce { 0%{transform:scale(.7) rotate(-6deg);opacity:.4} 55%{transform:scale(1.15) rotate(3deg);opacity:1} 100%{transform:scale(1) rotate(0)} }
   @keyframes floatUp { 0%{transform:translate(-50%,0) scale(.8);opacity:0} 18%{opacity:1;transform:translate(-50%,-8px) scale(1.08)} 100%{transform:translate(-50%,-58px) scale(1);opacity:0} }
@@ -231,6 +233,36 @@
       <h1>🎉 잘했어요!</h1>
       <p class="stats" id="roundResultText" style="text-align:center"></p>
       <button id="roundResultOk">확인</button>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="reviewIntro">
+    <div class="card">
+      <h1>🔁 복습해볼까요?</h1>
+      <p style="text-align:center">이번에 틀린 단어 <b id="reviewIntroCount">0</b>개를 다시 보면 포인트를 받을 수 있어요!</p>
+      <button id="reviewStartBtn">복습하기</button>
+      <br><button type="button" class="small" id="reviewIntroLeave">복습 없이 나가기</button>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="reviewCard">
+    <div class="card">
+      <h1>🔁 복습 중</h1>
+      <p class="stats" id="reviewProgress" style="text-align:center">1 / 1</p>
+      <div class="reviewWord" id="reviewWord"></div>
+      <p class="stats hidden" id="reviewMeaning" style="text-align:center"></p>
+      <button id="reviewRevealBtn">👆 터치해서 뜻 보기</button>
+      <button id="reviewNextBtn" class="hidden">다음 단어</button>
+      <br><button type="button" class="small" id="reviewCardLeave">복습 없이 나가기</button>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="reviewLeaveConfirm">
+    <div class="card">
+      <h1>⚠️ 잠깐!</h1>
+      <p style="text-align:center">복습을 마치지 않으면 이번 포인트는 받을 수 없어요!<br>그래도 나갈까요?</p>
+      <button id="reviewLeaveStay">복습 계속하기</button>
+      <button id="reviewLeaveForfeit" class="small">포인트 포기하고 나가기</button>
     </div>
   </div>
 </div>
@@ -371,17 +403,26 @@ async function fetchPronunciationUrl(word) {
   }
 }
 
-async function playPronunciation(word) {
-  const url = await fetchPronunciationUrl(word);
-  if (url) {
-    try {
+// 문제가 나올 때 미리 발음 파일 주소를 받아두고(prefetch), 버튼을 눌렀을 때는 그 캐시를 즉시 재생해요.
+// 클릭한 그 순간 곧바로 재생해야(중간에 fetch로 기다리지 않아야) 휴대폰 브라우저가 "사용자가 직접
+// 누른 재생"으로 인정해서 막지 않고, 소리도 늦게 나오지 않고 바로 나와요.
+function playPronunciation(word) {
+  const key = word.toLowerCase();
+  if (key in pronounceCache) {
+    const url = pronounceCache[key];
+    if (url) {
       if (!pronounceAudio) pronounceAudio = new Audio();
       pronounceAudio.src = url;
-      await pronounceAudio.play();
-      return;
-    } catch (err) { /* 재생이 막히면 아래에서 기기 음성으로 대신 읽어줘요 */ }
+      pronounceAudio.play().catch(() => Speech.speak(word));
+    } else {
+      Speech.speak(word);
+    }
+    return;
   }
+  // 아직 미리 받아두지 못했으면(문제가 뜨자마자 바로 눌렀을 때) 기다리지 말고 기기 음성으로 바로 들려주고,
+  // 다음번엔 캐시를 쓸 수 있도록 뒤에서 계속 받아둬요.
   Speech.speak(word);
+  fetchPronunciationUrl(word);
 }
 
 // ---------- 상태 ----------
@@ -389,6 +430,7 @@ const ROUND_TIME = 60;
 let score = 0, timeLeft = ROUND_TIME, lives = 3, combo = 0, bestCombo = 0;
 let totalAnswered = 0, totalCorrect = 0;
 let bag = [], lastWord = null, currentItem = null;
+let wrongItems = [];
 let locked = false, gameOver = false, paused = false, timerHandle = null;
 let currentLevel = 1;
 const DIRECTION_KEY = 'englishWordGameDirection';
@@ -474,6 +516,7 @@ function renderQuestion() {
   levelBadgeEl.className = 'badge lv' + currentLevel;
   dirBadgeEl.textContent = isKo2En ? '🇰🇷→🔤' : '🔤→🇰🇷';
   bounceWord();
+  fetchPronunciationUrl(currentItem.w); // 발음 버튼을 누르기 전에 미리 받아둬요
 
   const correctText = isKo2En ? currentItem.w : currentItem.m;
   const levelPool = wordsForLevel(currentLevel).filter(w => w.w !== currentItem.w);
@@ -513,6 +556,7 @@ function selectChoice(btn, opt) {
     btn.classList.add('bad');
     const correctBtn = [...choicesEl.children].find(b => b.dataset.correct === '1');
     if (correctBtn) correctBtn.classList.add('reveal');
+    if (!wrongItems.some(w => w.w === currentItem.w)) wrongItems.push({ w: currentItem.w, m: currentItem.m });
     handleWrong();
   }
 
@@ -564,7 +608,7 @@ function startGame(level) {
   currentLevel = level || currentLevel;
   Sound.ensure();
   score = 0; timeLeft = ROUND_TIME; lives = 3; combo = 0; bestCombo = 0;
-  totalAnswered = 0; totalCorrect = 0; bag = []; lastWord = null; gameOver = false;
+  totalAnswered = 0; totalCorrect = 0; bag = []; lastWord = null; gameOver = false; wrongItems = [];
   el('startScreen').classList.add('hidden');
   el('overScreen').classList.add('hidden');
   playArea.classList.remove('hidden');
@@ -574,7 +618,7 @@ function startGame(level) {
   startTimer();
 }
 
-async function endGame() {
+function endGame() {
   if (gameOver) return;
   gameOver = true;
   clearInterval(timerHandle);
@@ -582,15 +626,24 @@ async function endGame() {
   playArea.classList.add('hidden');
   el('quitBtn').classList.add('hidden');
   const best = saveBest(currentLevel, score);
-  const totalScore = addSessionScore(score);
+  const roundScore = score, roundCorrect = totalCorrect;
+  const totalScore = addSessionScore(roundScore);
   const acc = totalAnswered ? Math.round((totalCorrect / totalAnswered) * 100) : 0;
   el('overTitle').textContent = lives <= 0 ? '아쉬워요! 💔' : '시간 종료! ⏰';
-  el('overStats').textContent = currentLevel + '단계 · 점수 ' + score + '점 · 정답 ' + totalCorrect + '/' + totalAnswered + ' (' + acc + '%) · 최고 콤보 x' + bestCombo;
-  el('earnResult').textContent = '포인트 적립 중...';
+  el('overStats').textContent = currentLevel + '단계 · 점수 ' + roundScore + '점 · 정답 ' + totalCorrect + '/' + totalAnswered + ' (' + acc + '%) · 최고 콤보 x' + bestCombo;
+  el('earnResult').textContent = '';
   el('bestOver').textContent = best;
   el('overScreen').classList.remove('hidden');
   updateSessionPill();
-  el('earnResult').textContent = await reportEarnedPoints(totalCorrect, totalScore);
+
+  runReviewGate(wrongItems.slice(), async forfeited => {
+    if (forfeited) {
+      el('earnResult').textContent = '복습을 마치지 않아서 이번 포인트는 받지 못했어요. (이번 방문 누적 점수 ' + totalScore + '점)';
+      return;
+    }
+    el('earnResult').textContent = '포인트 적립 중...';
+    el('earnResult').textContent = await reportEarnedPoints(roundCorrect, totalScore);
+  });
 }
 
 // ---------- 게임 놀이터 포인트 적립 ----------
@@ -627,6 +680,66 @@ async function reportEarnedPoints(roundCorrect, totalScore) {
     return '포인트 적립에 실패했어요. 인터넷 연결을 확인해주세요.' + totalNote;
   }
 }
+
+// ---------- 라운드가 끝나면 틀린 단어부터 복습하고, 다 봐야 포인트를 받아요 ----------
+let reviewQueue = [];
+let reviewIndex = 0;
+let reviewDoneCallback = null;
+
+function runReviewGate(wrongList, onDone) {
+  if (!wrongList.length) { onDone(false); return; }
+  reviewQueue = wrongList;
+  reviewIndex = 0;
+  reviewDoneCallback = onDone;
+  el('reviewIntroCount').textContent = String(wrongList.length);
+  el('reviewIntro').classList.remove('hidden');
+}
+
+function showReviewCard() {
+  const item = reviewQueue[reviewIndex];
+  el('reviewProgress').textContent = (reviewIndex + 1) + ' / ' + reviewQueue.length;
+  el('reviewWord').textContent = item.w;
+  el('reviewMeaning').textContent = '';
+  el('reviewMeaning').classList.add('hidden');
+  el('reviewRevealBtn').classList.remove('hidden');
+  el('reviewNextBtn').classList.add('hidden');
+}
+
+function finishReview(forfeited) {
+  el('reviewLeaveConfirm').classList.add('hidden');
+  el('reviewCard').classList.add('hidden');
+  el('reviewIntro').classList.add('hidden');
+  const cb = reviewDoneCallback;
+  reviewDoneCallback = null;
+  if (cb) cb(forfeited);
+}
+
+el('reviewStartBtn').addEventListener('click', () => {
+  el('reviewIntro').classList.add('hidden');
+  el('reviewCard').classList.remove('hidden');
+  showReviewCard();
+});
+
+el('reviewRevealBtn').addEventListener('click', () => {
+  const item = reviewQueue[reviewIndex];
+  el('reviewMeaning').textContent = item.m;
+  el('reviewMeaning').classList.remove('hidden');
+  el('reviewRevealBtn').classList.add('hidden');
+  el('reviewNextBtn').textContent = (reviewIndex + 1 >= reviewQueue.length) ? '복습 끝내기' : '다음 단어';
+  el('reviewNextBtn').classList.remove('hidden');
+});
+
+el('reviewNextBtn').addEventListener('click', () => {
+  reviewIndex++;
+  if (reviewIndex >= reviewQueue.length) { finishReview(false); return; }
+  showReviewCard();
+});
+
+['reviewIntroLeave', 'reviewCardLeave'].forEach(id => {
+  el(id).addEventListener('click', () => el('reviewLeaveConfirm').classList.remove('hidden'));
+});
+el('reviewLeaveStay').addEventListener('click', () => el('reviewLeaveConfirm').classList.add('hidden'));
+el('reviewLeaveForfeit').addEventListener('click', () => finishReview(true));
 
 function updateSessionPill() {
   const pillEl = el('sessionPill');
@@ -677,7 +790,7 @@ el('muteBtn').addEventListener('click', () => {
 });
 
 el('quitBtn').addEventListener('click', () => el('quitConfirm').classList.remove('hidden'));
-el('quitYes').addEventListener('click', async () => {
+el('quitYes').addEventListener('click', () => {
   el('quitConfirm').classList.add('hidden');
   gameOver = true;
   clearInterval(timerHandle);
@@ -685,9 +798,16 @@ el('quitYes').addEventListener('click', async () => {
   const roundScore = score, roundCorrect = totalCorrect;
   const totalScore = addSessionScore(roundScore);
   updateSessionPill();
-  showRoundResult('이번 게임에서 ' + roundScore + '점 획득했어요! 포인트 적립 중...');
-  const msg = await reportEarnedPoints(roundCorrect, totalScore);
-  showRoundResult('이번 게임에서 ' + roundScore + '점 획득했어요! ' + msg);
+
+  runReviewGate(wrongItems.slice(), async forfeited => {
+    if (forfeited) {
+      showRoundResult('이번 게임에서 ' + roundScore + '점 획득했지만, 복습을 하지 않아서 포인트는 받지 못했어요.');
+      return;
+    }
+    showRoundResult('이번 게임에서 ' + roundScore + '점 획득했어요! 포인트 적립 중...');
+    const msg = await reportEarnedPoints(roundCorrect, totalScore);
+    showRoundResult('이번 게임에서 ' + roundScore + '점 획득했어요! ' + msg);
+  });
 });
 el('quitNo').addEventListener('click', () => el('quitConfirm').classList.add('hidden'));
 
