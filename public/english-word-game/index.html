@@ -526,7 +526,16 @@ el('muteBtn').addEventListener('click', () => {
 });
 
 el('quitBtn').addEventListener('click', () => el('quitConfirm').classList.remove('hidden'));
-el('quitYes').addEventListener('click', () => { window.location.href = '/'; });
+el('quitYes').addEventListener('click', () => {
+  el('quitConfirm').classList.add('hidden');
+  gameOver = true;
+  clearInterval(timerHandle);
+  playArea.classList.add('hidden');
+  el('quitBtn').classList.add('hidden');
+  el('overScreen').classList.add('hidden');
+  renderLevelGrid();
+  el('startScreen').classList.remove('hidden');
+});
 el('quitNo').addEventListener('click', () => el('quitConfirm').classList.add('hidden'));
 
 document.addEventListener('visibilitychange', () => { paused = document.hidden; });
