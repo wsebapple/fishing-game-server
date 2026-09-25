@@ -39,9 +39,12 @@ function createApp(options = {}) {
   // 재배포되거나 다시 시작돼도 순위표·포인트·입장료 데이터가 사라지지 않게 해요. 안 정해주면
   // 예전처럼 이 저장소 안의 data/ 폴더를 그대로 써요(로컬 개발용 기본값).
   const dataDir = options.dataDir || process.env.DATA_DIR || path.join(__dirname, 'data');
+  // 학습게임별 포인트 적립 정책(earn-config.json)은 이 폴더 밑에서 게임 폴더별로 찾아요 — publicDir을
+  // 아래에서 다시 정의하지 않도록 여기서 먼저 정해요(테스트에서 임시 폴더로 바꿔치기할 수도 있어요).
+  const publicDir = options.publicDir || path.join(__dirname, 'public');
   const leaderboard = createLeaderboard(options.leaderboardFile || path.join(dataDir, 'leaderboard.json'));
   const roomApi = createRooms(io, leaderboard);
-  const points = createPoints(options.pointsFile || path.join(dataDir, 'points.json'), options.pointsSecret);
+  const points = createPoints(options.pointsFile || path.join(dataDir, 'points.json'), options.pointsSecret, { gamesDir: publicDir });
   const costs = createCosts(options.costsFile || path.join(dataDir, 'game-costs.json'));
   const adminKey = options.adminKey || process.env.ADMIN_KEY || '';
   // 관리자 코드는 길이가 달라도 안전하게 시간차 공격 없이 비교해요. 코드가 설정 안 돼 있으면 항상 거부해요.
@@ -55,7 +58,6 @@ function createApp(options = {}) {
   // public/index.html은 여러 게임을 고르는 메인 페이지이고, 게임마다 public/<게임>/ 폴더에 index.html이 있어요.
   // index.html이 있는 폴더마다 똑같이: /게임 → /게임/ 로 보내고, 첫 화면에 버전 꼬리표를 넣어 매번 새로 확인하게 해요.
   // 평소엔 이 저장소의 public/ 폴더를 쓰지만, 테스트에서 임시 폴더 구조로 라우팅을 확인할 수 있게 옵션으로 바꿀 수 있어요
-  const publicDir = options.publicDir || path.join(__dirname, 'public');
   const buildId = computeBuildId(publicDir);
   for (const dir of fs.readdirSync(publicDir, { withFileTypes: true })) {
     const indexFile = path.join(publicDir, dir.name, 'index.html');
@@ -149,10 +151,10 @@ function createApp(options = {}) {
     const name = points.verifyToken(getBearerToken(req));
     if (!name) { res.status(401).json({ error: '로그인이 필요해요.' }); return; }
     const gameId = typeof (req.body && req.body.gameId) === 'string' ? req.body.gameId : null;
-    const correct = Number(req.body && req.body.correct);
-    if (!gameId || !Number.isFinite(correct) || correct < 0) { res.status(400).json({ error: 'gameId와 정답 개수를 확인해주세요.' }); return; }
+    const units = Number(req.body && req.body.units);
+    if (!gameId || !Number.isFinite(units) || units < 0) { res.status(400).json({ error: 'gameId와 적립 단위 수를 확인해주세요.' }); return; }
     try {
-      const result = await points.earn(name, gameId, correct);
+      const result = await points.earn(name, gameId, units);
       res.json(result);
     } catch (error) {
       if (error.code === 'UNKNOWN_GAME') { res.status(404).json({ error: '알 수 없는 학습게임이에요.' }); return; }
