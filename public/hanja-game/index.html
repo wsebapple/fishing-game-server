@@ -116,6 +116,10 @@
   .gradePill.active { opacity: 1; transform: scale(1.06); background: var(--button); color: #fff; box-shadow: 0 4px 0 var(--button-dark); }
   .gradeDesc { font-size: clamp(12px, 2vw, 14px); opacity: .8; text-align: center; margin: 2px 0 12px; }
 
+  #reviewCard { background: var(--panel-alt); border: 3px dashed var(--gold); border-radius: 18px; padding: 16px 10px 20px; margin: 10px 0; text-align: center; }
+  #reviewChar { display: block; font-size: clamp(56px, 16vw, 92px); line-height: 1; font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', serif; }
+  #reviewAnswer { margin: 8px 0 0; font-size: clamp(18px, 4vw, 26px); font-weight: bold; color: var(--good-dark); }
+
   @keyframes shake { 10%,90%{transform:translateX(-1px)} 20%,80%{transform:translateX(2px)} 30%,50%,70%{transform:translateX(-7px)} 40%,60%{transform:translateX(7px)} }
   @keyframes charBounce { 0%{transform:scale(.7) rotate(-6deg);opacity:.4} 55%{transform:scale(1.15) rotate(3deg);opacity:1} 100%{transform:scale(1) rotate(0)} }
   @keyframes floatUp { 0%{transform:translate(-50%,0) scale(.8);opacity:0} 18%{opacity:1;transform:translate(-50%,-8px) scale(1.08)} 100%{transform:translate(-50%,-58px) scale(1);opacity:0} }
@@ -179,6 +183,18 @@
       <p class="best">최고 점수: <span id="bestOver">0</span>점</p>
       <button id="againBtn">다시하기</button>
       <br><a class="home" id="overHomeLink" href="/">🏠 게임 놀이터로</a>
+    </div>
+  </div>
+
+  <div class="screen hidden" id="reviewScreen">
+    <div class="card">
+      <h1>🔁 틀린 거 다시보기</h1>
+      <p class="stats" id="reviewCount"></p>
+      <div id="reviewCard">
+        <span id="reviewChar">一</span>
+        <p id="reviewAnswer"></p>
+      </div>
+      <button id="reviewNextBtn">다음</button>
     </div>
   </div>
 
@@ -273,6 +289,7 @@ let score = 0, timeLeft = ROUND_TIME, lives = 3, combo = 0, bestCombo = 0;
 let totalAnswered = 0, totalCorrect = 0;
 let lastChar = null, currentItem = null, pool = [];
 let locked = false, gameOver = false, paused = false, timerHandle = null;
+let missed = [], reviewList = [], reviewIndex = 0;
 
 let selectedGrade = Number(localStorage.getItem('hanjaGameGrade'));
 if (!GRADE_ORDER.includes(selectedGrade)) selectedGrade = 8;
@@ -423,6 +440,7 @@ function handleWrong() {
   combo = 0;
   lives--;
   timeLeft = Math.max(1, timeLeft - 2);
+  missed.push(currentItem);
   spawnPopup('-2초', 'bad');
   shakeWrap();
   flashPlay('bad');
@@ -445,7 +463,7 @@ function startTimer() {
 function startGame() {
   Sound.ensure();
   score = 0; timeLeft = ROUND_TIME; lives = 3; combo = 0; bestCombo = 0;
-  totalAnswered = 0; totalCorrect = 0; lastChar = null; gameOver = false;
+  totalAnswered = 0; totalCorrect = 0; lastChar = null; gameOver = false; missed = [];
   pool = buildPool(selectedGrade);
   el('startScreen').classList.add('hidden');
   el('overScreen').classList.add('hidden');
@@ -463,6 +481,29 @@ function endGame() {
   Sound.gameover();
   playArea.classList.add('hidden');
   el('quitBtn').classList.add('hidden');
+  // 같은 한자를 두 번 이상 틀렸으면 복습에서는 한 번만 보여줘요.
+  reviewList = [...new Map(missed.map(h => [h.c, h])).values()];
+  if (reviewList.length > 0) startReview();
+  else showFinalResults();
+}
+
+// ---------- 틀린 거 다시보기 ----------
+// 급수와 상관없이, 이번 판에서 틀린 한자만 한 번씩 정답과 함께 보여줘요. 다 보고 나야 포인트가 적립돼요.
+function startReview() {
+  reviewIndex = 0;
+  renderReviewCard();
+  el('reviewScreen').classList.remove('hidden');
+}
+
+function renderReviewCard() {
+  const item = reviewList[reviewIndex];
+  el('reviewCount').textContent = '틀린 한자 ' + (reviewIndex + 1) + ' / ' + reviewList.length;
+  el('reviewChar').textContent = item.c;
+  el('reviewAnswer').textContent = itemText(item);
+  el('reviewNextBtn').textContent = reviewIndex === reviewList.length - 1 ? '결과 보기' : '다음';
+}
+
+function showFinalResults() {
   const best = Math.max(score, Number(localStorage.getItem('hanjaGameBest') || 0));
   localStorage.setItem('hanjaGameBest', String(best));
   const acc = totalAnswered ? Math.round((totalCorrect / totalAnswered) * 100) : 0;
@@ -508,6 +549,15 @@ async function reportEarnedPoints() {
 el('bestStart').textContent = localStorage.getItem('hanjaGameBest') || 0;
 el('startBtn').addEventListener('click', startGame);
 el('againBtn').addEventListener('click', startGame);
+el('reviewNextBtn').addEventListener('click', () => {
+  reviewIndex++;
+  if (reviewIndex >= reviewList.length) {
+    el('reviewScreen').classList.add('hidden');
+    showFinalResults();
+  } else {
+    renderReviewCard();
+  }
+});
 
 function renderGradePicker() {
   document.querySelectorAll('.gradePill').forEach(b => {
