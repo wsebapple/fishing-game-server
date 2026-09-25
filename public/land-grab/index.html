@@ -67,6 +67,11 @@
     position: absolute; left: 0; right: 0; top: calc(63px + env(safe-area-inset-top, 0px));
     text-align: center; font-size: 12px; color: #bcd4ff; pointer-events: none; text-shadow: 0 2px 4px #000c;
   }
+  #freezeIndicator {
+    position: absolute; left: 0; right: 0; top: calc(82px + env(safe-area-inset-top, 0px));
+    text-align: center; font-size: 13px; color: #8be0ff; pointer-events: none; text-shadow: 0 2px 4px #000c;
+  }
+  #freezeIndicator.hidden { display: none; }
 
   .overlay {
     position: absolute; inset: 0;
@@ -153,6 +158,7 @@
   </div>
   <div id="captureBar"><i id="captureFill"></i></div>
   <div id="captureLabel">0% / 70%</div>
+  <div id="freezeIndicator" class="hidden">❄️ <span id="freezeSeconds">0</span>초 동안 괴물이 멈춰요!</div>
 
   <button id="muteBtn" aria-label="소리 켜기 끄기">🔊</button>
   <button id="pauseBtn" class="hidden" aria-label="멈추기">⏸️</button>
@@ -181,7 +187,9 @@
          선을 그리는 동안 바위 괴물이 닿으면 목숨이 줄어요!<br>
          안전지대로 무사히 돌아오면 그 땅이 내 것이 돼요.<br>
          땅을 <b id="startTargetPct">70%</b> 차지하면 클리어! 다음 별로 이동해요.<br>
-         (스테이지가 오를수록 목표 비율도 조금씩 높아져요)</p>
+         (스테이지가 오를수록 목표 비율도 조금씩 높아져요)<br>
+         스테이지 3부터는 땅을 차지할 때 가끔 아이템이 나와요!<br>
+         ❄️ 괴물이 잠깐 멈춰요 · ❤️ 목숨이 하나 늘어나요</p>
       <button id="startBtn">시작하기 ▶</button>
       <p style="margin-top:0.8em; font-size:0.85em; color:#8ba0d6;">PC에서는 방향키·WASD로 움직여요</p>
       <a id="homeLink" class="home hidden" href="/">🏠 게임 놀이터로</a>
@@ -247,6 +255,8 @@ const Snd = {
     if (kind === 'hit') { this.tone(90, t, 0.09, 'square', 0.12); this.tone(60, t + 0.03, 0.12, 'square', 0.1); return; }
     if (kind === 'stage') { [523, 659, 784, 1046].forEach((f, i) => this.tone(f, t + i * 0.07, 0.14, 'triangle', 0.15)); return; }
     if (kind === 'gameover') { [392, 349, 294, 220].forEach((f, i) => this.tone(f, t + i * 0.16, 0.24, 'sine', 0.16)); return; }
+    if (kind === 'freeze') { this.tone(1400, t, 0.18, 'sine', 0.1, 500); this.tone(1800, t + 0.05, 0.14, 'sine', 0.08, 700); return; }
+    if (kind === 'life') { [660, 880, 1108].forEach((f, i) => this.tone(f, t + i * 0.09, 0.18, 'triangle', 0.15)); return; }
   },
 };
 
@@ -382,6 +392,50 @@ function checkEnemyHits() {
   }
 }
 
+// ---------- 🎁 아이템 (스테이지 3부터 땅을 차지하면 가끔 나와요) ----------
+const ITEM_MIN_STAGE = 3;
+const ITEM_CHANCE = 0.35;
+const MAX_ITEMS_ON_FIELD = 3;
+const ITEM_ICON = { freeze: '❄️', life: '❤️' };
+const ITEM_COLOR = { freeze: '#8be0ff', life: '#ff6b4a' };
+let items = [];
+let freezeEnemiesT = 0;
+
+function maybeSpawnItem(newlyClaimed) {
+  if (stage < ITEM_MIN_STAGE || newlyClaimed.length === 0) return;
+  if (items.length >= MAX_ITEMS_ON_FIELD) return;
+  if (Math.random() > ITEM_CHANCE) return;
+  // 위쪽 HUD에 가려지지 않게, 화면 위쪽 몇 줄은 되도록 피해서 골라요
+  const visible = newlyClaimed.filter(idx => ((idx / COLS) | 0) >= 6);
+  const pool = visible.length ? visible : newlyClaimed;
+  const idx = pool[Math.floor(Math.random() * pool.length)];
+  const gx = idx % COLS, gy = (idx / COLS) | 0;
+  const kind = Math.random() < 0.65 ? 'freeze' : 'life';
+  items.push({ gx, gy, x: (gx + 0.5) * CELL, y: (gy + 0.5) * CELL, kind, bob: Math.random() * 10 });
+}
+
+function collectItem(it) {
+  if (it.kind === 'freeze') {
+    freezeEnemiesT = 5;
+    updateFreezeUi();
+    Snd.play('freeze');
+    addPopup(it.x, it.y - 10, '괴물 정지! ❄️', ITEM_COLOR.freeze);
+  } else if (it.kind === 'life') {
+    lives = Math.min(5, lives + 1);
+    updateHud();
+    Snd.play('life');
+    addPopup(it.x, it.y - 10, '+1 생명', ITEM_COLOR.life);
+  }
+}
+
+function checkItemPickup() {
+  if (items.length === 0) return;
+  items = items.filter(it => {
+    if (it.gx === player.gx && it.gy === player.gy) { collectItem(it); return false; }
+    return true;
+  });
+}
+
 // ---------- ✂️ 선 긋기 / 땅 차지하기 ----------
 function attemptStep(dir) {
   const nx = player.gx + dir.x, ny = player.gy + dir.y;
@@ -408,6 +462,7 @@ function closeLoop() {
   }));
   const queue = new Int32Array(total);
   let claimedCells = 0;
+  const newlyClaimed = [];
   for (let start = 0; start < total; start++) {
     if (filled[start] !== 0 || visited[start]) continue;
     let head = 0, tail = 0;
@@ -423,9 +478,9 @@ function closeLoop() {
       if (y > 0) { const n = idx - COLS; if (filled[n] === 0 && !visited[n]) { visited[n] = 1; queue[tail++] = n; } }
       if (y < ROWS - 1) { const n = idx + COLS; if (filled[n] === 0 && !visited[n]) { visited[n] = 1; queue[tail++] = n; } }
     }
-    if (!hasEnemy) { for (const idx of cells) captured[idx] = 1; claimedCells += cells.length; }
+    if (!hasEnemy) { for (const idx of cells) captured[idx] = 1; claimedCells += cells.length; newlyClaimed.push(...cells); }
   }
-  for (const idx of trailSet) { if (captured[idx] === 0) { captured[idx] = 1; claimedCells++; } }
+  for (const idx of trailSet) { if (captured[idx] === 0) { captured[idx] = 1; claimedCells++; newlyClaimed.push(idx); } }
   const cx = (player.gx + 0.5) * CELL, cy = (player.gy + 0.5) * CELL;
   trail = []; trailSet = new Set();
   playerState = 'safe';
@@ -436,6 +491,7 @@ function closeLoop() {
     Snd.play('claim');
     renderTerrain();
     updateHud();
+    maybeSpawnItem(newlyClaimed);
   }
   updateCaptureUi();
   if (capturedPercent() >= targetPercent) stageClear();
@@ -468,6 +524,15 @@ function updateCaptureUi() {
   document.getElementById('captureFill').style.width = pct + '%';
   document.getElementById('captureLabel').textContent = Math.floor(pct) + '% / ' + targetPercent + '%';
 }
+const freezeIndicator = document.getElementById('freezeIndicator');
+function updateFreezeUi() {
+  if (freezeEnemiesT > 0) {
+    freezeIndicator.classList.remove('hidden');
+    document.getElementById('freezeSeconds').textContent = freezeEnemiesT.toFixed(1);
+  } else {
+    freezeIndicator.classList.add('hidden');
+  }
+}
 
 function initStage(n) {
   stage = n;
@@ -477,6 +542,9 @@ function initStage(n) {
   const count = Math.min(4, stage);
   const speed = Math.min(150, 55 + stage * 10);
   spawnEnemies(count, speed);
+  items = [];
+  freezeEnemiesT = 0;
+  updateFreezeUi();
   moveTimer = tickInterval();
   renderTerrain();
   updateHud();
@@ -592,7 +660,8 @@ function update(dt) {
   }
   if (state !== 'play') return;
 
-  for (const e of enemies) updateEnemy(e, dt);
+  if (freezeEnemiesT > 0) { freezeEnemiesT = Math.max(0, freezeEnemiesT - dt); updateFreezeUi(); }
+  else { for (const e of enemies) updateEnemy(e, dt); }
   checkEnemyHits();
   if (state !== 'play') return; // loseLife()가 방금 respawn 상태로 바꿨을 수 있어요
 
@@ -602,6 +671,7 @@ function update(dt) {
     if (dir) attemptStep(dir);
     moveTimer = tickInterval();
   }
+  checkItemPickup();
   const tx = (player.gx + 0.5) * CELL, ty = (player.gy + 0.5) * CELL;
   player.px += (tx - player.px) * Math.min(1, 18 * dt);
   player.py += (ty - player.py) * Math.min(1, 18 * dt);
@@ -627,6 +697,7 @@ function drawTrail() {
 }
 
 function drawEnemy(e) {
+  const frozen = freezeEnemiesT > 0;
   ctx.save();
   ctx.translate(e.x, e.y);
   ctx.rotate(e.spin);
@@ -639,9 +710,31 @@ function drawEnemy(e) {
     i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
   }
   ctx.closePath();
-  ctx.fillStyle = '#ff8a3d';
-  ctx.strokeStyle = '#a1441a'; ctx.lineWidth = 2;
+  ctx.fillStyle = frozen ? '#9fd8f2' : '#ff8a3d';
+  ctx.strokeStyle = frozen ? '#3f7c96' : '#a1441a'; ctx.lineWidth = 2;
   ctx.fill(); ctx.stroke();
+  ctx.restore();
+  if (frozen) {
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    ctx.font = (e.r * 1.4) + 'px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('❄️', 0, -e.r * 1.3);
+    ctx.restore();
+  }
+}
+
+function drawItem(it) {
+  const bob = Math.sin(performance.now() / 300 + it.bob) * 3;
+  ctx.save();
+  ctx.translate(it.x, it.y + bob);
+  ctx.beginPath(); ctx.arc(0, 0, CELL * 0.65, 0, 7);
+  ctx.fillStyle = ITEM_COLOR[it.kind] + '33';
+  ctx.strokeStyle = ITEM_COLOR[it.kind]; ctx.lineWidth = 2.5;
+  ctx.fill(); ctx.stroke();
+  ctx.font = (CELL * 1.1) + 'px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(ITEM_ICON[it.kind], 0, 1);
   ctx.restore();
 }
 
@@ -662,6 +755,7 @@ function draw() {
   ctx.clearRect(0, 0, W, H);
   ctx.drawImage(terrainCanvas, 0, 0);
   drawTrail();
+  for (const it of items) drawItem(it);
   for (const e of enemies) drawEnemy(e);
   drawPlayer();
 
