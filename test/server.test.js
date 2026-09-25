@@ -427,6 +427,83 @@ test('points login/me: register, re-login with the right PIN, reject the wrong o
   }
 });
 
+test('points spend: costs are public, spending deducts and blocks entry when short, and requires login', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-test-'));
+  const { server, io, points } = createApp({ leaderboardFile: path.join(directory, 'scores.json'), pointsFile: path.join(directory, 'points.json'), pointsSecret: 'test-secret' });
+  await new Promise(resolve => server.listen(0, resolve));
+  try {
+    const base = 'http://127.0.0.1:' + server.address().port;
+    const postJson = (route, body, headers) => fetch(base + route, { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, headers), body: JSON.stringify(body) });
+
+    const costs = await (await fetch(base + '/api/points/costs')).json();
+    assert.equal(costs.fishing, 5);
+
+    const login = await (await postJson('/api/points/login', { name: '입장테스트', pin: '1234' })).json();
+    const auth = { Authorization: 'Bearer ' + login.token };
+
+    const noLogin = await postJson('/api/points/spend', { gameId: 'fishing' });
+    assert.equal(noLogin.status, 401);
+
+    const shortOnPoints = await postJson('/api/points/spend', { gameId: 'fishing' }, auth);
+    assert.equal(shortOnPoints.status, 402, '가진 포인트가 0이라 입장료를 못 내요');
+
+    await points.grant('입장테스트', 10);
+    const spent = await postJson('/api/points/spend', { gameId: 'fishing' }, auth);
+    assert.equal(spent.status, 200);
+    assert.equal((await spent.json()).points, 5);
+
+    const unknownGame = await postJson('/api/points/spend', { gameId: 'no-such-game' }, auth);
+    assert.equal(unknownGame.status, 404);
+  } finally {
+    await new Promise(resolve => io.close(resolve));
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('admin endpoints require the configured admin key and let an admin grant points and change costs', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-test-'));
+  const { server, io } = createApp({
+    leaderboardFile: path.join(directory, 'scores.json'),
+    pointsFile: path.join(directory, 'points.json'),
+    costsFile: path.join(directory, 'game-costs.json'),
+    pointsSecret: 'test-secret',
+    adminKey: 'let-me-in',
+  });
+  await new Promise(resolve => server.listen(0, resolve));
+  try {
+    const base = 'http://127.0.0.1:' + server.address().port;
+    const asAdmin = { 'X-Admin-Key': 'let-me-in' };
+    const postJson = (route, body, headers) => fetch(base + route, { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, headers), body: JSON.stringify(body) });
+
+    const wrongKey = await fetch(base + '/api/admin/players', { headers: { 'X-Admin-Key': 'nope' } });
+    assert.equal(wrongKey.status, 401);
+    const noKey = await fetch(base + '/api/admin/players');
+    assert.equal(noKey.status, 401);
+
+    await postJson('/api/points/login', { name: '관리자테스트', pin: '1234' });
+
+    const grantUnknown = await postJson('/api/admin/grant', { name: '없는사람', amount: 5 }, asAdmin);
+    assert.equal(grantUnknown.status, 404);
+
+    const grant = await postJson('/api/admin/grant', { name: '관리자테스트', amount: 8 }, asAdmin);
+    assert.equal(grant.status, 200);
+    assert.equal((await grant.json()).points, 8);
+
+    const players = await (await fetch(base + '/api/admin/players', { headers: asAdmin })).json();
+    assert.deepEqual(players, [{ name: '관리자테스트', points: 8 }]);
+
+    const setCost = await postJson('/api/admin/costs', { gameId: 'fishing', cost: 12 }, asAdmin);
+    assert.equal(setCost.status, 200);
+    assert.equal((await setCost.json()).fishing, 12);
+
+    const publicCosts = await (await fetch(base + '/api/points/costs')).json();
+    assert.equal(publicCosts.fishing, 12, '관리자가 바꾼 입장료가 공개 조회에도 바로 반영돼요');
+  } finally {
+    await new Promise(resolve => io.close(resolve));
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('a game folder name with regex-special characters does not break routing or crash the server', async () => {
   // README가 안내하는 대로 "새 게임은 public/<폴더>/ 에 넣으면 된다"고 했을 때, 그 폴더 이름에
   // 정규식에서 특별한 뜻을 가진 글자(., +)가 있어도 서버가 뜨고 그 게임만 정확히 매칭돼야 해요.

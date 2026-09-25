@@ -110,7 +110,57 @@ function createPoints(file = path.join(__dirname, '..', 'data', 'points.json'), 
     return data[name] ? data[name].points : null;
   }
 
-  return { login, getPoints, verifyToken, normalizeName, normalizePin };
+  async function listAll() {
+    await queue.catch(() => {});
+    const data = await read();
+    return Object.entries(data).map(([name, entry]) => ({ name, points: entry.points }));
+  }
+
+  // 즐거운 게임 입장료만큼 깎아요. 포인트가 모자라면 깎지 않고 실패해요.
+  function spend(name, cost) {
+    const attempt = queue.catch(() => {}).then(async () => {
+      const data = await read();
+      const entry = data[name];
+      if (!entry) {
+        const error = new Error('로그인이 필요해요.');
+        error.code = 'NOT_FOUND';
+        throw error;
+      }
+      if (entry.points < cost) {
+        const error = new Error('포인트가 부족해요.');
+        error.code = 'INSUFFICIENT';
+        throw error;
+      }
+      const nextPoints = entry.points - cost;
+      data[name] = { ...entry, points: nextPoints, updatedAt: new Date().toISOString() };
+      await write(data);
+      return nextPoints;
+    });
+    queue = attempt.catch(() => {});
+    return attempt;
+  }
+
+  // 관리자가 이름별 포인트를 더하거나 뺘요(뺄 땐 amount에 음수를 넘겨요). 0 밑으로는 안 내려가요.
+  // 아직 한 번도 로그인하지 않은 이름은 지급 대상이 아니에요(본인이 먼저 등록해야 해요).
+  function grant(name, amount) {
+    const attempt = queue.catch(() => {}).then(async () => {
+      const data = await read();
+      const entry = data[name];
+      if (!entry) {
+        const error = new Error('그런 이름은 없어요.');
+        error.code = 'NOT_FOUND';
+        throw error;
+      }
+      const nextPoints = Math.max(0, entry.points + amount);
+      data[name] = { ...entry, points: nextPoints, updatedAt: new Date().toISOString() };
+      await write(data);
+      return nextPoints;
+    });
+    queue = attempt.catch(() => {});
+    return attempt;
+  }
+
+  return { login, getPoints, listAll, spend, grant, verifyToken, normalizeName, normalizePin };
 }
 
 module.exports = { createPoints };

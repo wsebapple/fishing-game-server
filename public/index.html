@@ -153,8 +153,11 @@
 <script>
 // 게임 목록: 새 게임을 만들면 public/<폴더>/ 에 넣고 여기에 한 줄 추가하면 메인 화면에 나타나요.
 // href가 없으면 "곧 나와요" 카드로 보여요. liveApi가 있으면 지금 온라인에서 몇 명이 하고 있는지 보여줘요.
+// category: 'fun'인 게임은 카드를 누르면 입장료(포인트)를 먼저 확인/차감해요. 'learning'은 아직 없어요(항상 무료 입장).
 const GAMES = [
   {
+    id: 'fishing',
+    category: 'fun',
     title: '바다 낚시',
     art: '🎣🐟🦈',
     artBg: 'linear-gradient(180deg, #bdeeff 0%, #1fb4d9 55%, #0b72b9 100%)',
@@ -164,6 +167,8 @@ const GAMES = [
     liveApi: '/rooms',
   },
   {
+    id: 'sea-picnic',
+    category: 'fun',
     title: '바다 소풍',
     art: '🧺✨🧚',
     artBg: 'linear-gradient(135deg, #bdeeff 0%, #ffd3ec 55%, #d8c4ff 100%)',
@@ -172,6 +177,8 @@ const GAMES = [
     href: '/sea-picnic/',
   },
   {
+    id: 'nemo-adventure',
+    category: 'fun',
     title: '호야의 네모 모험',
     art: '🟨🎵✈️',
     artBg: 'linear-gradient(180deg, #3a1c71 0%, #b1418f 60%, #ff9f6b 100%)',
@@ -180,6 +187,8 @@ const GAMES = [
     href: '/nemo-adventure/',
   },
   {
+    id: 'spaceship',
+    category: 'fun',
     title: '우주선 뿅뿅대작전',
     art: '🚀👾✨',
     artBg: 'linear-gradient(180deg, #05030f 0%, #1d1340 55%, #4a1e79 100%)',
@@ -188,6 +197,8 @@ const GAMES = [
     href: '/spaceship/',
   },
   {
+    id: 'fruit-game',
+    category: 'fun',
     title: '과일 합체 게임',
     art: '🍒🍊🍉',
     artBg: 'linear-gradient(180deg, #fff3df 0%, #ffd79b 100%)',
@@ -203,6 +214,8 @@ const GAMES = [
     tags: [],
   },
 ];
+
+let GAME_COSTS = {};
 
 function el(tag, className, text){
   const node = document.createElement(tag);
@@ -227,9 +240,11 @@ function renderGames(){
     const body = el('div', 'body');
     body.appendChild(el('h2', null, game.title));
     body.appendChild(el('p', 'desc', game.desc));
-    if(game.tags.length){
+    const cost = game.category === 'fun' ? GAME_COSTS[game.id] : null;
+    const cardTags = cost != null ? [...game.tags, '입장료 ' + cost + '점'] : game.tags;
+    if(cardTags.length){
       const tags = el('div', 'tags');
-      game.tags.forEach(t => tags.appendChild(el('span', 'tag', t)));
+      cardTags.forEach(t => tags.appendChild(el('span', 'tag', t)));
       body.appendChild(tags);
     }
     const foot = el('div', 'foot');
@@ -242,7 +257,49 @@ function renderGames(){
     list.appendChild(item);
 
     if(game.liveApi) showLiveCount(game.liveApi, live);
+    if(game.href && game.category === 'fun') card.addEventListener('click', e => handleFunGameClick(e, game));
   });
+}
+
+// 즐거운 게임 카드를 누르면 로그인/포인트를 확인하고, 입장료만큼 차감된 뒤에만 실제 게임으로 이동해요
+async function handleFunGameClick(e, game){
+  e.preventDefault();
+  const token = localStorage.getItem(POINTS_TOKEN_KEY);
+  if(!token){
+    showLoginOverlay('먼저 이름과 PIN으로 로그인해주세요.');
+    return;
+  }
+  const cost = GAME_COSTS[game.id];
+  const current = Number(document.getElementById('pointsAmount').textContent);
+  if(cost != null && Number.isFinite(current) && current < cost){
+    alert('포인트가 부족해요. (필요: ' + cost + '점, 내 포인트: ' + current + '점)');
+    return;
+  }
+  try {
+    const res = await fetch('/api/points/spend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ gameId: game.id }),
+    });
+    const data = await res.json();
+    if(!res.ok){
+      if(res.status === 401) showLoginOverlay('다시 로그인해주세요.');
+      else alert(data.error || '입장에 실패했어요.');
+      return;
+    }
+    document.getElementById('pointsAmount').textContent = data.points;
+    location.href = game.href;
+  } catch (err) {
+    alert('서버에 연결할 수 없어요. 잠시 후 다시 시도해주세요.');
+  }
+}
+
+// 게임별 입장료를 미리 받아둬요(못 불러오면 카드에 입장료 표시만 생략되고, 입장은 서버가 그때 다시 확인해요)
+async function loadCosts(){
+  try {
+    const res = await fetch('/api/points/costs', { cache: 'no-store' });
+    if(res.ok) GAME_COSTS = await res.json();
+  } catch (e) { /* 못 불러오면 조용히 넘어가요 */ }
 }
 
 // 지금 온라인 방에 들어와 있는 사람 수를 보여줘요 (못 불러오면 조용히 비워둬요)
@@ -323,8 +380,8 @@ document.getElementById('switchNameBtn').addEventListener('click', () => {
   showLoginOverlay();
 });
 
+loadCosts().then(renderGames);
 initPoints();
-renderGames();
 </script>
 </body>
 </html>

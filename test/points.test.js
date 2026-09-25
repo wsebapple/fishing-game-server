@@ -71,6 +71,57 @@ test('points can be read for an existing name without going through login', asyn
   }
 });
 
+test('spend deducts on success, rejects when short, and never lets points go negative', async () => {
+  const { directory, file } = await tmpFile();
+  try {
+    const points = createPoints(file, 'test-secret');
+    await points.login('철수', '1234');
+    await points.grant('철수', 10);
+
+    assert.equal(await points.spend('철수', 4), 6);
+    await assert.rejects(points.spend('철수', 100), (error) => error.code === 'INSUFFICIENT');
+    assert.equal(await points.getPoints('철수'), 6, '실패한 시도는 포인트를 깎지 않아요');
+
+    await assert.rejects(points.spend('없는사람', 1), (error) => error.code === 'NOT_FOUND');
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('grant adds or subtracts points for an existing name, clamped at 0, and rejects unknown names', async () => {
+  const { directory, file } = await tmpFile();
+  try {
+    const points = createPoints(file, 'test-secret');
+    await points.login('영희', '1111');
+
+    assert.equal(await points.grant('영희', 5), 5);
+    assert.equal(await points.grant('영희', -3), 2);
+    assert.equal(await points.grant('영희', -100), 0, '0 밑으로는 안 내려가요');
+
+    await assert.rejects(points.grant('없는사람', 5), (error) => error.code === 'NOT_FOUND');
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('listAll reports every registered name with their current points', async () => {
+  const { directory, file } = await tmpFile();
+  try {
+    const points = createPoints(file, 'test-secret');
+    await points.login('철수', '1234');
+    await points.login('영희', '5678');
+    await points.grant('영희', 7);
+
+    const all = await points.listAll();
+    assert.deepEqual(
+      all.map(p => [p.name, p.points]).sort(),
+      [['영희', 7], ['철수', 0]],
+    );
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('a corrupted points file is quarantined instead of breaking logins forever', async () => {
   const { directory, file } = await tmpFile();
   try {
