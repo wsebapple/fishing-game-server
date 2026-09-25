@@ -185,6 +185,20 @@ function createApp(options = {}) {
     }
   });
 
+  app.post('/api/admin/delete', async (req, res) => {
+    if (!isAdmin(req)) { res.status(401).json({ error: '관리자 코드가 필요해요.' }); return; }
+    const name = points.normalizeName(req.body && req.body.name);
+    if (!name) { res.status(400).json({ error: '이름을 확인해주세요.' }); return; }
+    try {
+      await points.remove(name);
+      res.json({ name, deleted: true });
+    } catch (error) {
+      if (error.code === 'NOT_FOUND') { res.status(404).json({ error: '그런 이름은 없어요.' }); return; }
+      console.error('플레이어 삭제 실패', error);
+      res.status(500).json({ error: '삭제에 실패했어요.' });
+    }
+  });
+
   app.get('/api/admin/costs', async (req, res) => {
     if (!isAdmin(req)) { res.status(401).json({ error: '관리자 코드가 필요해요.' }); return; }
     try { res.json(await costs.list()); }

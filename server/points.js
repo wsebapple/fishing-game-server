@@ -182,6 +182,23 @@ function createPoints(file = path.join(__dirname, '..', 'data', 'points.json'), 
     return attempt;
   }
 
+  // 관리자가 오래 안 쓰는 계정을 통째로 지워요. 지우고 나면 그 이름은 다시 처음 등록하는 것처럼
+  // 새로 시작해요(같은 이름을 다시 로그인하면 시작 포인트부터). 그런 이름이 없으면 실패해요.
+  function remove(name) {
+    const attempt = queue.catch(() => {}).then(async () => {
+      const data = await read();
+      if (!data[name]) {
+        const error = new Error('그런 이름은 없어요.');
+        error.code = 'NOT_FOUND';
+        throw error;
+      }
+      delete data[name];
+      await write(data);
+    });
+    queue = attempt.catch(() => {});
+    return attempt;
+  }
+
   // 학습게임이 보낸 "단위 수"(예: 정답 개수)만큼 포인트를 적립해요. 그 게임의 earn-config.json이 정한
   // 한 판 최대 인정 단위 수(maxUnitsPerRound)와, 오늘 이 게임으로 이미 적립한 만큼을 빼고 남은 하루
   // 한도(maxPointsPerDay) 중 더 작은 쪽만큼만 줘요.
@@ -216,7 +233,7 @@ function createPoints(file = path.join(__dirname, '..', 'data', 'points.json'), 
     return attempt;
   }
 
-  return { login, getPoints, listAll, spend, grant, earn, verifyToken, normalizeName, normalizePin };
+  return { login, getPoints, listAll, spend, grant, remove, earn, verifyToken, normalizeName, normalizePin };
 }
 
 module.exports = { createPoints, STARTING_POINTS, DEFAULT_EARN_POLICY };
