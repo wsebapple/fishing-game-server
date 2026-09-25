@@ -71,6 +71,9 @@
   .badge.g8 { background: #4a9d6e; }
   .badge.g7 { background: #d68a2e; }
   .badge.g6 { background: #c0392b; }
+  .badge.g5 { background: #7a3ec4; }
+  .badge.g4 { background: #2563a8; }
+  .badge.g3 { background: #1c1c24; }
   #hanjaChar { display: block; font-size: clamp(88px, 24vw, 140px); line-height: 1; margin-top: 6px; font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', serif; }
   #hanjaChar.bounce { animation: charBounce .45s ease; }
   #popups { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
@@ -108,6 +111,11 @@
   .card button.small { font-size: clamp(13px, 2vw, 17px); padding: 0.25em 0.8em; border-width: 3px; box-shadow: 0 3px 0 var(--button-dark); background: var(--panel); color: var(--ink); }
   .home { display: inline-block; margin-top: 0.7em; font-size: clamp(12px, 1.8vw, 15px); color: var(--ink); }
 
+  .gradeRow { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 10px 0 4px; }
+  .gradePill { font-family: inherit; font-size: clamp(14px, 3vw, 17px); font-weight: bold; color: var(--ink); background: var(--panel-alt); border: 2px solid var(--ink); border-radius: 999px; padding: 8px 16px; cursor: pointer; opacity: .6; transform: scale(.96); transition: transform .12s ease, opacity .12s ease; }
+  .gradePill.active { opacity: 1; transform: scale(1.06); background: var(--button); color: #fff; box-shadow: 0 4px 0 var(--button-dark); }
+  .gradeDesc { font-size: clamp(12px, 2vw, 14px); opacity: .8; text-align: center; margin: 2px 0 12px; }
+
   @keyframes shake { 10%,90%{transform:translateX(-1px)} 20%,80%{transform:translateX(2px)} 30%,50%,70%{transform:translateX(-7px)} 40%,60%{transform:translateX(7px)} }
   @keyframes charBounce { 0%{transform:scale(.7) rotate(-6deg);opacity:.4} 55%{transform:scale(1.15) rotate(3deg);opacity:1} 100%{transform:scale(1) rotate(0)} }
   @keyframes floatUp { 0%{transform:translate(-50%,0) scale(.8);opacity:0} 18%{opacity:1;transform:translate(-50%,-8px) scale(1.08)} 100%{transform:translate(-50%,-58px) scale(1);opacity:0} }
@@ -142,12 +150,21 @@
       <h1>🀄 한자 맞추기</h1>
       <p>
         🀄 화면에 나온 한자를 보고, 알맞은 뜻과 소리(훈음)를 골라보세요!<br>
-        🎖️ 한자마다 급수가 표시돼요. 8급보다 7급, 7급보다 6급이 더 어렵고 점수도 더 높아요!<br>
+        🎖️ 한자마다 급수가 표시돼요. 8급보다 7급, 6급, 5급, 4급, 3급 순으로 더 어렵고 점수도 더 높아요!<br>
         ⏳ 시간은 60초! 정답을 많이 맞힐수록 시간이 늘어나요.<br>
         🔥 연속으로 맞히면 콤보가 쌓이고 점수 배율도 쭉쭉 올라가요. 5콤보마다 시간이 3초 늘어나요!<br>
         ❤️ 틀리면 목숨이 하나 줄고 시간도 2초 줄어요. 목숨 3개를 모두 잃으면 끝이에요.<br>
         🏆 최고 점수에 도전해보세요!
       </p>
+      <div class="gradeRow" id="gradeRow">
+        <button type="button" class="gradePill" data-grade="8">8급</button>
+        <button type="button" class="gradePill" data-grade="7">7급</button>
+        <button type="button" class="gradePill" data-grade="6">6급</button>
+        <button type="button" class="gradePill" data-grade="5">5급</button>
+        <button type="button" class="gradePill" data-grade="4">4급</button>
+        <button type="button" class="gradePill" data-grade="3">3급</button>
+      </div>
+      <p class="gradeDesc">내 급수를 골라주세요! 급수가 높을수록 그 급수에 가까운 어려운 한자가 더 자주 나와요.</p>
       <p class="best">최고 점수: <span id="bestStart">0</span>점</p>
       <button id="startBtn">시작하기</button>
       <br><a class="home" href="/">🏠 게임 놀이터로</a>
@@ -161,14 +178,14 @@
       <p class="stats" id="earnResult"></p>
       <p class="best">최고 점수: <span id="bestOver">0</span>점</p>
       <button id="againBtn">다시하기</button>
-      <br><a class="home" href="/">🏠 게임 놀이터로</a>
+      <br><a class="home" id="overHomeLink" href="/">🏠 게임 놀이터로</a>
     </div>
   </div>
 
   <div class="modal hidden" id="quitConfirm">
     <div class="card">
       <h1>⚠️ 잠깐!</h1>
-      <p style="text-align:center">정말 그만하고 처음 화면으로 돌아갈까요?<br>지금까지 점수는 사라져요.</p>
+      <p style="text-align:center">정말 그만하고 처음 화면으로 돌아갈까요?<br>지금까지 맞힌 정답만큼 포인트는 적립되지만, 이번 판 점수는 사라져요.</p>
       <button id="quitYes">네, 나갈게요</button>
       <button id="quitNo" class="small">아니요</button>
     </div>
@@ -176,9 +193,10 @@
 </div>
 
 <script>
-// ---------- 한자 데이터 (초등 교육용 기초 한자 100자, 훈음, 급수) ----------
-// g(급수): 8급은 한국어문회 공식 배정한자 목록으로 확인됨. 7급·6급은 공식 세부 목록(7급Ⅱ·6급Ⅱ 구분)까지는
-// 확인하지 못해 개념 난이도(자연·신체=7급, 추상 개념어=6급)로 간단히 나눈 값이에요.
+// ---------- 한자 데이터 (기초~중급 한자 208자, 훈음, 급수) ----------
+// g(급수): 8급은 한국어문회 공식 배정한자 목록으로 확인됨. 7급 이하는 공식 세부 목록(Ⅱ 구분)까지는
+// 확인하지 못해 개념 난이도로 간단히 나눈 값이에요(8급→7급→6급→5급→4급→3급 순으로 점점 어려운 한자).
+// 4급·3급부터는 실제로는 중·고등학생 수준의 한자예요(초등 범위를 넘어서요).
 const HANJA = [
   {c:'一',m:'한',r:'일',g:8},{c:'二',m:'두',r:'이',g:8},{c:'三',m:'석',r:'삼',g:8},{c:'四',m:'넉',r:'사',g:8},{c:'五',m:'다섯',r:'오',g:8},
   {c:'六',m:'여섯',r:'육',g:8},{c:'七',m:'일곱',r:'칠',g:8},{c:'八',m:'여덟',r:'팔',g:8},{c:'九',m:'아홉',r:'구',g:8},{c:'十',m:'열',r:'십',g:8},
@@ -200,9 +218,34 @@ const HANJA = [
   {c:'韓',m:'한국',r:'한',g:8},{c:'國',m:'나라',r:'국',g:8},{c:'民',m:'백성',r:'민',g:8},{c:'軍',m:'군사',r:'군',g:8},{c:'農',m:'농사',r:'농',g:6},
   {c:'工',m:'장인',r:'공',g:6},{c:'世',m:'인간',r:'세',g:6},{c:'全',m:'온전',r:'전',g:6},{c:'名',m:'이름',r:'명',g:6},{c:'道',m:'길',r:'도',g:6},
   {c:'正',m:'바를',r:'정',g:6},{c:'事',m:'일',r:'사',g:6},{c:'物',m:'물건',r:'물',g:6},{c:'主',m:'주인',r:'주',g:6},{c:'命',m:'목숨',r:'명',g:6},
+  {c:'感',m:'느낄',r:'감',g:5},{c:'強',m:'강할',r:'강',g:5},{c:'弱',m:'약할',r:'약',g:5},{c:'苦',m:'쓸',r:'고',g:5},{c:'樂',m:'즐길',r:'락',g:5},
+  {c:'待',m:'기다릴',r:'대',g:5},{c:'對',m:'대할',r:'대',g:5},{c:'童',m:'아이',r:'동',g:5},{c:'頭',m:'머리',r:'두',g:5},{c:'等',m:'무리',r:'등',g:5},
+  {c:'例',m:'법식',r:'례',g:5},{c:'禮',m:'예도',r:'례',g:5},{c:'路',m:'길',r:'로',g:5},{c:'綠',m:'푸를',r:'록',g:5},{c:'利',m:'이할',r:'리',g:5},
+  {c:'反',m:'돌이킬',r:'반',g:5},{c:'半',m:'반',r:'반',g:5},{c:'發',m:'필',r:'발',g:5},{c:'放',m:'놓을',r:'방',g:5},{c:'別',m:'다를',r:'별',g:5},
+  {c:'病',m:'병',r:'병',g:5},{c:'服',m:'옷',r:'복',g:5},{c:'本',m:'근본',r:'본',g:5},{c:'死',m:'죽을',r:'사',g:5},{c:'社',m:'모일',r:'사',g:5},
+  {c:'書',m:'글',r:'서',g:5},{c:'線',m:'줄',r:'선',g:5},{c:'性',m:'성품',r:'성',g:5},{c:'成',m:'이룰',r:'성',g:5},{c:'消',m:'사라질',r:'소',g:5},
+  {c:'速',m:'빠를',r:'속',g:5},{c:'樹',m:'나무',r:'수',g:5},{c:'習',m:'익힐',r:'습',g:5},{c:'勝',m:'이길',r:'승',g:5},{c:'神',m:'귀신',r:'신',g:5},
+  {c:'身',m:'몸',r:'신',g:5},
+  {c:'價',m:'값',r:'가',g:4},{c:'客',m:'손',r:'객',g:4},{c:'擧',m:'들',r:'거',g:4},{c:'建',m:'세울',r:'건',g:4},{c:'景',m:'볕',r:'경',g:4},
+  {c:'慶',m:'경사',r:'경',g:4},{c:'競',m:'다툴',r:'경',g:4},{c:'考',m:'생각할',r:'고',g:4},{c:'告',m:'고할',r:'고',g:4},{c:'曲',m:'굽을',r:'곡',g:4},
+  {c:'課',m:'공부할',r:'과',g:4},{c:'過',m:'지날',r:'과',g:4},{c:'關',m:'관계할',r:'관',g:4},{c:'觀',m:'볼',r:'관',g:4},{c:'廣',m:'넓을',r:'광',g:4},
+  {c:'具',m:'갖출',r:'구',g:4},{c:'求',m:'구할',r:'구',g:4},{c:'局',m:'판',r:'국',g:4},{c:'己',m:'몸',r:'기',g:4},{c:'記',m:'기록할',r:'기',g:4},
+  {c:'技',m:'재주',r:'기',g:4},{c:'汽',m:'물끓는김',r:'기',g:4},{c:'期',m:'기약할',r:'기',g:4},{c:'基',m:'터',r:'기',g:4},{c:'吉',m:'길할',r:'길',g:4},
+  {c:'壇',m:'단',r:'단',g:4},{c:'團',m:'둥글',r:'단',g:4},{c:'談',m:'말씀',r:'담',g:4},{c:'當',m:'마땅',r:'당',g:4},{c:'德',m:'큰',r:'덕',g:4},
+  {c:'到',m:'이를',r:'도',g:4},{c:'島',m:'섬',r:'도',g:4},{c:'都',m:'도읍',r:'도',g:4},{c:'獨',m:'홀로',r:'독',g:4},{c:'落',m:'떨어질',r:'락',g:4},
+  {c:'朗',m:'밝을',r:'랑',g:4},
+  {c:'暇',m:'겨를',r:'가',g:3},{c:'佳',m:'아름다울',r:'가',g:3},{c:'却',m:'물리칠',r:'각',g:3},{c:'幹',m:'줄기',r:'간',g:3},{c:'簡',m:'대쪽',r:'간',g:3},
+  {c:'減',m:'덜',r:'감',g:3},{c:'甘',m:'달',r:'감',g:3},{c:'監',m:'볼',r:'감',g:3},{c:'康',m:'편안',r:'강',g:3},{c:'講',m:'익힐',r:'강',g:3},
+  {c:'個',m:'낱',r:'개',g:3},{c:'蓋',m:'덮을',r:'개',g:3},{c:'距',m:'상거할',r:'거',g:3},{c:'據',m:'근거',r:'거',g:3},{c:'健',m:'굳셀',r:'건',g:3},
+  {c:'乾',m:'마를',r:'건',g:3},{c:'儉',m:'검소할',r:'검',g:3},{c:'檢',m:'검사할',r:'검',g:3},{c:'激',m:'격할',r:'격',g:3},{c:'擊',m:'칠',r:'격',g:3},
+  {c:'隔',m:'사이뜰',r:'격',g:3},{c:'犬',m:'개',r:'견',g:3},{c:'堅',m:'굳을',r:'견',g:3},{c:'遣',m:'보낼',r:'견',g:3},{c:'缺',m:'이지러질',r:'결',g:3},
+  {c:'潔',m:'깨끗할',r:'결',g:3},{c:'兼',m:'겸할',r:'겸',g:3},{c:'謙',m:'겸손할',r:'겸',g:3},{c:'徑',m:'지름길',r:'경',g:3},{c:'硬',m:'굳을',r:'경',g:3},
+  {c:'警',m:'깨우칠',r:'경',g:3},{c:'鏡',m:'거울',r:'경',g:3},{c:'驚',m:'놀랄',r:'경',g:3},{c:'系',m:'이어맬',r:'계',g:3},{c:'戒',m:'경계할',r:'계',g:3},
+  {c:'械',m:'기계',r:'계',g:3},
 ];
 const itemText = h => h.m + ' ' + h.r;
-const GRADE_POINTS = { 8: 10, 7: 15, 6: 20 };
+const GRADE_ORDER = [8, 7, 6, 5, 4, 3]; // 왼쪽일수록 쉬움
+const GRADE_POINTS = { 8: 10, 7: 15, 6: 20, 5: 25, 4: 30, 3: 35 };
 
 // ---------- 소리 (컴퓨터가 직접 연주해요) ----------
 const Sound = {
@@ -228,8 +271,11 @@ const Sound = {
 const ROUND_TIME = 60;
 let score = 0, timeLeft = ROUND_TIME, lives = 3, combo = 0, bestCombo = 0;
 let totalAnswered = 0, totalCorrect = 0;
-let bag = [], lastChar = null, currentItem = null;
+let lastChar = null, currentItem = null, pool = [];
 let locked = false, gameOver = false, paused = false, timerHandle = null;
+
+let selectedGrade = Number(localStorage.getItem('hanjaGameGrade'));
+if (!GRADE_ORDER.includes(selectedGrade)) selectedGrade = 8;
 
 const el = id => document.getElementById(id);
 const scoreEl = el('score'), timerEl = el('timer'), livesEl = el('lives'), comboEl = el('combo');
@@ -239,10 +285,25 @@ const playArea = el('playArea'), wrapEl = el('wrap');
 function shuffle(arr) { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
 function comboMultiplier(n) { if (n >= 10) return 3; if (n >= 6) return 2; if (n >= 3) return 1.5; return 1; }
 
+// 고른 급수까지의 한자만 후보로 두고, 급수가 높을수록(그 급수에 가까울수록) 더 자주 뽑히게 가중치를 둬요.
+// 예를 들어 6급을 고르면 8·7·6급이 모두 나오되, 6급이 8급보다 3배 더 자주 나와요.
+function buildPool(grade) {
+  const maxRank = GRADE_ORDER.indexOf(grade);
+  return HANJA
+    .filter(h => GRADE_ORDER.indexOf(h.g) <= maxRank)
+    .map(h => ({ item: h, weight: GRADE_ORDER.indexOf(h.g) + 1 }));
+}
+
+function weightedDraw(candidates) {
+  const total = candidates.reduce((sum, p) => sum + p.weight, 0);
+  let r = Math.random() * total;
+  for (const p of candidates) { r -= p.weight; if (r <= 0) return p.item; }
+  return candidates[candidates.length - 1].item;
+}
+
 function drawItem() {
-  if (bag.length === 0) bag = shuffle(HANJA.slice());
-  let item = bag.pop();
-  if (item.c === lastChar && bag.length > 0) { bag.unshift(item); item = bag.pop(); }
+  let item = weightedDraw(pool);
+  for (let tries = 0; item.c === lastChar && tries < 5 && pool.length > 1; tries++) item = weightedDraw(pool);
   lastChar = item.c;
   return item;
 }
@@ -299,9 +360,9 @@ function renderQuestion() {
   bounceChar();
 
   const correctText = itemText(currentItem);
-  const pool = shuffle(HANJA.filter(h => h.c !== currentItem.c));
+  const distractorPool = shuffle(HANJA.filter(h => h.c !== currentItem.c));
   const distractors = [];
-  for (const h of pool) {
+  for (const h of distractorPool) {
     const t = itemText(h);
     if (t !== correctText && !distractors.includes(t)) { distractors.push(t); if (distractors.length === 3) break; }
   }
@@ -384,7 +445,8 @@ function startTimer() {
 function startGame() {
   Sound.ensure();
   score = 0; timeLeft = ROUND_TIME; lives = 3; combo = 0; bestCombo = 0;
-  totalAnswered = 0; totalCorrect = 0; bag = []; lastChar = null; gameOver = false;
+  totalAnswered = 0; totalCorrect = 0; lastChar = null; gameOver = false;
+  pool = buildPool(selectedGrade);
   el('startScreen').classList.add('hidden');
   el('overScreen').classList.add('hidden');
   playArea.classList.remove('hidden');
@@ -408,13 +470,16 @@ function endGame() {
   el('overStats').textContent = '점수 ' + score + '점 · 정답 ' + totalCorrect + '/' + totalAnswered + ' (' + acc + '%) · 최고 콤보 x' + bestCombo;
   el('bestOver').textContent = best;
   el('overScreen').classList.remove('hidden');
-  reportEarnedPoints();
+  earnPromise = reportEarnedPoints();
 }
 
 // ---------- 게임 놀이터 포인트 적립 ----------
 // 게임 놀이터 허브와 같은 주소(origin)라서 localStorage에 저장된 로그인 토큰을 그대로 읽을 수 있어요.
 // 정답 개수만 서버로 보내고, 실제로 몇 점을 줄지(하루 한도 포함)는 서버가 정해요.
 const POINTS_TOKEN_KEY = 'fishing.points.token';
+// 적립 요청이 끝나기 전에 "게임 놀이터로" 링크를 눌러서 페이지를 벗어나면 요청이 끊겨 포인트가
+// 안 쌓일 수 있어요. 이 프라미스를 만든 뒤 이동 전에 꼭 기다리게(goHome) 해서 그런 일이 없게 해요.
+let earnPromise = null;
 
 async function reportEarnedPoints() {
   const earnEl = el('earnResult');
@@ -444,13 +509,44 @@ el('bestStart').textContent = localStorage.getItem('hanjaGameBest') || 0;
 el('startBtn').addEventListener('click', startGame);
 el('againBtn').addEventListener('click', startGame);
 
+function renderGradePicker() {
+  document.querySelectorAll('.gradePill').forEach(b => {
+    b.classList.toggle('active', Number(b.dataset.grade) === selectedGrade);
+  });
+}
+document.querySelectorAll('.gradePill').forEach(b => {
+  b.addEventListener('click', () => {
+    selectedGrade = Number(b.dataset.grade);
+    localStorage.setItem('hanjaGameGrade', String(selectedGrade));
+    renderGradePicker();
+  });
+});
+renderGradePicker();
+
 el('muteBtn').addEventListener('click', () => {
   Sound.muted = !Sound.muted;
   el('muteBtn').textContent = Sound.muted ? '🔇' : '🔊';
 });
 
+// 적립 요청이 아직 끝나지 않았으면(최대 3초) 기다렸다가 게임 놀이터로 이동해요.
+// 이렇게 안 하면 페이지가 바뀌면서 적립 요청이 중간에 끊겨 포인트가 안 쌓일 수 있어요.
+function goHome() {
+  Promise.race([
+    earnPromise || Promise.resolve(),
+    new Promise(resolve => setTimeout(resolve, 3000)),
+  ]).finally(() => { window.location.href = '/'; });
+}
+
+el('overHomeLink').addEventListener('click', e => { e.preventDefault(); goHome(); });
+
 el('quitBtn').addEventListener('click', () => el('quitConfirm').classList.remove('hidden'));
-el('quitYes').addEventListener('click', () => { window.location.href = '/'; });
+el('quitYes').addEventListener('click', () => {
+  // 게임 도중에 나가도 그때까지 맞힌 정답만큼은 포인트로 적립해줘요.
+  gameOver = true;
+  clearInterval(timerHandle);
+  earnPromise = reportEarnedPoints();
+  goHome();
+});
 el('quitNo').addEventListener('click', () => el('quitConfirm').classList.add('hidden'));
 
 document.addEventListener('visibilitychange', () => { paused = document.hidden; });
