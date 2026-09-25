@@ -22,7 +22,13 @@ function computeBuildId(publicDir) {
 const { Server } = require('socket.io');
 const { createRooms } = require('./server/rooms');
 const { createLeaderboard } = require('./server/leaderboard');
+const { createPoints } = require('./server/points');
 const { attachSockets } = require('./server/socket');
+
+function getBearerToken(req) {
+  const match = /^Bearer (.+)$/.exec(req.get('authorization') || '');
+  return match ? match[1] : null;
+}
 
 function createApp(options = {}) {
   const app = express();
@@ -30,6 +36,7 @@ function createApp(options = {}) {
   const io = new Server(server, { cors: { origin: '*' } });
   const leaderboard = createLeaderboard(options.leaderboardFile);
   const roomApi = createRooms(io, leaderboard);
+  const points = createPoints(options.pointsFile, options.pointsSecret);
 
   // public/index.html은 여러 게임을 고르는 메인 페이지이고, 게임마다 public/<게임>/ 폴더에 index.html이 있어요.
   // index.html이 있는 폴더마다 똑같이: /게임 → /게임/ 로 보내고, 첫 화면에 버전 꼬리표를 넣어 매번 새로 확인하게 해요.
@@ -70,8 +77,38 @@ function createApp(options = {}) {
     try { res.json(await leaderboard.list()); }
     catch (error) { console.error('순위표 조회 실패', error); res.status(500).json({ error: '순위표를 불러올 수 없습니다.' }); }
   });
+
+  app.use(express.json());
+
+  app.post('/api/points/login', async (req, res) => {
+    const name = points.normalizeName(req.body && req.body.name);
+    const pin = points.normalizePin(req.body && req.body.pin);
+    if (!name || !pin) { res.status(400).json({ error: '이름과 4자리 PIN을 입력해주세요.' }); return; }
+    try {
+      const { points: earned, token } = await points.login(name, pin);
+      res.json({ name, points: earned, token });
+    } catch (error) {
+      if (error.code === 'PIN_MISMATCH') { res.status(401).json({ error: 'PIN이 일치하지 않아요.' }); return; }
+      console.error('포인트 로그인 실패', error);
+      res.status(500).json({ error: '로그인에 실패했어요.' });
+    }
+  });
+
+  app.get('/api/points/me', async (req, res) => {
+    const name = points.verifyToken(getBearerToken(req));
+    if (!name) { res.status(401).json({ error: '로그인이 필요해요.' }); return; }
+    try {
+      const earned = await points.getPoints(name);
+      if (earned == null) { res.status(401).json({ error: '로그인이 필요해요.' }); return; }
+      res.json({ name, points: earned });
+    } catch (error) {
+      console.error('포인트 조회 실패', error);
+      res.status(500).json({ error: '포인트를 불러올 수 없습니다.' });
+    }
+  });
+
   attachSockets(io, roomApi);
-  return { app, server, io, roomApi, leaderboard };
+  return { app, server, io, roomApi, leaderboard, points };
 }
 
 if (require.main === module) {

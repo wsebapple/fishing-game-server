@@ -395,6 +395,38 @@ test('the home page lists the games, and the fishing game asks for versioned scr
   }
 });
 
+test('points login/me: register, re-login with the right PIN, reject the wrong one, reject a bad token', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-test-'));
+  const { server, io } = createApp({ leaderboardFile: path.join(directory, 'scores.json'), pointsFile: path.join(directory, 'points.json'), pointsSecret: 'test-secret' });
+  await new Promise(resolve => server.listen(0, resolve));
+  try {
+    const base = 'http://127.0.0.1:' + server.address().port;
+    const postJson = (route, body) => fetch(base + route, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+    const first = await postJson('/api/points/login', { name: '테스터', pin: '1234' });
+    assert.equal(first.status, 200);
+    const firstBody = await first.json();
+    assert.equal(firstBody.points, 0);
+    assert.ok(firstBody.token);
+
+    const me = await fetch(base + '/api/points/me', { headers: { Authorization: 'Bearer ' + firstBody.token } });
+    assert.equal(me.status, 200);
+    assert.deepEqual(await me.json(), { name: '테스터', points: 0 });
+
+    const wrongPin = await postJson('/api/points/login', { name: '테스터', pin: '9999' });
+    assert.equal(wrongPin.status, 401);
+
+    const badToken = await fetch(base + '/api/points/me', { headers: { Authorization: 'Bearer garbage' } });
+    assert.equal(badToken.status, 401);
+
+    const noBody = await postJson('/api/points/login', { name: '테스터' });
+    assert.equal(noBody.status, 400);
+  } finally {
+    await new Promise(resolve => io.close(resolve));
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('a game folder name with regex-special characters does not break routing or crash the server', async () => {
   // README가 안내하는 대로 "새 게임은 public/<폴더>/ 에 넣으면 된다"고 했을 때, 그 폴더 이름에
   // 정규식에서 특별한 뜻을 가진 글자(., +)가 있어도 서버가 뜨고 그 게임만 정확히 매칭돼야 해요.
