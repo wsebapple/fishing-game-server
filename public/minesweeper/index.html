@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>지뢰찾기</title>
+<meta name="description" content="숫자를 보고 지뢰를 피해 안전한 칸을 모두 열어요! 초급·중급·고급 난이도로 즐겨요">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💣</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --page-top: #eafcf7;
+    --page-bottom: #c7f0e3;
+    --ink: #123c39;
+    --panel: #ffffff;
+    --panel-alt: #e6f7f1;
+    --button: #20b8a3;
+    --button-dark: #128577;
+    --gold: #ffb703;
+    --bad: #ff5d5d;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --page-top:#08211f; --page-bottom:#04120f; --panel:#0f2e2a; --panel-alt:#123a34; --ink:#d8fff2; }
+  }
+  :root[data-theme="dark"] { --page-top:#08211f; --page-bottom:#04120f; --panel:#0f2e2a; --panel-alt:#123a34; --ink:#d8fff2; }
+
+  * { box-sizing: border-box; }
+  html { height: 100%; }
+  body {
+    margin: 0; min-height: 100%;
+    background: linear-gradient(180deg, var(--page-top), var(--page-bottom));
+    font-family: 'Jua', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+    color: var(--ink);
+    display: flex; flex-direction: column; align-items: center;
+    overflow-x: hidden;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    padding: 14px 10px 24px;
+  }
+  a.home {
+    align-self: flex-start;
+    color: var(--ink); text-decoration: none; font-weight: 700;
+    font-size: clamp(13px, 3vw, 15px);
+    margin: 2px 4px 10px;
+  }
+
+  #wrap {
+    width: fit-content; max-width: 96vw;
+    background: var(--panel);
+    border: 4px solid var(--ink);
+    border-radius: 24px;
+    box-shadow: 8px 8px 0 var(--button-dark);
+    padding: 14px 16px 18px;
+  }
+  h1 {
+    margin: 0 0 10px; text-align: center; font-weight: 400;
+    font-size: clamp(22px, 5.5vw, 30px);
+  }
+
+  .diffs { display: flex; gap: 8px; justify-content: center; margin-bottom: 10px; flex-wrap: wrap; }
+  .diffs button {
+    font-family: inherit; font-weight: 400; font-size: clamp(14px, 3vw, 16px);
+    color: var(--ink);
+    background: var(--panel-alt); border: 3px solid var(--ink); border-radius: 999px;
+    padding: 0.4em 1em; box-shadow: 0 4px 0 var(--button-dark); cursor: pointer;
+  }
+  .diffs button.active {
+    background: var(--button); color: #fff;
+    transform: translateY(2px); box-shadow: 0 2px 0 var(--button-dark);
+  }
+  .diffs button:active { transform: translateY(4px); box-shadow: 0 0 0 var(--button-dark); }
+
+  .hud {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    margin-bottom: 10px;
+  }
+  .pill {
+    background: var(--panel-alt); border: 2px solid var(--ink); border-radius: 999px;
+    padding: 6px 14px; font-size: clamp(15px, 3.4vw, 18px); white-space: nowrap;
+    display: flex; align-items: center; gap: 4px;
+  }
+  #face {
+    width: 42px; height: 42px; font-size: 20px; cursor: pointer; font-family: inherit;
+    background: var(--panel-alt); color: var(--ink);
+    border: 2px solid var(--ink); border-radius: 50%;
+    box-shadow: 0 4px 0 var(--button-dark);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #face:active { transform: translateY(4px); box-shadow: 0 0 0 var(--button-dark); }
+
+  .boardWrap {
+    background: var(--panel-alt);
+    border: 2px solid var(--ink); border-radius: 14px;
+    padding: 8px;
+    overflow: auto; max-width: 96vw; max-height: 70vh;
+  }
+  #board {
+    display: grid;
+    touch-action: none;
+  }
+  .cell {
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800;
+    background: var(--button);
+    border: 2px solid var(--ink); border-radius: 6px;
+    box-shadow: 2px 2px 0 var(--button-dark);
+    cursor: pointer;
+  }
+  .cell.revealed {
+    background: var(--panel);
+    border: 1px solid var(--panel-alt);
+    box-shadow: none;
+    cursor: default;
+  }
+  .cell.mine.revealed { background: var(--panel); }
+  .cell.mine.revealed.boom { background: var(--bad); }
+  .cell.revealed.wrongflag { background: var(--panel); text-decoration: line-through; }
+  .cell.pressed { background: var(--panel); border: 1px solid var(--panel-alt); box-shadow: none; }
+  .cell[data-n="1"] { color: #2e86de; }
+  .cell[data-n="2"] { color: #2e9e52; }
+  .cell[data-n="3"] { color: #e6484f; }
+  .cell[data-n="4"] { color: #5b4fcf; }
+  .cell[data-n="5"] { color: #a13d4c; }
+  .cell[data-n="6"] { color: #1f9e96; }
+  .cell[data-n="7"] { color: #2b2b2b; }
+  .cell[data-n="8"] { color: #8a8a8a; }
+
+  .status { text-align: center; font-weight: 700; min-height: 22px; margin-top: 10px; font-size: clamp(14px, 3.2vw, 16px); }
+  .help { text-align: center; font-size: clamp(11px, 2.6vw, 13px); margin-top: 6px; opacity: .8; line-height: 1.6; max-width: 480px; }
+  .best { font-size: clamp(11px, 2.6vw, 13px); margin-top: 12px; text-align: center; line-height: 1.9; opacity: .9; }
+  .best b { color: var(--gold); }
+</style>
+</head>
+<body>
+  <a class="home" href="/">🏠 게임 놀이터로</a>
+
+  <div id="wrap">
+    <h1>🚩 지뢰찾기 💣</h1>
+    <div class="diffs" id="diffs"></div>
+    <div class="hud">
+      <div class="pill">💣 <span id="mineCount">010</span></div>
+      <button id="face" title="새 게임">🙂</button>
+      <div class="pill">⏱️ <span id="timer">000</span></div>
+    </div>
+    <div class="boardWrap"><div id="board"></div></div>
+  </div>
+
+  <div class="status" id="status"></div>
+  <div class="help">
+    왼쪽 클릭(탭): 칸 열기 · 오른쪽 클릭 또는 길게 누르기: 깃발 꽂기<br>
+    숫자 칸에서 양쪽 버튼(또는 가운데 버튼)을 누르고 있으면 주변이 눌린 채 보여요 —<br>
+    손을 떼면 깃발 수가 맞을 때만 한번에 열려요 (더블클릭·더블탭도 가능)
+  </div>
+  <div class="best" id="best"></div>
+
+<script>
+(function(){
+  'use strict';
+
+  var DIFFS = [
+    { id: 'beginner', label: '초급', rows: 9, cols: 9, mines: 10 },
+    { id: 'intermediate', label: '중급', rows: 16, cols: 16, mines: 40 },
+    { id: 'expert', label: '고급', rows: 16, cols: 30, mines: 99 },
+  ];
+  var MIN_CELL = 16, MAX_CELL = 28;
+  var LONG_PRESS_MS = 500, MOVE_CANCEL_PX = 10, DOUBLE_TAP_MS = 350;
+
+  var diffsEl = document.getElementById('diffs');
+  var boardEl = document.getElementById('board');
+  var mineCountEl = document.getElementById('mineCount');
+  var timerEl = document.getElementById('timer');
+  var faceEl = document.getElementById('face');
+  var statusEl = document.getElementById('status');
+  var bestEl = document.getElementById('best');
+
+  var diff = DIFFS[0];
+  var rows, cols, mineCount;
+  var grid; // grid[r][c] = { mine, revealed, flagged, question, count, el }
+  var state = 'ready'; // ready | playing | won | lost
+  var flagCount = 0;
+  var revealedCount = 0;
+  var elapsed = 0, timerHandle = null;
+  var mouseButtonsDown = new Set();
+  var lastTap = null; // { r, c, time }
+  var pressedCells = []; // cells currently shown "sunken" during a chord hold-preview
+
+  function isChordCombo(){
+    return mouseButtonsDown.has(1) || (mouseButtonsDown.has(0) && mouseButtonsDown.has(2));
+  }
+  function clearPressed(){
+    pressedCells.forEach(function(el){ el.classList.remove('pressed'); });
+    pressedCells = [];
+  }
+  function refreshPreview(r, c){
+    clearPressed();
+    if (state === 'won' || state === 'lost' || !isChordCombo()) return;
+    var cell = grid[r][c];
+    if (!cell.revealed || cell.count === 0) return;
+    neighbors(r, c).forEach(function(p){
+      var n = grid[p[0]][p[1]];
+      if (!n.revealed && !n.flagged){ n.el.classList.add('pressed'); pressedCells.push(n.el); }
+    });
+  }
+
+  DIFFS.forEach(function(d){
+    var b = document.createElement('button');
+    b.textContent = d.label;
+    b.addEventListener('click', function(){ setDifficulty(d.id); });
+    b.dataset.id = d.id;
+    diffsEl.appendChild(b);
+  });
+
+  function setDifficulty(id){
+    diff = DIFFS.find(function(d){ return d.id === id; }) || DIFFS[0];
+    Array.prototype.forEach.call(diffsEl.children, function(b){
+      b.classList.toggle('active', b.dataset.id === diff.id);
+    });
+    renderBest();
+    newGame();
+  }
+
+  function newGame(){
+    rows = diff.rows; cols = diff.cols; mineCount = diff.mines;
+    grid = [];
+    for (var r = 0; r < rows; r++){
+      var row = [];
+      for (var c = 0; c < cols; c++){
+        row.push({ mine: false, revealed: false, flagged: false, question: false, count: 0 });
+      }
+      grid.push(row);
+    }
+    state = 'ready';
+    flagCount = 0;
+    revealedCount = 0;
+    stopTimer();
+    elapsed = 0;
+    updateTimerDisplay();
+    updateMineDisplay();
+    setFace('🙂');
+    statusEl.textContent = '';
+    buildBoardDom();
+  }
+
+  function sizeCell(){
+    var wrapMax = Math.min(window.innerWidth * 0.96, 640);
+    var size = Math.floor(wrapMax / cols);
+    size = Math.max(MIN_CELL, Math.min(MAX_CELL, size));
+    return size;
+  }
+
+  function buildBoardDom(){
+    boardEl.innerHTML = '';
+    var size = sizeCell();
+    boardEl.style.gridTemplateColumns = 'repeat(' + cols + ', ' + size + 'px)';
+    boardEl.style.gridAutoRows = size + 'px';
+    var fontSize = Math.max(10, Math.floor(size * 0.55));
+    for (var r = 0; r < rows; r++){
+      for (var c = 0; c < cols; c++){
+        var cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.style.fontSize = fontSize + 'px';
+        cell.dataset.r = r; cell.dataset.c = c;
+        attachCellEvents(cell, r, c);
+        boardEl.appendChild(cell);
+        grid[r][c].el = cell;
+      }
+    }
+  }
+
+  function neighbors(r, c){
+    var list = [];
+    for (var dr = -1; dr <= 1; dr++){
+      for (var dc = -1; dc <= 1; dc++){
+        if (dr === 0 && dc === 0) continue;
+        var nr = r + dr, nc = c + dc;
+        if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) list.push([nr, nc]);
+      }
+    }
+    return list;
+  }
+
+  function placeMines(safeR, safeC){
+    var placed = 0;
+    while (placed < mineCount){
+      var r = Math.floor(Math.random() * rows);
+      var c = Math.floor(Math.random() * cols);
+      if (r === safeR && c === safeC) continue;
+      if (grid[r][c].mine) continue;
+      grid[r][c].mine = true;
+      placed++;
+    }
+    for (var r2 = 0; r2 < rows; r2++){
+      for (var c2 = 0; c2 < cols; c2++){
+        if (grid[r2][c2].mine) continue;
+        var n = neighbors(r2, c2).filter(function(p){ return grid[p[0]][p[1]].mine; }).length;
+        grid[r2][c2].count = n;
+      }
+    }
+  }
+
+  function startTimer(){
+    if (timerHandle) return;
+    timerHandle = setInterval(function(){
+      elapsed = Math.min(999, elapsed + 1);
+      updateTimerDisplay();
+    }, 1000);
+  }
+  function stopTimer(){
+    if (timerHandle){ clearInterval(timerHandle); timerHandle = null; }
+  }
+
+  function updateTimerDisplay(){ timerEl.textContent = pad3(elapsed); }
+  function updateMineDisplay(){
+    var left = mineCount - flagCount;
+    if (left < -99) left = -99;
+    if (left > 999) left = 999;
+    mineCountEl.textContent = (left < 0 ? '-' + pad2(-left) : pad3(left));
+  }
+  function pad3(n){ n = Math.max(0, Math.min(999, n)); var s = String(n); while (s.length < 3) s = '0' + s; return s; }
+  function pad2(n){ var s = String(n); while (s.length < 2) s = '0' + s; return s; }
+
+  function setFace(f){ faceEl.textContent = f; }
+
+  function renderCell(r, c){
+    var cell = grid[r][c];
+    var el = cell.el;
+    el.className = 'cell' + (cell.revealed ? ' revealed' : '');
+    el.removeAttribute('data-n');
+    el.textContent = '';
+    if (cell.revealed){
+      if (cell.mine){
+        el.classList.add('mine');
+        el.textContent = '💣';
+      } else if (cell.count > 0){
+        el.textContent = String(cell.count);
+        el.setAttribute('data-n', String(cell.count));
+      }
+    } else if (cell.flagged){
+      el.textContent = '🚩';
+    } else if (cell.question){
+      el.textContent = '?';
+    }
+  }
+
+  function revealCell(r, c){
+    if (state === 'won' || state === 'lost') return;
+    var cell = grid[r][c];
+    if (cell.revealed || cell.flagged) return;
+    if (state === 'ready'){
+      placeMines(r, c);
+      state = 'playing';
+      startTimer();
+    }
+    if (cell.mine){
+      cell.revealed = true;
+      endGame(false, r, c);
+      return;
+    }
+    floodReveal(r, c);
+    checkWin();
+  }
+
+  function floodReveal(r, c){
+    var stack = [[r, c]];
+    while (stack.length){
+      var pos = stack.pop();
+      var cr = pos[0], cc = pos[1];
+      var cell = grid[cr][cc];
+      if (cell.revealed || cell.flagged || cell.mine) continue;
+      cell.revealed = true;
+      revealedCount++;
+      renderCell(cr, cc);
+      if (cell.count === 0){
+        neighbors(cr, cc).forEach(function(p){
+          var n = grid[p[0]][p[1]];
+          if (!n.revealed && !n.flagged && !n.mine) stack.push(p);
+        });
+      }
+    }
+  }
+
+  function toggleFlag(r, c){
+    if (state === 'won' || state === 'lost') return;
+    var cell = grid[r][c];
+    if (cell.revealed) return;
+    if (!cell.flagged && !cell.question){
+      cell.flagged = true;
+      flagCount++;
+    } else if (cell.flagged){
+      cell.flagged = false;
+      cell.question = true;
+      flagCount--;
+    } else {
+      cell.question = false;
+    }
+    updateMineDisplay();
+    renderCell(r, c);
+  }
+
+  function chord(r, c){
+    if (state === 'won' || state === 'lost') return;
+    var cell = grid[r][c];
+    if (!cell.revealed || cell.count === 0) return;
+    var flagged = neighbors(r, c).filter(function(p){ return grid[p[0]][p[1]].flagged; }).length;
+    if (flagged !== cell.count) return;
+    var boom = false;
+    neighbors(r, c).forEach(function(p){
+      var n = grid[p[0]][p[1]];
+      if (n.revealed || n.flagged) return;
+      if (n.mine){
+        n.revealed = true;
+        boom = true;
+      } else {
+        floodReveal(p[0], p[1]);
+      }
+    });
+    if (boom){
+      endGame(false, r, c);
+    } else {
+      checkWin();
+    }
+  }
+
+  function checkWin(){
+    if (state !== 'playing') return;
+    if (revealedCount === rows * cols - mineCount){
+      state = 'won';
+      stopTimer();
+      setFace('😎');
+      for (var r = 0; r < rows; r++){
+        for (var c = 0; c < cols; c++){
+          var cell = grid[r][c];
+          if (cell.mine && !cell.flagged){
+            cell.flagged = true;
+            renderCell(r, c);
+          }
+        }
+      }
+      flagCount = mineCount;
+      updateMineDisplay();
+      statusEl.textContent = '🎉 지뢰를 모두 찾았어요! (' + elapsed + '초)';
+      handleWinRecord();
+    }
+  }
+
+  function endGame(won, mineR, mineC){
+    state = won ? 'won' : 'lost';
+    stopTimer();
+    setFace(won ? '😎' : '😵');
+    for (var r = 0; r < rows; r++){
+      for (var c = 0; c < cols; c++){
+        var cell = grid[r][c];
+        if (!won){
+          if (cell.mine && !cell.flagged) cell.revealed = true;
+          if (!cell.mine && cell.flagged) { cell.revealed = true; cell.wrongflag = true; }
+        }
+        renderCell(r, c);
+        if (!won && r === mineR && c === mineC && cell.mine) grid[r][c].el.classList.add('boom');
+        if (!won && cell.wrongflag){
+          grid[r][c].el.textContent = '🚩';
+          grid[r][c].el.classList.add('wrongflag');
+          grid[r][c].el.style.textDecoration = 'line-through';
+        }
+      }
+    }
+    if (!won) statusEl.textContent = '💥 펑! 지뢰를 밟았어요.';
+  }
+
+  function bestKey(){ return 'minesweeper_best_' + diff.id; }
+  function getBest(){
+    try { return JSON.parse(localStorage.getItem(bestKey()) || 'null'); }
+    catch (e) { return null; }
+  }
+  function setBest(rec){
+    try { localStorage.setItem(bestKey(), JSON.stringify(rec)); } catch (e) {}
+  }
+  function renderBest(){
+    var lines = DIFFS.map(function(d){
+      var raw = null;
+      try { raw = JSON.parse(localStorage.getItem('minesweeper_best_' + d.id) || 'null'); } catch (e) {}
+      if (raw && raw.time != null){
+        return d.label + ' 최고 기록: <b>' + raw.time + '초</b>' + (raw.name ? ' (' + raw.name + ')' : '');
+      }
+      return d.label + ' 최고 기록: 아직 없어요';
+    });
+    bestEl.innerHTML = lines.join('<br>');
+  }
+  function handleWinRecord(){
+    var best = getBest();
+    if (!best || elapsed < best.time){
+      var name = '';
+      try { name = window.prompt('최고 기록이에요! 이름을 남겨보세요 (' + elapsed + '초)', best && best.name ? best.name : '') || ''; } catch (e) {}
+      setBest({ time: elapsed, name: name.slice(0, 20) });
+      renderBest();
+    }
+  }
+
+  // Reveal/flag/chord on a cell. Touch uses Pointer Events (tap/long-press/double-tap): a
+  // single touch pointer only ever fires pointerdown/pointerup once per gesture. Mouse combo
+  // chording (holding two buttons at once) needs plain mousedown/mouseup instead: Pointer
+  // Events only fire pointerdown on the FIRST button pressed and pointerup on the LAST one
+  // released, so a second button pressed mid-hold never generates its own pointer event.
+  function attachCellEvents(el, r, c){
+    var pressTimer = null;
+    var longPressFired = false;
+    var startX = 0, startY = 0;
+
+    el.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+
+    el.addEventListener('pointerdown', function(e){
+      if (e.pointerType === 'mouse') return;
+      if (state === 'won' || state === 'lost') return;
+      e.preventDefault();
+      startX = e.clientX; startY = e.clientY;
+      longPressFired = false;
+      pressTimer = setTimeout(function(){
+        longPressFired = true;
+        toggleFlag(r, c);
+        if (navigator.vibrate) navigator.vibrate(15);
+      }, LONG_PRESS_MS);
+    });
+
+    el.addEventListener('pointermove', function(e){
+      if (e.pointerType === 'mouse') return;
+      if (pressTimer && (Math.abs(e.clientX - startX) > MOVE_CANCEL_PX || Math.abs(e.clientY - startY) > MOVE_CANCEL_PX)){
+        clearTimeout(pressTimer); pressTimer = null;
+      }
+    });
+
+    function finishTap(e){
+      if (e.pointerType === 'mouse') return;
+      if (pressTimer){ clearTimeout(pressTimer); pressTimer = null; }
+      if (longPressFired){ longPressFired = false; return; }
+      var cell = grid[r][c];
+      if (cell.revealed){
+        var now = Date.now();
+        if (lastTap && lastTap.r === r && lastTap.c === c && (now - lastTap.time) < DOUBLE_TAP_MS){
+          chord(r, c);
+          lastTap = null;
+        } else {
+          lastTap = { r: r, c: c, time: now };
+        }
+      } else {
+        revealCell(r, c);
+      }
+    }
+    el.addEventListener('pointerup', finishTap);
+    el.addEventListener('pointercancel', function(e){
+      if (e.pointerType === 'mouse') return;
+      if (pressTimer){ clearTimeout(pressTimer); pressTimer = null; }
+    });
+
+    el.addEventListener('mousedown', function(e){
+      if (state === 'won' || state === 'lost') return;
+      var hadLeft = mouseButtonsDown.has(0);
+      mouseButtonsDown.add(e.button);
+      if (e.button === 2 && !hadLeft){
+        toggleFlag(r, c);
+      } else if (e.button === 0 && !grid[r][c].flagged && !grid[r][c].revealed){
+        setFace('😮');
+      }
+      refreshPreview(r, c);
+    });
+
+    el.addEventListener('mouseenter', function(){ refreshPreview(r, c); });
+
+    el.addEventListener('mouseup', function(e){
+      var wasChordCombo = isChordCombo();
+      mouseButtonsDown.delete(e.button);
+      if (state !== 'won' && state !== 'lost') setFace('🙂');
+      if (wasChordCombo){
+        clearPressed();
+        chord(r, c);
+        return;
+      }
+      if (e.button === 2) return;
+      var cell = grid[r][c];
+      if (cell.revealed){
+        var now = Date.now();
+        if (lastTap && lastTap.r === r && lastTap.c === c && (now - lastTap.time) < DOUBLE_TAP_MS){
+          chord(r, c);
+          lastTap = null;
+        } else {
+          lastTap = { r: r, c: c, time: now };
+        }
+      } else {
+        revealCell(r, c);
+      }
+    });
+  }
+
+  boardEl.addEventListener('mouseleave', function(){ clearPressed(); });
+  window.addEventListener('mouseup', function(e){ mouseButtonsDown.delete(e.button); });
+
+  faceEl.addEventListener('click', newGame);
+
+  var resizeHandle = null;
+  window.addEventListener('resize', function(){
+    clearTimeout(resizeHandle);
+    resizeHandle = setTimeout(buildAndRepaint, 150);
+  });
+  function buildAndRepaint(){
+    buildBoardDom();
+    for (var r = 0; r < rows; r++) for (var c = 0; c < cols; c++) renderCell(r, c);
+  }
+
+  setDifficulty('beginner');
+})();
+</script>
+</body>
+</html>
