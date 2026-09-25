@@ -145,6 +145,23 @@ function createApp(options = {}) {
     }
   });
 
+  app.post('/api/points/earn', async (req, res) => {
+    const name = points.verifyToken(getBearerToken(req));
+    if (!name) { res.status(401).json({ error: '로그인이 필요해요.' }); return; }
+    const gameId = typeof (req.body && req.body.gameId) === 'string' ? req.body.gameId : null;
+    const correct = Number(req.body && req.body.correct);
+    if (!gameId || !Number.isFinite(correct) || correct < 0) { res.status(400).json({ error: 'gameId와 정답 개수를 확인해주세요.' }); return; }
+    try {
+      const result = await points.earn(name, gameId, correct);
+      res.json(result);
+    } catch (error) {
+      if (error.code === 'UNKNOWN_GAME') { res.status(404).json({ error: '알 수 없는 학습게임이에요.' }); return; }
+      if (error.code === 'NOT_FOUND') { res.status(401).json({ error: '로그인이 필요해요.' }); return; }
+      console.error('포인트 적립 실패', error);
+      res.status(500).json({ error: '포인트 적립에 실패했어요.' });
+    }
+  });
+
   app.get('/api/admin/players', async (req, res) => {
     if (!isAdmin(req)) { res.status(401).json({ error: '관리자 코드가 필요해요.' }); return; }
     try { res.json(await points.listAll()); }
