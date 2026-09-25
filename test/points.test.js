@@ -3,23 +3,37 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { createPoints } = require('../server/points');
+const { createPoints, STARTING_POINTS, DEFAULT_EARN_POLICY } = require('../server/points');
 
 async function tmpFile() {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-points-'));
   return { directory, file: path.join(directory, 'points.json') };
 }
 
-test('a new name registers with 0 points, and the same name+PIN logs back in with the same points', async () => {
+// earn()은 학습게임 폴더 안 earn-config.json을 직접 읽으니, 가짜 게임 폴더를 담을 임시 "public" 디렉터리도 같이 줘요
+async function tmpFileWithGames() {
+  const { directory, file } = await tmpFile();
+  const gamesDir = path.join(directory, 'public');
+  await fs.mkdir(gamesDir, { recursive: true });
+  return { directory, file, gamesDir };
+}
+
+async function writeEarnConfig(gamesDir, gameId, config) {
+  const gameDir = path.join(gamesDir, gameId);
+  await fs.mkdir(gameDir, { recursive: true });
+  await fs.writeFile(path.join(gameDir, 'earn-config.json'), JSON.stringify(config), 'utf8');
+}
+
+test('a new name registers with the starting points, and the same name+PIN logs back in with the same points', async () => {
   const { directory, file } = await tmpFile();
   try {
     const points = createPoints(file, 'test-secret');
     const first = await points.login('철수', '1234');
-    assert.equal(first.points, 0);
+    assert.equal(first.points, STARTING_POINTS);
     assert.equal(points.verifyToken(first.token), '철수');
 
     const second = await points.login('철수', '1234');
-    assert.equal(second.points, 0);
+    assert.equal(second.points, STARTING_POINTS);
 
     const saved = JSON.parse(await fs.readFile(file, 'utf8'));
     assert.ok(saved['철수'].pinHash, 'PIN은 해시로 저장돼요');
@@ -37,7 +51,7 @@ test('logging back in with the wrong PIN is rejected and does not change stored 
     await assert.rejects(points.login('영희', '9999'), (error) => error.code === 'PIN_MISMATCH');
 
     const saved = JSON.parse(await fs.readFile(file, 'utf8'));
-    assert.equal(saved['영희'].points, 0);
+    assert.equal(saved['영희'].points, STARTING_POINTS);
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
   }
@@ -64,7 +78,7 @@ test('points can be read for an existing name without going through login', asyn
   try {
     const points = createPoints(file, 'test-secret');
     await points.login('지민', '2468');
-    assert.equal(await points.getPoints('지민'), 0);
+    assert.equal(await points.getPoints('지민'), STARTING_POINTS);
     assert.equal(await points.getPoints('없는사람'), null);
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
@@ -75,12 +89,13 @@ test('spend deducts on success, rejects when short, and never lets points go neg
   const { directory, file } = await tmpFile();
   try {
     const points = createPoints(file, 'test-secret');
-    await points.login('철수', '1234');
+    await points.login('철수', '1234'); // 시작 포인트(STARTING_POINTS)로 시작해요
     await points.grant('철수', 10);
 
-    assert.equal(await points.spend('철수', 4), 6);
-    await assert.rejects(points.spend('철수', 100), (error) => error.code === 'INSUFFICIENT');
-    assert.equal(await points.getPoints('철수'), 6, '실패한 시도는 포인트를 깎지 않아요');
+    const afterGrant = STARTING_POINTS + 10;
+    assert.equal(await points.spend('철수', 4), afterGrant - 4);
+    await assert.rejects(points.spend('철수', 1000), (error) => error.code === 'INSUFFICIENT');
+    assert.equal(await points.getPoints('철수'), afterGrant - 4, '실패한 시도는 포인트를 깎지 않아요');
 
     await assert.rejects(points.spend('없는사람', 1), (error) => error.code === 'NOT_FOUND');
   } finally {
@@ -92,11 +107,11 @@ test('grant adds or subtracts points for an existing name, clamped at 0, and rej
   const { directory, file } = await tmpFile();
   try {
     const points = createPoints(file, 'test-secret');
-    await points.login('영희', '1111');
+    await points.login('영희', '1111'); // 시작 포인트(STARTING_POINTS)로 시작해요
 
-    assert.equal(await points.grant('영희', 5), 5);
-    assert.equal(await points.grant('영희', -3), 2);
-    assert.equal(await points.grant('영희', -100), 0, '0 밑으로는 안 내려가요');
+    assert.equal(await points.grant('영희', 5), STARTING_POINTS + 5);
+    assert.equal(await points.grant('영희', -3), STARTING_POINTS + 2);
+    assert.equal(await points.grant('영희', -1000), 0, '0 밑으로는 안 내려가요');
 
     await assert.rejects(points.grant('없는사람', 5), (error) => error.code === 'NOT_FOUND');
   } finally {
@@ -115,8 +130,104 @@ test('listAll reports every registered name with their current points', async ()
     const all = await points.listAll();
     assert.deepEqual(
       all.map(p => [p.name, p.points]).sort(),
-      [['영희', 7], ['철수', 0]],
+      [['영희', STARTING_POINTS + 7], ['철수', STARTING_POINTS]],
     );
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('earn awards points per unit according to that game\'s own earn-config.json, capped per round, and rejects an unregistered game or a logged-out name', async () => {
+  const { directory, file, gamesDir } = await tmpFileWithGames();
+  const policy = { pointsPerUnit: 2, maxUnitsPerRound: 10, maxPointsPerDay: 1000 };
+  await writeEarnConfig(gamesDir, 'quiz-game', policy);
+  try {
+    const points = createPoints(file, 'test-secret', { gamesDir });
+    await points.login('민수', '1234');
+
+    const result = await points.earn('민수', 'quiz-game', 5);
+    assert.equal(result.awarded, 5 * policy.pointsPerUnit);
+    assert.equal(result.points, STARTING_POINTS + 5 * policy.pointsPerUnit);
+    assert.equal(result.dailyCapped, false);
+
+    // 한 판에 인정하는 단위 수(maxUnitsPerRound)를 넘겨 보내도 상한만큼만 쳐줘요
+    const overReport = await points.earn('민수', 'quiz-game', policy.maxUnitsPerRound + 1000);
+    assert.equal(overReport.awarded, policy.maxUnitsPerRound * policy.pointsPerUnit);
+
+    // earn-config.json 자체가 없는 게임 폴더(혹은 아예 없는 폴더)는 학습게임으로 등록 안 된 거예요
+    await assert.rejects(points.earn('민수', 'no-such-game', 3), (error) => error.code === 'UNKNOWN_GAME');
+    await assert.rejects(points.earn('없는사람', 'quiz-game', 3), (error) => error.code === 'NOT_FOUND');
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('a game folder with no earn-config.json cannot earn points, even though a fun game folder with the same name exists', async () => {
+  const { directory, file, gamesDir } = await tmpFileWithGames();
+  await fs.mkdir(path.join(gamesDir, 'fishing'), { recursive: true }); // index.html만 있고 earn-config.json은 없는 상황을 흉내내요
+  try {
+    const points = createPoints(file, 'test-secret', { gamesDir });
+    await points.login('철수', '1234');
+    await assert.rejects(points.earn('철수', 'fishing', 5), (error) => error.code === 'UNKNOWN_GAME');
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('a partial earn-config.json only overrides the fields it sets; the rest fall back to DEFAULT_EARN_POLICY', async () => {
+  const { directory, file, gamesDir } = await tmpFileWithGames();
+  await writeEarnConfig(gamesDir, 'partial-game', { pointsPerUnit: 5, maxPointsPerDay: 1000 }); // maxUnitsPerRound만 안 정해요
+  try {
+    const points = createPoints(file, 'test-secret', { gamesDir });
+    await points.login('영희', '1234');
+    const result = await points.earn('영희', 'partial-game', 2);
+    assert.equal(result.awarded, 2 * 5, '지정한 pointsPerUnit(5)은 그대로 쓰여요');
+
+    const overReport = await points.earn('영희', 'partial-game', DEFAULT_EARN_POLICY.maxUnitsPerRound + 100);
+    assert.equal(overReport.awarded, DEFAULT_EARN_POLICY.maxUnitsPerRound * 5, 'maxUnitsPerRound는 기본값으로 채워져요');
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('a game id with path-traversal characters is rejected outright, never read as a file path', async () => {
+  const { directory, file, gamesDir } = await tmpFileWithGames();
+  try {
+    const points = createPoints(file, 'test-secret', { gamesDir });
+    await points.login('보안테스트', '1234');
+    await assert.rejects(points.earn('보안테스트', '../../etc/passwd', 3), (error) => error.code === 'UNKNOWN_GAME');
+    await assert.rejects(points.earn('보안테스트', '..', 3), (error) => error.code === 'UNKNOWN_GAME');
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('earn stops handing out points once the daily cap for that game is reached, and resets the next day', async () => {
+  const { directory, file, gamesDir } = await tmpFileWithGames();
+  const policy = { pointsPerUnit: 1, maxUnitsPerRound: 30, maxPointsPerDay: 50 };
+  await writeEarnConfig(gamesDir, 'hanja-game', policy);
+  const maxPerRoundPoints = policy.maxUnitsPerRound * policy.pointsPerUnit;
+  const day1 = Date.parse('2026-01-01T00:00:00.000Z');
+  const day2 = Date.parse('2026-01-02T00:00:00.000Z');
+  try {
+    const points = createPoints(file, 'test-secret', { gamesDir });
+    await points.login('지호', '1234');
+
+    // 한 판 최대치를 여러 판 연달아 보내서 하루 한도(maxPointsPerDay)를 넘겨봐요
+    let awardedSoFar = 0, capped = false;
+    for (let round = 0; round < Math.ceil(policy.maxPointsPerDay / maxPerRoundPoints) + 1; round++) {
+      const result = await points.earn('지호', 'hanja-game', policy.maxUnitsPerRound, day1);
+      awardedSoFar += result.awarded;
+      if (result.dailyCapped) capped = true;
+    }
+    assert.equal(awardedSoFar, policy.maxPointsPerDay, '아무리 여러 판 해도 하루 한도만큼만 쌓여요');
+    assert.ok(capped, '한도를 넘기는 시도에서는 dailyCapped가 true예요');
+
+    const stillToday = await points.earn('지호', 'hanja-game', 5, day1);
+    assert.equal(stillToday.awarded, 0, '오늘은 이미 한도를 다 썼어요');
+
+    const nextDay = await points.earn('지호', 'hanja-game', 5, day2);
+    assert.ok(nextDay.awarded > 0, '날짜가 바뀌면 한도가 다시 초기화돼요');
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
   }
@@ -129,7 +240,7 @@ test('a corrupted points file is quarantined instead of breaking logins forever'
     const points = createPoints(file, 'test-secret');
 
     const result = await points.login('새친구', '0000');
-    assert.equal(result.points, 0);
+    assert.equal(result.points, STARTING_POINTS);
     const siblings = await fs.readdir(directory);
     assert.ok(siblings.some(name => name.startsWith('points.json.corrupt-')), '원본 파일은 지우지 않고 옆으로 격리해요');
   } finally {

@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>한자 맞추기</title>
+<meta name="description" content="초등 한자 훈음을 빠르게 맞히는 타이머·콤보 퀴즈 게임">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🀄</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --page-top: #fdf6e3;
+    --page-bottom: #f0dfb3;
+    --ink: #2b2118;
+    --panel: #fffaf0;
+    --panel-alt: #fff2d6;
+    --button: #d64541;
+    --button-dark: #a3302c;
+    --gold: #c9982f;
+    --good: #2e9e52;
+    --good-dark: #1f7a3c;
+    --bad: #d64541;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --page-top:#231a12; --page-bottom:#160f0a; --panel:#332619; --panel-alt:#3f2f1d; --ink:#f6e9d2; }
+  }
+  :root[data-theme="dark"] { --page-top:#231a12; --page-bottom:#160f0a; --panel:#332619; --panel-alt:#3f2f1d; --ink:#f6e9d2; }
+
+  html { height: 100%; }
+  body {
+    margin: 0; min-height: 100%;
+    background: linear-gradient(180deg, var(--page-top), var(--page-bottom));
+    font-family: 'Jua', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+    color: var(--ink);
+    display: flex; align-items: center; justify-content: center;
+    overflow-x: hidden;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #wrap {
+    position: relative;
+    width: min(94vw, 560px);
+    margin: 16px 0;
+    border-radius: 24px;
+    border: 4px solid var(--ink);
+    background: var(--panel);
+    box-shadow: 8px 8px 0 var(--button-dark);
+    padding: 16px 16px 20px;
+    overflow: hidden;
+  }
+  #wrap.shake { animation: shake .4s; }
+  .hidden { display: none !important; }
+
+  #hud { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin: 4px 0 10px; }
+  .pill { background: var(--panel-alt); border: 2px solid var(--ink); border-radius: 999px; padding: 6px 14px; font-size: clamp(13px, 3vw, 17px); white-space: nowrap; }
+  #timer.lowtime { color: #fff; background: var(--bad); animation: pulseRed 1s infinite; }
+  #combo { opacity: .55; transition: opacity .15s ease; }
+  #combo.hot { opacity: 1; color: var(--button-dark); }
+
+  #muteBtn, #quitBtn { position: absolute; top: 10px; font-size: clamp(15px, 2.4vw, 22px); background: var(--panel-alt); border: 2px solid var(--ink); border-radius: 8px; padding: 0.15em 0.45em; cursor: pointer; z-index: 3; }
+  #muteBtn { right: 10px; }
+  #quitBtn { left: 10px; }
+
+  #questionCard { position: relative; text-align: center; background: var(--panel-alt); border: 3px dashed var(--gold); border-radius: 18px; padding: 18px 10px 22px; margin-top: 6px; }
+  .badge { display: inline-block; font-size: clamp(12px, 2.6vw, 15px); font-weight: bold; border: 2px solid var(--ink); border-radius: 999px; padding: 2px 12px; color: #fff; }
+  .badge.g8 { background: #4a9d6e; }
+  .badge.g7 { background: #d68a2e; }
+  .badge.g6 { background: #c0392b; }
+  #hanjaChar { display: block; font-size: clamp(88px, 24vw, 140px); line-height: 1; margin-top: 6px; font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', serif; }
+  #hanjaChar.bounce { animation: charBounce .45s ease; }
+  #popups { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+  .popup { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); font-size: clamp(16px, 4vw, 24px); font-weight: bold; white-space: nowrap; animation: floatUp 1s ease forwards; }
+  .popup.good { color: var(--good-dark); }
+  .popup.bad { color: var(--button-dark); }
+  .popup.bonus { color: var(--gold); font-size: clamp(18px, 4.4vw, 27px); }
+  .confetti { position: absolute; font-size: 20px; animation: confettiRise .8s ease forwards; }
+
+  #choices { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+  #choices button {
+    font-family: inherit; font-size: clamp(16px, 3.6vw, 21px); color: var(--ink);
+    background: var(--panel); border: 3px solid var(--ink); border-radius: 12px;
+    padding: 0.6em 0.4em; box-shadow: 0 5px 0 var(--button-dark); cursor: pointer;
+  }
+  #choices button:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 1px 0 var(--button-dark); }
+  #choices button:disabled { cursor: default; }
+  #choices button.good { background: var(--good); color: #fff; border-color: var(--good-dark); box-shadow: 0 5px 0 var(--good-dark); }
+  #choices button.bad { background: var(--bad); color: #fff; border-color: var(--button-dark); animation: shake .4s; }
+  #choices button.reveal { background: var(--good); color: #fff; border-color: var(--good-dark); }
+
+  #playArea { position: relative; }
+  #playArea::after { content: ''; position: absolute; inset: -16px; pointer-events: none; border-radius: 18px; }
+  #playArea.flash-good::after { animation: flashGood .5s ease; }
+  #playArea.flash-bad::after { animation: flashBad .5s ease; }
+
+  .screen { display: flex; align-items: center; justify-content: center; padding: 10px 0; }
+  .modal { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; background: rgba(43,33,24,0.55); border-radius: 20px; }
+  .card { background: var(--panel); border: 4px solid var(--ink); border-radius: 18px; padding: 22px 20px; text-align: center; max-width: 94%; max-height: 92%; overflow: auto; box-shadow: 8px 8px 0 var(--button-dark); }
+  .card h1 { margin: 0 0 0.35em; font-size: clamp(24px, 5.5vw, 36px); font-weight: 400; }
+  .card p { margin: 0 0 0.7em; font-size: clamp(13px, 2.3vw, 16px); line-height: 1.6; text-align: left; }
+  .card .best, .card .stats { font-size: clamp(13px, 2.1vw, 16px); opacity: .9; margin-bottom: 0.7em; }
+  .card button { font-family: inherit; font-size: clamp(18px, 3.6vw, 26px); color: #fff; background: var(--button); border: 4px solid var(--ink); border-radius: 10px; padding: 0.25em 1.1em; box-shadow: 0 6px 0 var(--button-dark); cursor: pointer; margin: 4px; }
+  .card button:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--button-dark); }
+  .card button.small { font-size: clamp(13px, 2vw, 17px); padding: 0.25em 0.8em; border-width: 3px; box-shadow: 0 3px 0 var(--button-dark); background: var(--panel); color: var(--ink); }
+  .home { display: inline-block; margin-top: 0.7em; font-size: clamp(12px, 1.8vw, 15px); color: var(--ink); }
+
+  @keyframes shake { 10%,90%{transform:translateX(-1px)} 20%,80%{transform:translateX(2px)} 30%,50%,70%{transform:translateX(-7px)} 40%,60%{transform:translateX(7px)} }
+  @keyframes charBounce { 0%{transform:scale(.7) rotate(-6deg);opacity:.4} 55%{transform:scale(1.15) rotate(3deg);opacity:1} 100%{transform:scale(1) rotate(0)} }
+  @keyframes floatUp { 0%{transform:translate(-50%,0) scale(.8);opacity:0} 18%{opacity:1;transform:translate(-50%,-8px) scale(1.08)} 100%{transform:translate(-50%,-58px) scale(1);opacity:0} }
+  @keyframes confettiRise { 0%{transform:translate(0,0) rotate(0);opacity:1} 100%{transform:translate(var(--dx),-100px) rotate(var(--rot));opacity:0} }
+  @keyframes flashGood { 0%{background:rgba(46,158,82,0)} 30%{background:rgba(46,158,82,.32)} 100%{background:rgba(46,158,82,0)} }
+  @keyframes flashBad { 0%{background:rgba(214,69,65,0)} 30%{background:rgba(214,69,65,.32)} 100%{background:rgba(214,69,65,0)} }
+  @keyframes pulseRed { 0%,100%{box-shadow:inset 0 0 0 rgba(214,69,65,0)} 50%{box-shadow:inset 0 0 22px rgba(214,69,65,.7)} }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <button id="muteBtn" aria-label="소리 켜기 끄기">🔊</button>
+  <button id="quitBtn" class="hidden" aria-label="그만하기">🏠</button>
+
+  <div id="playArea" class="hidden">
+    <div id="hud">
+      <span class="pill" id="score">🏆 0점</span>
+      <span class="pill" id="timer">⏳ 60</span>
+      <span class="pill" id="lives">❤️❤️❤️</span>
+      <span class="pill" id="combo">🔥 콤보</span>
+    </div>
+    <div id="questionCard">
+      <span id="gradeBadge" class="badge">8급</span>
+      <span id="hanjaChar">一</span>
+      <div id="popups"></div>
+    </div>
+    <div id="choices"></div>
+  </div>
+
+  <div class="screen" id="startScreen">
+    <div class="card">
+      <h1>🀄 한자 맞추기</h1>
+      <p>
+        🀄 화면에 나온 한자를 보고, 알맞은 뜻과 소리(훈음)를 골라보세요!<br>
+        🎖️ 한자마다 급수가 표시돼요. 8급보다 7급, 7급보다 6급이 더 어렵고 점수도 더 높아요!<br>
+        ⏳ 시간은 60초! 정답을 많이 맞힐수록 시간이 늘어나요.<br>
+        🔥 연속으로 맞히면 콤보가 쌓이고 점수 배율도 쭉쭉 올라가요. 5콤보마다 시간이 3초 늘어나요!<br>
+        ❤️ 틀리면 목숨이 하나 줄고 시간도 2초 줄어요. 목숨 3개를 모두 잃으면 끝이에요.<br>
+        🏆 최고 점수에 도전해보세요!
+      </p>
+      <p class="best">최고 점수: <span id="bestStart">0</span>점</p>
+      <button id="startBtn">시작하기</button>
+      <br><a class="home" href="/">🏠 게임 놀이터로</a>
+    </div>
+  </div>
+
+  <div class="screen hidden" id="overScreen">
+    <div class="card">
+      <h1 id="overTitle">게임 끝! 🀄</h1>
+      <p class="stats" id="overStats"></p>
+      <p class="stats" id="earnResult"></p>
+      <p class="best">최고 점수: <span id="bestOver">0</span>점</p>
+      <button id="againBtn">다시하기</button>
+      <br><a class="home" href="/">🏠 게임 놀이터로</a>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="quitConfirm">
+    <div class="card">
+      <h1>⚠️ 잠깐!</h1>
+      <p style="text-align:center">정말 그만하고 처음 화면으로 돌아갈까요?<br>지금까지 점수는 사라져요.</p>
+      <button id="quitYes">네, 나갈게요</button>
+      <button id="quitNo" class="small">아니요</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- 한자 데이터 (초등 교육용 기초 한자 100자, 훈음, 급수) ----------
+// g(급수): 8급은 한국어문회 공식 배정한자 목록으로 확인됨. 7급·6급은 공식 세부 목록(7급Ⅱ·6급Ⅱ 구분)까지는
+// 확인하지 못해 개념 난이도(자연·신체=7급, 추상 개념어=6급)로 간단히 나눈 값이에요.
+const HANJA = [
+  {c:'一',m:'한',r:'일',g:8},{c:'二',m:'두',r:'이',g:8},{c:'三',m:'석',r:'삼',g:8},{c:'四',m:'넉',r:'사',g:8},{c:'五',m:'다섯',r:'오',g:8},
+  {c:'六',m:'여섯',r:'육',g:8},{c:'七',m:'일곱',r:'칠',g:8},{c:'八',m:'여덟',r:'팔',g:8},{c:'九',m:'아홉',r:'구',g:8},{c:'十',m:'열',r:'십',g:8},
+  {c:'日',m:'날',r:'일',g:8},{c:'月',m:'달',r:'월',g:8},{c:'火',m:'불',r:'화',g:8},{c:'水',m:'물',r:'수',g:8},{c:'木',m:'나무',r:'목',g:8},
+  {c:'金',m:'쇠',r:'금',g:8},{c:'土',m:'흙',r:'토',g:8},{c:'山',m:'메',r:'산',g:8},{c:'川',m:'내',r:'천',g:7},{c:'天',m:'하늘',r:'천',g:7},
+  {c:'地',m:'땅',r:'지',g:7},{c:'大',m:'큰',r:'대',g:8},{c:'小',m:'작을',r:'소',g:8},{c:'中',m:'가운데',r:'중',g:8},{c:'人',m:'사람',r:'인',g:8},
+  {c:'父',m:'아버지',r:'부',g:8},{c:'母',m:'어머니',r:'모',g:8},{c:'兄',m:'형',r:'형',g:8},{c:'弟',m:'아우',r:'제',g:8},{c:'子',m:'아들',r:'자',g:6},
+  {c:'女',m:'여자',r:'여',g:8},{c:'男',m:'남자',r:'남',g:6},{c:'王',m:'임금',r:'왕',g:8},{c:'東',m:'동녘',r:'동',g:8},{c:'西',m:'서녘',r:'서',g:8},
+  {c:'南',m:'남녘',r:'남',g:8},{c:'北',m:'북녘',r:'북',g:8},{c:'上',m:'윗',r:'상',g:7},{c:'下',m:'아래',r:'하',g:7},{c:'左',m:'왼',r:'좌',g:7},
+  {c:'右',m:'오른',r:'우',g:7},{c:'內',m:'안',r:'내',g:7},{c:'外',m:'바깥',r:'외',g:8},{c:'靑',m:'푸를',r:'청',g:8},{c:'白',m:'흰',r:'백',g:8},
+  {c:'黃',m:'누를',r:'황',g:6},{c:'口',m:'입',r:'구',g:7},{c:'目',m:'눈',r:'목',g:7},{c:'手',m:'손',r:'수',g:7},{c:'足',m:'발',r:'족',g:7},
+  {c:'心',m:'마음',r:'심',g:7},{c:'耳',m:'귀',r:'이',g:7},{c:'學',m:'배울',r:'학',g:8},{c:'校',m:'학교',r:'교',g:8},{c:'敎',m:'가르칠',r:'교',g:8},
+  {c:'室',m:'집',r:'실',g:8},{c:'門',m:'문',r:'문',g:8},{c:'先',m:'먼저',r:'선',g:8},{c:'生',m:'날',r:'생',g:8},{c:'花',m:'꽃',r:'화',g:7},
+  {c:'草',m:'풀',r:'초',g:7},{c:'林',m:'수풀',r:'림',g:7},{c:'空',m:'빌',r:'공',g:7},{c:'氣',m:'기운',r:'기',g:7},{c:'電',m:'번개',r:'전',g:7},
+  {c:'光',m:'빛',r:'광',g:7},{c:'風',m:'바람',r:'풍',g:7},{c:'雨',m:'비',r:'우',g:7},{c:'雪',m:'눈',r:'설',g:7},{c:'年',m:'해',r:'년',g:8},
+  {c:'春',m:'봄',r:'춘',g:7},{c:'夏',m:'여름',r:'하',g:7},{c:'秋',m:'가을',r:'추',g:6},{c:'冬',m:'겨울',r:'동',g:6},{c:'時',m:'때',r:'시',g:6},
+  {c:'入',m:'들',r:'입',g:6},{c:'出',m:'날',r:'출',g:6},{c:'立',m:'설',r:'립',g:6},{c:'食',m:'밥',r:'식',g:6},{c:'休',m:'쉴',r:'휴',g:6},
+  {c:'力',m:'힘',r:'력',g:6},{c:'有',m:'있을',r:'유',g:6},{c:'百',m:'일백',r:'백',g:6},{c:'千',m:'일천',r:'천',g:6},{c:'萬',m:'일만',r:'만',g:8},
+  {c:'韓',m:'한국',r:'한',g:8},{c:'國',m:'나라',r:'국',g:8},{c:'民',m:'백성',r:'민',g:8},{c:'軍',m:'군사',r:'군',g:8},{c:'農',m:'농사',r:'농',g:6},
+  {c:'工',m:'장인',r:'공',g:6},{c:'世',m:'인간',r:'세',g:6},{c:'全',m:'온전',r:'전',g:6},{c:'名',m:'이름',r:'명',g:6},{c:'道',m:'길',r:'도',g:6},
+  {c:'正',m:'바를',r:'정',g:6},{c:'事',m:'일',r:'사',g:6},{c:'物',m:'물건',r:'물',g:6},{c:'主',m:'주인',r:'주',g:6},{c:'命',m:'목숨',r:'명',g:6},
+];
+const itemText = h => h.m + ' ' + h.r;
+const GRADE_POINTS = { 8: 10, 7: 15, 6: 20 };
+
+// ---------- 소리 (컴퓨터가 직접 연주해요) ----------
+const Sound = {
+  ctx: null, muted: false,
+  ensure() { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); else if (this.ctx.state === 'suspended') this.ctx.resume(); },
+  tone(freq, t, len, type, vol, freqEnd) {
+    if (!this.ctx || this.muted) return;
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (freqEnd) o.frequency.exponentialRampToValueAtTime(freqEnd, t + len);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + len);
+    o.connect(g).connect(this.ctx.destination);
+    o.start(t); o.stop(t + len);
+  },
+  correct() { if (!this.ctx) return; const t = this.ctx.currentTime; this.tone(660, t, 0.12, 'triangle', 0.28); this.tone(880, t + 0.08, 0.16, 'triangle', 0.26); },
+  wrong() { if (!this.ctx) return; const t = this.ctx.currentTime; this.tone(220, t, 0.3, 'sawtooth', 0.28, 90); },
+  combo(level) { if (!this.ctx) return; const t = this.ctx.currentTime; [0, 0.07, 0.14].forEach((d, i) => this.tone(520 + i * 140 + (level || 0) * 6, t + d, 0.14, 'square', 0.18)); },
+  tick() { if (!this.ctx) return; this.tone(880, this.ctx.currentTime, 0.05, 'square', 0.08); },
+  gameover() { if (!this.ctx) return; const t = this.ctx.currentTime; this.tone(300, t, 0.5, 'sawtooth', 0.25, 70); },
+};
+
+// ---------- 상태 ----------
+const ROUND_TIME = 60;
+let score = 0, timeLeft = ROUND_TIME, lives = 3, combo = 0, bestCombo = 0;
+let totalAnswered = 0, totalCorrect = 0;
+let bag = [], lastChar = null, currentItem = null;
+let locked = false, gameOver = false, paused = false, timerHandle = null;
+
+const el = id => document.getElementById(id);
+const scoreEl = el('score'), timerEl = el('timer'), livesEl = el('lives'), comboEl = el('combo');
+const hanjaEl = el('hanjaChar'), choicesEl = el('choices'), popupsEl = el('popups'), gradeEl = el('gradeBadge');
+const playArea = el('playArea'), wrapEl = el('wrap');
+
+function shuffle(arr) { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
+function comboMultiplier(n) { if (n >= 10) return 3; if (n >= 6) return 2; if (n >= 3) return 1.5; return 1; }
+
+function drawItem() {
+  if (bag.length === 0) bag = shuffle(HANJA.slice());
+  let item = bag.pop();
+  if (item.c === lastChar && bag.length > 0) { bag.unshift(item); item = bag.pop(); }
+  lastChar = item.c;
+  return item;
+}
+
+function spawnPopup(text, kind) {
+  const span = document.createElement('span');
+  span.className = 'popup ' + kind;
+  span.textContent = text;
+  popupsEl.appendChild(span);
+  span.addEventListener('animationend', () => span.remove());
+}
+function spawnConfetti() {
+  const emojis = ['✨', '⭐', '🎉'];
+  for (let i = 0; i < 8; i++) {
+    const s = document.createElement('span');
+    s.className = 'confetti';
+    s.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+    s.style.left = (40 + Math.random() * 20) + '%';
+    s.style.top = '38%';
+    s.style.setProperty('--dx', (Math.random() * 120 - 60) + 'px');
+    s.style.setProperty('--rot', (Math.random() * 360 - 180) + 'deg');
+    popupsEl.appendChild(s);
+    s.addEventListener('animationend', () => s.remove());
+  }
+}
+function bounceChar() { hanjaEl.classList.remove('bounce'); void hanjaEl.offsetWidth; hanjaEl.classList.add('bounce'); }
+function shakeWrap() { wrapEl.classList.remove('shake'); void wrapEl.offsetWidth; wrapEl.classList.add('shake'); }
+function flashPlay(kind) {
+  const cls = kind === 'good' ? 'flash-good' : 'flash-bad';
+  playArea.classList.remove('flash-good', 'flash-bad');
+  void playArea.offsetWidth;
+  playArea.classList.add(cls);
+}
+
+function updateHUD() {
+  scoreEl.textContent = '🏆 ' + score + '점';
+  timerEl.textContent = '⏳ ' + Math.max(0, timeLeft);
+  timerEl.classList.toggle('lowtime', timeLeft <= 10 && timeLeft > 0);
+  livesEl.textContent = '❤️'.repeat(Math.max(0, lives)) + '🤍'.repeat(Math.max(0, 3 - lives));
+  if (combo >= 2) {
+    comboEl.textContent = '🔥 콤보 x' + combo + ' (x' + comboMultiplier(combo) + ')';
+    comboEl.classList.add('hot');
+  } else {
+    comboEl.textContent = '🔥 콤보';
+    comboEl.classList.remove('hot');
+  }
+}
+
+function renderQuestion() {
+  currentItem = drawItem();
+  hanjaEl.textContent = currentItem.c;
+  gradeEl.textContent = currentItem.g + '급';
+  gradeEl.className = 'badge g' + currentItem.g;
+  bounceChar();
+
+  const correctText = itemText(currentItem);
+  const pool = shuffle(HANJA.filter(h => h.c !== currentItem.c));
+  const distractors = [];
+  for (const h of pool) {
+    const t = itemText(h);
+    if (t !== correctText && !distractors.includes(t)) { distractors.push(t); if (distractors.length === 3) break; }
+  }
+  const options = shuffle([
+    { t: correctText, correct: true },
+    ...distractors.map(t => ({ t, correct: false })),
+  ]);
+
+  choicesEl.innerHTML = '';
+  options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.textContent = opt.t;
+    if (opt.correct) btn.dataset.correct = '1';
+    btn.addEventListener('click', () => selectChoice(btn, opt));
+    choicesEl.appendChild(btn);
+  });
+  locked = false;
+}
+
+function selectChoice(btn, opt) {
+  if (locked || gameOver) return;
+  locked = true;
+  totalAnswered++;
+  [...choicesEl.children].forEach(b => (b.disabled = true));
+
+  if (opt.correct) {
+    btn.classList.add('good');
+    handleCorrect();
+  } else {
+    btn.classList.add('bad');
+    const correctBtn = [...choicesEl.children].find(b => b.dataset.correct === '1');
+    if (correctBtn) correctBtn.classList.add('reveal');
+    handleWrong();
+  }
+
+  setTimeout(() => { if (!gameOver) renderQuestion(); }, opt.correct ? 650 : 1100);
+}
+
+function handleCorrect() {
+  totalCorrect++;
+  combo++;
+  bestCombo = Math.max(bestCombo, combo);
+  const gained = Math.round(GRADE_POINTS[currentItem.g] * comboMultiplier(combo));
+  score += gained;
+  spawnPopup('+' + gained, 'good');
+  spawnConfetti();
+  flashPlay('good');
+  Sound.correct();
+  if (combo % 5 === 0) {
+    timeLeft = Math.min(99, timeLeft + 3);
+    spawnPopup('+3초 보너스!', 'bonus');
+    Sound.combo(combo);
+  }
+  updateHUD();
+}
+
+function handleWrong() {
+  combo = 0;
+  lives--;
+  timeLeft = Math.max(1, timeLeft - 2);
+  spawnPopup('-2초', 'bad');
+  shakeWrap();
+  flashPlay('bad');
+  Sound.wrong();
+  updateHUD();
+  if (lives <= 0) endGame();
+}
+
+function startTimer() {
+  clearInterval(timerHandle);
+  timerHandle = setInterval(() => {
+    if (paused || gameOver) return;
+    timeLeft--;
+    if (timeLeft <= 10 && timeLeft > 0) Sound.tick();
+    if (timeLeft <= 0) { timeLeft = 0; updateHUD(); endGame(); return; }
+    updateHUD();
+  }, 1000);
+}
+
+function startGame() {
+  Sound.ensure();
+  score = 0; timeLeft = ROUND_TIME; lives = 3; combo = 0; bestCombo = 0;
+  totalAnswered = 0; totalCorrect = 0; bag = []; lastChar = null; gameOver = false;
+  el('startScreen').classList.add('hidden');
+  el('overScreen').classList.add('hidden');
+  playArea.classList.remove('hidden');
+  el('quitBtn').classList.remove('hidden');
+  updateHUD();
+  renderQuestion();
+  startTimer();
+}
+
+function endGame() {
+  if (gameOver) return;
+  gameOver = true;
+  clearInterval(timerHandle);
+  Sound.gameover();
+  playArea.classList.add('hidden');
+  el('quitBtn').classList.add('hidden');
+  const best = Math.max(score, Number(localStorage.getItem('hanjaGameBest') || 0));
+  localStorage.setItem('hanjaGameBest', String(best));
+  const acc = totalAnswered ? Math.round((totalCorrect / totalAnswered) * 100) : 0;
+  el('overTitle').textContent = lives <= 0 ? '아쉬워요! 💔' : '시간 종료! ⏰';
+  el('overStats').textContent = '점수 ' + score + '점 · 정답 ' + totalCorrect + '/' + totalAnswered + ' (' + acc + '%) · 최고 콤보 x' + bestCombo;
+  el('bestOver').textContent = best;
+  el('overScreen').classList.remove('hidden');
+  reportEarnedPoints();
+}
+
+// ---------- 게임 놀이터 포인트 적립 ----------
+// 게임 놀이터 허브와 같은 주소(origin)라서 localStorage에 저장된 로그인 토큰을 그대로 읽을 수 있어요.
+// 정답 개수만 서버로 보내고, 실제로 몇 점을 줄지(하루 한도 포함)는 서버가 정해요.
+const POINTS_TOKEN_KEY = 'fishing.points.token';
+
+async function reportEarnedPoints() {
+  const earnEl = el('earnResult');
+  const token = localStorage.getItem(POINTS_TOKEN_KEY);
+  if (!token) {
+    earnEl.textContent = '🏠 게임 놀이터에서 이름으로 로그인하면 정답 개수만큼 포인트를 모을 수 있어요!';
+    return;
+  }
+  try {
+    const res = await fetch('/api/points/earn', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ gameId: 'hanja-game', units: totalCorrect }),
+    });
+    const data = await res.json();
+    if (!res.ok) { earnEl.textContent = data.error || '포인트를 적립하지 못했어요.'; return; }
+    earnEl.textContent = data.awarded > 0
+      ? '🎉 포인트 +' + data.awarded + '점 적립! (지금 ' + data.points + '점)' + (data.dailyCapped ? ' — 오늘은 이 게임으로 더 못 모아요' : '')
+      : '오늘은 한자 맞추기로 모을 수 있는 포인트를 다 모았어요. (지금 ' + data.points + '점)';
+  } catch (err) {
+    earnEl.textContent = '포인트 적립에 실패했어요. 인터넷 연결을 확인해주세요.';
+  }
+}
+
+// ---------- 버튼 연결 ----------
+el('bestStart').textContent = localStorage.getItem('hanjaGameBest') || 0;
+el('startBtn').addEventListener('click', startGame);
+el('againBtn').addEventListener('click', startGame);
+
+el('muteBtn').addEventListener('click', () => {
+  Sound.muted = !Sound.muted;
+  el('muteBtn').textContent = Sound.muted ? '🔇' : '🔊';
+});
+
+el('quitBtn').addEventListener('click', () => el('quitConfirm').classList.remove('hidden'));
+el('quitYes').addEventListener('click', () => { window.location.href = '/'; });
+el('quitNo').addEventListener('click', () => el('quitConfirm').classList.add('hidden'));
+
+document.addEventListener('visibilitychange', () => { paused = document.hidden; });
+
+// 숫자키 1~4로도 답을 고를 수 있어요
+document.addEventListener('keydown', e => {
+  if (locked || gameOver || playArea.classList.contains('hidden')) return;
+  const idx = { '1': 0, '2': 1, '3': 2, '4': 3 }[e.key];
+  if (idx == null) return;
+  const btn = choicesEl.children[idx];
+  if (btn && !btn.disabled) btn.click();
+});
+</script>
+</body>
+</html>
