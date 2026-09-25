@@ -72,6 +72,11 @@
     text-align: center; font-size: 13px; color: #8be0ff; pointer-events: none; text-shadow: 0 2px 4px #000c;
   }
   #freezeIndicator.hidden { display: none; }
+  #speedIndicator {
+    position: absolute; left: 0; right: 0; top: calc(100px + env(safe-area-inset-top, 0px));
+    text-align: center; font-size: 13px; color: #ffcf3f; pointer-events: none; text-shadow: 0 2px 4px #000c;
+  }
+  #speedIndicator.hidden { display: none; }
 
   .overlay {
     position: absolute; inset: 0;
@@ -158,7 +163,8 @@
   </div>
   <div id="captureBar"><i id="captureFill"></i></div>
   <div id="captureLabel">0% / 70%</div>
-  <div id="freezeIndicator" class="hidden">❄️ <span id="freezeSeconds">0</span>초 동안 괴물이 멈춰요!</div>
+  <div id="freezeIndicator" class="hidden">🛑 <span id="freezeSeconds">0</span>초 동안 괴물이 멈춰요!</div>
+  <div id="speedIndicator" class="hidden">⚡ <span id="speedSeconds">0</span>초 동안 빨라져요!</div>
 
   <button id="muteBtn" aria-label="소리 켜기 끄기">🔊</button>
   <button id="pauseBtn" class="hidden" aria-label="멈추기">⏸️</button>
@@ -189,7 +195,7 @@
          땅을 <b id="startTargetPct">70%</b> 차지하면 클리어! 다음 별로 이동해요.<br>
          (스테이지가 오를수록 목표 비율도 조금씩 높아져요)<br>
          스테이지 3부터는 땅을 차지할 때 가끔 아이템이 나와요!<br>
-         ❄️ 괴물이 잠깐 멈춰요 · ❤️ 목숨이 하나 늘어나요</p>
+         🛑 괴물 정지 · ❤️ 목숨 +1 · 🛡️ 보호막 · ⚡ 스피드 업</p>
       <button id="startBtn">시작하기 ▶</button>
       <p style="margin-top:0.8em; font-size:0.85em; color:#8ba0d6;">PC에서는 방향키·WASD로 움직여요</p>
       <a id="homeLink" class="home hidden" href="/">🏠 게임 놀이터로</a>
@@ -257,6 +263,9 @@ const Snd = {
     if (kind === 'gameover') { [392, 349, 294, 220].forEach((f, i) => this.tone(f, t + i * 0.16, 0.24, 'sine', 0.16)); return; }
     if (kind === 'freeze') { this.tone(1400, t, 0.18, 'sine', 0.1, 500); this.tone(1800, t + 0.05, 0.14, 'sine', 0.08, 700); return; }
     if (kind === 'life') { [660, 880, 1108].forEach((f, i) => this.tone(f, t + i * 0.09, 0.18, 'triangle', 0.15)); return; }
+    if (kind === 'shield') { this.tone(500, t, 0.1, 'sine', 0.1); this.tone(760, t + 0.06, 0.16, 'sine', 0.12); return; }
+    if (kind === 'shieldBreak') { this.tone(600, t, 0.1, 'square', 0.1, 300); return; }
+    if (kind === 'speed') { [700, 950, 1250].forEach((f, i) => this.tone(f, t + i * 0.045, 0.08, 'square', 0.1)); return; }
   },
 };
 
@@ -396,10 +405,21 @@ function checkEnemyHits() {
 const ITEM_MIN_STAGE = 3;
 const ITEM_CHANCE = 0.35;
 const MAX_ITEMS_ON_FIELD = 3;
-const ITEM_ICON = { freeze: '❄️', life: '❤️' };
-const ITEM_COLOR = { freeze: '#8be0ff', life: '#ff6b4a' };
+const MAX_SHIELD_CHARGES = 2;
+const ITEM_COLOR = { freeze: '#e53935', life: '#ff2d55', shield: '#4be3ff', speed: '#ffcf3f' };
 let items = [];
 let freezeEnemiesT = 0;
+let speedBoostT = 0;
+let shieldCharges = 0;
+
+// 확률: 괴물 정지 35% · 보호막 20% · 스피드 25% · 목숨(제일 귀해요) 20%
+function pickItemKind() {
+  const r = Math.random();
+  if (r < 0.35) return 'freeze';
+  if (r < 0.55) return 'shield';
+  if (r < 0.80) return 'speed';
+  return 'life';
+}
 
 function maybeSpawnItem(newlyClaimed) {
   if (stage < ITEM_MIN_STAGE || newlyClaimed.length === 0) return;
@@ -410,8 +430,7 @@ function maybeSpawnItem(newlyClaimed) {
   const pool = visible.length ? visible : newlyClaimed;
   const idx = pool[Math.floor(Math.random() * pool.length)];
   const gx = idx % COLS, gy = (idx / COLS) | 0;
-  const kind = Math.random() < 0.65 ? 'freeze' : 'life';
-  items.push({ gx, gy, x: (gx + 0.5) * CELL, y: (gy + 0.5) * CELL, kind, bob: Math.random() * 10 });
+  items.push({ gx, gy, x: (gx + 0.5) * CELL, y: (gy + 0.5) * CELL, kind: pickItemKind(), bob: Math.random() * 10 });
 }
 
 function collectItem(it) {
@@ -419,12 +438,22 @@ function collectItem(it) {
     freezeEnemiesT = 5;
     updateFreezeUi();
     Snd.play('freeze');
-    addPopup(it.x, it.y - 10, '괴물 정지! ❄️', ITEM_COLOR.freeze);
+    addPopup(it.x, it.y - 10, '괴물 정지! 🛑', ITEM_COLOR.freeze);
   } else if (it.kind === 'life') {
     lives = Math.min(5, lives + 1);
     updateHud();
     Snd.play('life');
     addPopup(it.x, it.y - 10, '+1 생명', ITEM_COLOR.life);
+  } else if (it.kind === 'shield') {
+    shieldCharges = Math.min(MAX_SHIELD_CHARGES, shieldCharges + 1);
+    updateHud();
+    Snd.play('shield');
+    addPopup(it.x, it.y - 10, '보호막 획득! 🛡️', ITEM_COLOR.shield);
+  } else if (it.kind === 'speed') {
+    speedBoostT = 6;
+    updateSpeedUi();
+    Snd.play('speed');
+    addPopup(it.x, it.y - 10, '스피드 업! ⚡', ITEM_COLOR.speed);
   }
 }
 
@@ -512,12 +541,16 @@ const pauseScreen = document.getElementById('pauseScreen');
 const overScreen = document.getElementById('overScreen');
 const pauseBtn = document.getElementById('pauseBtn');
 
-function tickInterval() { return Math.max(55, 95 - stage * 4) / 1000; }
+function tickInterval() {
+  const base = Math.max(55, 95 - stage * 4);
+  return (speedBoostT > 0 ? base * 0.55 : base) / 1000;
+}
 
 function updateHud() {
   document.getElementById('scoreText').textContent = score;
   document.getElementById('stageText').textContent = 'STAGE ' + stage;
-  document.getElementById('livesText').textContent = '❤️'.repeat(Math.max(0, lives));
+  const shieldBadge = shieldCharges > 0 ? ' 🛡️×' + shieldCharges : '';
+  document.getElementById('livesText').textContent = '❤️'.repeat(Math.max(0, lives)) + shieldBadge;
 }
 function updateCaptureUi() {
   const pct = Math.min(100, capturedPercent());
@@ -533,6 +566,15 @@ function updateFreezeUi() {
     freezeIndicator.classList.add('hidden');
   }
 }
+const speedIndicator = document.getElementById('speedIndicator');
+function updateSpeedUi() {
+  if (speedBoostT > 0) {
+    speedIndicator.classList.remove('hidden');
+    document.getElementById('speedSeconds').textContent = speedBoostT.toFixed(1);
+  } else {
+    speedIndicator.classList.add('hidden');
+  }
+}
 
 function initStage(n) {
   stage = n;
@@ -544,7 +586,10 @@ function initStage(n) {
   spawnEnemies(count, speed);
   items = [];
   freezeEnemiesT = 0;
+  speedBoostT = 0;
+  shieldCharges = 0;
   updateFreezeUi();
+  updateSpeedUi();
   moveTimer = tickInterval();
   renderTerrain();
   updateHud();
@@ -575,6 +620,17 @@ function stageClear() {
 }
 
 function loseLife() {
+  if (shieldCharges > 0) {
+    shieldCharges--;
+    updateHud();
+    Snd.play('shieldBreak');
+    explode(player.px, player.py, ITEM_COLOR.shield);
+    addPopup(player.px, player.py - 14, '보호막이 막아줬어요! 🛡️', ITEM_COLOR.shield);
+    state = 'respawn';
+    respawnTimer = 0.6;
+    window._nextStage = null;
+    return;
+  }
   Snd.play('hit');
   explode(player.px, player.py, '#ff8a3d');
   lives--;
@@ -662,6 +718,7 @@ function update(dt) {
 
   if (freezeEnemiesT > 0) { freezeEnemiesT = Math.max(0, freezeEnemiesT - dt); updateFreezeUi(); }
   else { for (const e of enemies) updateEnemy(e, dt); }
+  if (speedBoostT > 0) { speedBoostT = Math.max(0, speedBoostT - dt); updateSpeedUi(); }
   checkEnemyHits();
   if (state !== 'play') return; // loseLife()가 방금 respawn 상태로 바꿨을 수 있어요
 
@@ -716,25 +773,85 @@ function drawEnemy(e) {
   ctx.restore();
   if (frozen) {
     ctx.save();
-    ctx.translate(e.x, e.y);
-    ctx.font = (e.r * 1.4) + 'px sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('❄️', 0, -e.r * 1.3);
+    ctx.translate(e.x, -e.r * 1.3 + e.y);
+    drawStopSignIcon(e.r * 0.55);
     ctx.restore();
   }
 }
+
+// 아이템 아이콘은 이모지 대신 직접 그려요(기기마다 이모지가 다르게 나와서 안 예뻐 보였어요)
+function drawHeartIcon(s) {
+  ctx.beginPath();
+  const top = s * 0.28;
+  ctx.moveTo(0, top);
+  ctx.bezierCurveTo(-s * 0.55, -s * 0.35, -s * 1.05, s * 0.28, 0, s * 0.95);
+  ctx.bezierCurveTo(s * 1.05, s * 0.28, s * 0.55, -s * 0.35, 0, top);
+  ctx.closePath();
+  ctx.fillStyle = '#ff2d55';
+  ctx.fill();
+  ctx.strokeStyle = '#8a0f2a'; ctx.lineWidth = 1.4; ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(-s * 0.28, s * 0.05, s * 0.16, s * 0.1, -0.6, 0, 7);
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.fill();
+}
+function drawStopSignIcon(s) {
+  ctx.beginPath();
+  const sides = 8;
+  for (let i = 0; i < sides; i++) {
+    const a = Math.PI / 8 + i * (Math.PI * 2 / sides);
+    const px = Math.cos(a) * s, py = Math.sin(a) * s;
+    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fillStyle = '#e53935';
+  ctx.fill();
+  ctx.lineWidth = s * 0.18; ctx.strokeStyle = '#fff'; ctx.stroke();
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(-s * 0.3, -s * 0.16, s * 0.6, s * 0.32);
+}
+function drawShieldIcon(s) {
+  ctx.beginPath();
+  ctx.moveTo(0, -s);
+  ctx.quadraticCurveTo(s * 0.95, -s * 0.75, s * 0.9, -s * 0.05);
+  ctx.quadraticCurveTo(s * 0.85, s * 0.75, 0, s);
+  ctx.quadraticCurveTo(-s * 0.85, s * 0.75, -s * 0.9, -s * 0.05);
+  ctx.quadraticCurveTo(-s * 0.95, -s * 0.75, 0, -s);
+  ctx.closePath();
+  ctx.fillStyle = '#4be3ff';
+  ctx.fill();
+  ctx.strokeStyle = '#0b3550'; ctx.lineWidth = 1.6; ctx.stroke();
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = s * 0.18; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.38, 0);
+  ctx.lineTo(-s * 0.08, s * 0.35);
+  ctx.lineTo(s * 0.42, -s * 0.3);
+  ctx.stroke();
+}
+function drawBoltIcon(s) {
+  ctx.beginPath();
+  ctx.moveTo(s * 0.12, -s);
+  ctx.lineTo(-s * 0.55, s * 0.12);
+  ctx.lineTo(-s * 0.05, s * 0.12);
+  ctx.lineTo(-s * 0.2, s);
+  ctx.lineTo(s * 0.55, -s * 0.08);
+  ctx.lineTo(s * 0.05, -s * 0.08);
+  ctx.closePath();
+  ctx.fillStyle = '#ffcf3f';
+  ctx.fill();
+  ctx.strokeStyle = '#b8860b'; ctx.lineWidth = 1.2; ctx.stroke();
+}
+const ITEM_DRAW = { life: drawHeartIcon, freeze: drawStopSignIcon, shield: drawShieldIcon, speed: drawBoltIcon };
 
 function drawItem(it) {
   const bob = Math.sin(performance.now() / 300 + it.bob) * 3;
   ctx.save();
   ctx.translate(it.x, it.y + bob);
-  ctx.beginPath(); ctx.arc(0, 0, CELL * 0.65, 0, 7);
-  ctx.fillStyle = ITEM_COLOR[it.kind] + '33';
-  ctx.strokeStyle = ITEM_COLOR[it.kind]; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(0, 0, CELL * 0.7, 0, 7);
+  ctx.fillStyle = 'rgba(10, 16, 30, 0.55)';
+  ctx.strokeStyle = ITEM_COLOR[it.kind]; ctx.lineWidth = 2;
   ctx.fill(); ctx.stroke();
-  ctx.font = (CELL * 1.1) + 'px sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(ITEM_ICON[it.kind], 0, 1);
+  ITEM_DRAW[it.kind](CELL * 0.42);
   ctx.restore();
 }
 
