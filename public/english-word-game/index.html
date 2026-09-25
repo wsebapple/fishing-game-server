@@ -132,6 +132,24 @@
     font-size: clamp(13px, 2.4vw, 16px);
   }
 
+  .dirToggle { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin: 8px 0 4px; }
+  .dirToggle button {
+    font-family: inherit; font-size: clamp(12px, 2.4vw, 15px); color: var(--ink);
+    background: var(--panel-alt); border: 2px solid var(--ink); border-radius: 999px;
+    padding: 6px 14px; cursor: pointer;
+  }
+  .dirToggle button.active { color: #fff; background: var(--button); border-color: var(--button-dark); }
+
+  .badge.dirbadge { background: #6b5b95; margin-left: 6px; }
+  .listenWrap { margin-top: 8px; }
+  .listenBtn {
+    font-family: inherit; font-size: clamp(13px, 2.6vw, 16px); color: #fff;
+    background: var(--gold); border: 2px solid var(--ink); border-radius: 999px;
+    padding: 6px 16px; cursor: pointer; box-shadow: 0 4px 0 #1f6fa8;
+  }
+  .listenBtn:active { transform: translateY(2px); box-shadow: 0 2px 0 #1f6fa8; }
+  .listenBtn.hidden { display: none; }
+
   @keyframes shake { 10%,90%{transform:translateX(-1px)} 20%,80%{transform:translateX(2px)} 30%,50%,70%{transform:translateX(-7px)} 40%,60%{transform:translateX(7px)} }
   @keyframes charBounce { 0%{transform:scale(.7) rotate(-6deg);opacity:.4} 55%{transform:scale(1.15) rotate(3deg);opacity:1} 100%{transform:scale(1) rotate(0)} }
   @keyframes floatUp { 0%{transform:translate(-50%,0) scale(.8);opacity:0} 18%{opacity:1;transform:translate(-50%,-8px) scale(1.08)} 100%{transform:translate(-50%,-58px) scale(1);opacity:0} }
@@ -155,7 +173,9 @@
     </div>
     <div id="questionCard">
       <span id="levelBadge" class="badge lv1">1단계</span>
+      <span id="dirBadge" class="badge dirbadge">🔤→🇰🇷</span>
       <span id="wordText">cat</span>
+      <div class="listenWrap"><button type="button" id="listenBtn" class="listenBtn" aria-label="영단어 발음 듣기">🔊 발음 듣기</button></div>
       <div id="popups"></div>
     </div>
     <div id="choices"></div>
@@ -170,10 +190,16 @@
         ⏳ 시간은 60초! 정답을 많이 맞힐수록 시간이 늘어나요.<br>
         🔥 연속으로 맞히면 콤보가 쌓이고 점수 배율도 쭉쭉 올라가요. 5콤보마다 시간이 3초 늘어나요!<br>
         ❤️ 틀리면 목숨이 하나 줄고 시간도 2초 줄어요. 목숨 3개를 모두 잃으면 끝이에요.<br>
-        🎯 여러 단계를 이어서 풀면 점수가 계속 쌓이고, 게임 놀이터로 완전히 나갈 때 모은 점수가 포인트로 바뀌어요!
+        🔊 문제에 나온 단어의 발음이 궁금하면 "발음 듣기" 버튼을 눌러보세요!<br>
+        🎯 정답을 맞히면 그 자리에서 바로 게임 놀이터 포인트로 적립돼요. 여러 단계를 이어서 풀면 이번 방문 점수도 계속 쌓여요!
       </p>
       <div class="sessionPill hidden" id="sessionPill"></div>
-      <p style="text-align:center;font-size:clamp(13px,2.1vw,16px);margin-bottom:4px;">원하는 단계를 골라 시작해요!</p>
+      <p style="text-align:center;font-size:clamp(13px,2.1vw,16px);margin:6px 0 2px;">문제 방향을 골라요!</p>
+      <div class="dirToggle" id="dirToggle">
+        <button type="button" data-dir="en2ko">🔤→🇰🇷 영어 보고 뜻 맞히기</button>
+        <button type="button" data-dir="ko2en">🇰🇷→🔤 뜻 보고 영어 맞히기</button>
+      </div>
+      <p style="text-align:center;font-size:clamp(13px,2.1vw,16px);margin:10px 0 4px;">원하는 단계를 골라 시작해요!</p>
       <div id="levelGrid"></div>
       <br><a class="home" href="/" id="homeFromStart">🏠 게임 놀이터로</a>
     </div>
@@ -194,7 +220,7 @@
   <div class="modal hidden" id="quitConfirm">
     <div class="card">
       <h1>⚠️ 잠깐!</h1>
-      <p style="text-align:center">정말 그만하고 단계 선택 화면으로 돌아갈까요?<br>지금까지 모은 점수는 그대로 저장돼요.</p>
+      <p style="text-align:center">정말 그만하고 단계 선택 화면으로 돌아갈까요?<br>지금까지 맞힌 정답은 포인트로 적립돼요.</p>
       <button id="quitYes">네, 나갈게요</button>
       <button id="quitNo" class="small">아니요</button>
     </div>
@@ -284,6 +310,21 @@ const Sound = {
   gameover() { if (!this.ctx) return; const t = this.ctx.currentTime; this.tone(300, t, 0.5, 'sawtooth', 0.25, 70); },
 };
 
+// ---------- 발음 듣기 (브라우저 내장 음성 합성) ----------
+const Speech = {
+  supported: typeof window !== 'undefined' && 'speechSynthesis' in window,
+  speak(text) {
+    if (!this.supported || !text) return;
+    try {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'en-US';
+      u.rate = 0.85;
+      window.speechSynthesis.speak(u);
+    } catch (e) { /* 음성 합성을 지원하지 않는 브라우저는 조용히 넘어가요 */ }
+  },
+};
+
 // ---------- 상태 ----------
 const ROUND_TIME = 60;
 let score = 0, timeLeft = ROUND_TIME, lives = 3, combo = 0, bestCombo = 0;
@@ -291,11 +332,15 @@ let totalAnswered = 0, totalCorrect = 0;
 let bag = [], lastWord = null, currentItem = null;
 let locked = false, gameOver = false, paused = false, timerHandle = null;
 let currentLevel = 1;
+const DIRECTION_KEY = 'englishWordGameDirection';
+let direction = localStorage.getItem(DIRECTION_KEY) === 'ko2en' ? 'ko2en' : 'en2ko';
 
 const el = id => document.getElementById(id);
 const scoreEl = el('score'), timerEl = el('timer'), livesEl = el('lives'), comboEl = el('combo');
-const wordEl = el('wordText'), choicesEl = el('choices'), popupsEl = el('popups'), levelBadgeEl = el('levelBadge');
+const wordEl = el('wordText'), choicesEl = el('choices'), popupsEl = el('popups'), levelBadgeEl = el('levelBadge'), dirBadgeEl = el('dirBadge');
 const playArea = el('playArea'), wrapEl = el('wrap');
+const listenBtn = el('listenBtn');
+if (!Speech.supported) listenBtn.classList.add('hidden');
 
 const BEST_KEY = 'englishWordGameBest';
 function loadBests() { try { return JSON.parse(localStorage.getItem(BEST_KEY)) || {}; } catch (e) { return {}; } }
@@ -364,17 +409,21 @@ function updateHUD() {
 
 function renderQuestion() {
   currentItem = drawItem();
-  wordEl.textContent = currentItem.w;
+  const isKo2En = direction === 'ko2en';
+  wordEl.textContent = isKo2En ? currentItem.m : currentItem.w;
+  wordEl.lang = isKo2En ? 'ko' : 'en';
   levelBadgeEl.textContent = currentLevel + '단계';
   levelBadgeEl.className = 'badge lv' + currentLevel;
+  dirBadgeEl.textContent = isKo2En ? '🇰🇷→🔤' : '🔤→🇰🇷';
   bounceWord();
 
-  const correctText = currentItem.m;
+  const correctText = isKo2En ? currentItem.w : currentItem.m;
   const levelPool = wordsForLevel(currentLevel).filter(w => w.w !== currentItem.w);
   const pool = shuffle(levelPool.length >= 3 ? levelPool : WORDS.filter(w => w.w !== currentItem.w));
   const distractors = [];
   for (const w of pool) {
-    if (w.m !== correctText && !distractors.includes(w.m)) { distractors.push(w.m); if (distractors.length === 3) break; }
+    const t = isKo2En ? w.w : w.m;
+    if (t !== correctText && !distractors.includes(t)) { distractors.push(t); if (distractors.length === 3) break; }
   }
   const options = shuffle([
     { t: correctText, correct: true },
@@ -385,6 +434,7 @@ function renderQuestion() {
   options.forEach(opt => {
     const btn = document.createElement('button');
     btn.textContent = opt.t;
+    btn.lang = isKo2En ? 'en' : 'ko';
     if (opt.correct) btn.dataset.correct = '1';
     btn.addEventListener('click', () => selectChoice(btn, opt));
     choicesEl.appendChild(btn);
@@ -466,7 +516,7 @@ function startGame(level) {
   startTimer();
 }
 
-function endGame() {
+async function endGame() {
   if (gameOver) return;
   gameOver = true;
   clearInterval(timerHandle);
@@ -475,69 +525,60 @@ function endGame() {
   el('quitBtn').classList.add('hidden');
   const best = saveBest(currentLevel, score);
   const totalScore = addSessionScore(score);
-  addSessionCorrect(totalCorrect);
   const acc = totalAnswered ? Math.round((totalCorrect / totalAnswered) * 100) : 0;
   el('overTitle').textContent = lives <= 0 ? '아쉬워요! 💔' : '시간 종료! ⏰';
   el('overStats').textContent = currentLevel + '단계 · 점수 ' + score + '점 · 정답 ' + totalCorrect + '/' + totalAnswered + ' (' + acc + '%) · 최고 콤보 x' + bestCombo;
-  el('earnResult').textContent = describeAccumulation(score, totalScore);
+  el('earnResult').textContent = '포인트 적립 중...';
   el('bestOver').textContent = best;
   el('overScreen').classList.remove('hidden');
   updateSessionPill();
+  el('earnResult').textContent = await reportEarnedPoints(totalCorrect, totalScore);
 }
 
-// ---------- 이번 방문에서 모은 점수 (여러 단계를 이어서 풀면 계속 쌓여요) ----------
-// 실제 게임 놀이터 포인트로 바꾸는 건 이 게임을 완전히 나갈 때(leaveToHub) 한 번만 해요.
+// ---------- 게임 놀이터 포인트 적립 ----------
+// 게임 놀이터 허브와 같은 주소(origin)라서 localStorage에 저장된 로그인 토큰을 그대로 읽을 수 있어요.
+// 라운드가 끝날 때마다(시간 종료·목숨 소진·중단 모두) 그 라운드의 정답 개수만큼 바로 서버에 적립을 요청해요.
+// 실제로 몇 점을 줄지(하루 한도 포함)는 서버가 정해요. sessionScore는 이번 방문에서 모은 점수를 보여주기 위한 화면 표시용 합계예요.
 const POINTS_TOKEN_KEY = 'fishing.points.token';
 const SESSION_SCORE_KEY = 'englishWordGameSessionScore';
-const SESSION_CORRECT_KEY = 'englishWordGameSessionCorrect';
 
 function loadSessionScore() { return Number(sessionStorage.getItem(SESSION_SCORE_KEY)) || 0; }
-function loadSessionCorrect() { return Number(sessionStorage.getItem(SESSION_CORRECT_KEY)) || 0; }
 function addSessionScore(value) {
   const total = loadSessionScore() + value;
   sessionStorage.setItem(SESSION_SCORE_KEY, String(total));
   return total;
 }
-function addSessionCorrect(value) {
-  const total = loadSessionCorrect() + value;
-  sessionStorage.setItem(SESSION_CORRECT_KEY, String(total));
-  return total;
-}
 
-function describeAccumulation(roundScore, totalScore) {
+async function reportEarnedPoints(roundCorrect, totalScore) {
   const token = localStorage.getItem(POINTS_TOKEN_KEY);
-  if (!token) return '🏠 게임 놀이터에서 이름으로 로그인하면 모은 점수를 포인트로 바꿀 수 있어요!';
-  return '이번 게임에서 ' + roundScore + '점 획득했어요! (모은 점수 총 ' + totalScore + '점 — 게임 놀이터로 나갈 때 포인트로 바뀌어요)';
+  const totalNote = ' (이번 방문 누적 점수 ' + totalScore + '점)';
+  if (!token) return '🏠 게임 놀이터에서 이름으로 로그인하면 정답 개수만큼 포인트를 모을 수 있어요!' + totalNote;
+  if (roundCorrect <= 0) return '정답을 맞히면 포인트를 모을 수 있어요!' + totalNote;
+  try {
+    const res = await fetch('/api/points/earn', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ gameId: 'english-word-game', units: roundCorrect }),
+    });
+    const data = await res.json();
+    if (!res.ok) return (data.error || '포인트를 적립하지 못했어요.') + totalNote;
+    return (data.awarded > 0
+      ? '🎉 포인트 +' + data.awarded + '점 적립! (지금 ' + data.points + '점)' + (data.dailyCapped ? ' — 오늘은 이 게임으로 더 못 모아요' : '')
+      : '오늘은 영단어 맞추기로 모을 수 있는 포인트를 다 모았어요. (지금 ' + data.points + '점)') + totalNote;
+  } catch (err) {
+    return '포인트 적립에 실패했어요. 인터넷 연결을 확인해주세요.' + totalNote;
+  }
 }
 
 function updateSessionPill() {
   const pillEl = el('sessionPill');
   const totalScore = loadSessionScore();
   if (totalScore > 0) {
-    pillEl.textContent = '🎯 획득한 점수(포인트): ' + totalScore + '점';
+    pillEl.textContent = '🎯 이번 방문 누적 점수: ' + totalScore + '점';
     pillEl.classList.remove('hidden');
   } else {
     pillEl.classList.add('hidden');
   }
-}
-
-// 게임 놀이터 허브와 같은 주소(origin)라서 localStorage에 저장된 로그인 토큰을 그대로 읽을 수 있어요.
-// 모은 정답 개수를 서버로 보내고, 실제로 몇 점을 줄지(하루 한도 포함)는 서버가 정해요.
-async function leaveToHub() {
-  const token = localStorage.getItem(POINTS_TOKEN_KEY);
-  const units = loadSessionCorrect();
-  if (token && units > 0) {
-    try {
-      await fetch('/api/points/earn', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-        body: JSON.stringify({ gameId: 'english-word-game', units }),
-      });
-    } catch (err) { /* 실패해도 그냥 나가요 */ }
-  }
-  sessionStorage.removeItem(SESSION_SCORE_KEY);
-  sessionStorage.removeItem(SESSION_CORRECT_KEY);
-  window.location.href = '/';
 }
 
 // ---------- 단계 선택 화면 ----------
@@ -578,14 +619,17 @@ el('muteBtn').addEventListener('click', () => {
 });
 
 el('quitBtn').addEventListener('click', () => el('quitConfirm').classList.remove('hidden'));
-el('quitYes').addEventListener('click', () => {
+el('quitYes').addEventListener('click', async () => {
   el('quitConfirm').classList.add('hidden');
   gameOver = true;
   clearInterval(timerHandle);
   el('quitBtn').classList.add('hidden');
-  const totalScore = addSessionScore(score);
-  addSessionCorrect(totalCorrect);
-  showRoundResult(describeAccumulation(score, totalScore));
+  const roundScore = score, roundCorrect = totalCorrect;
+  const totalScore = addSessionScore(roundScore);
+  updateSessionPill();
+  showRoundResult('이번 게임에서 ' + roundScore + '점 획득했어요! 포인트 적립 중...');
+  const msg = await reportEarnedPoints(roundCorrect, totalScore);
+  showRoundResult('이번 게임에서 ' + roundScore + '점 획득했어요! ' + msg);
 });
 el('quitNo').addEventListener('click', () => el('quitConfirm').classList.add('hidden'));
 
@@ -596,9 +640,17 @@ el('roundResultOk').addEventListener('click', () => {
   el('startScreen').classList.remove('hidden');
 });
 
-['homeFromStart', 'homeFromOver'].forEach(id => {
-  el(id).addEventListener('click', e => { e.preventDefault(); leaveToHub(); });
+listenBtn.addEventListener('click', () => { if (currentItem) Speech.speak(currentItem.w); });
+
+function setDirection(dir) {
+  direction = dir;
+  localStorage.setItem(DIRECTION_KEY, dir);
+  document.querySelectorAll('#dirToggle button').forEach(b => b.classList.toggle('active', b.dataset.dir === dir));
+}
+document.querySelectorAll('#dirToggle button').forEach(b => {
+  b.addEventListener('click', () => setDirection(b.dataset.dir));
 });
+setDirection(direction);
 
 document.addEventListener('visibilitychange', () => { paused = document.hidden; });
 
