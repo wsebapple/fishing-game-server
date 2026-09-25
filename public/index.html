@@ -91,9 +91,10 @@
     margin:0 0 20px; font-size:16px; color:var(--ink-soft);
   }
   .pointsBar .amount{ font-size:18px; color:var(--ink); font-weight:bold; }
-  .pointsBar button{
+  .pointsBar button, .pointsBar a{
     font:inherit; font-size:13px; color:var(--ink-soft); background:none;
     border:1px solid var(--card-edge); border-radius:999px; padding:4px 12px; cursor:pointer;
+    text-decoration:none;
   }
 
   .modalOverlay{
@@ -136,6 +137,7 @@
 
   <div class="pointsBar" id="pointsBar" hidden>
     <span><span id="pointsName"></span>님, 포인트 <span class="amount" id="pointsAmount"></span>점</span>
+    <a href="/admin/" id="adminLinkBtn" hidden>관리자 페이지</a>
     <button type="button" id="switchNameBtn">다른 이름으로</button>
   </div>
 
@@ -359,6 +361,9 @@ async function showLiveCount(url, target){
 }
 
 const POINTS_TOKEN_KEY = 'fishing.points.token';
+// 이 이름으로 로그인하면 허브 화면에 관리자 페이지 버튼을 보여줘요. 버튼은 /admin/으로 가는 링크일 뿐이고,
+// 실제 관리자 권한은 그 페이지에서 따로 관리자 코드(ADMIN_KEY)를 넣어야 생겨요 — 이 이름/PIN만으로는 아무 권한도 안 생겨요.
+const ADMIN_NAME = '이수인';
 
 function showLoginOverlay(message){
   document.getElementById('loginError').textContent = message || '';
@@ -370,6 +375,7 @@ function hideLoginOverlay(){
 function showPointsBar(name, amount){
   document.getElementById('pointsName').textContent = name;
   document.getElementById('pointsAmount').textContent = amount;
+  document.getElementById('adminLinkBtn').hidden = name !== ADMIN_NAME;
   document.getElementById('pointsBar').hidden = false;
 }
 
