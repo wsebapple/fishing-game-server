@@ -119,6 +119,26 @@ test('grant adds or subtracts points for an existing name, clamped at 0, and rej
   }
 });
 
+test('remove deletes an existing account, and logging back in with the same name starts fresh', async () => {
+  const { directory, file } = await tmpFile();
+  try {
+    const points = createPoints(file, 'test-secret');
+    await points.login('민지', '1234');
+    await points.grant('민지', 20);
+
+    await points.remove('민지');
+    assert.equal(await points.getPoints('민지'), null, '삭제 후엔 조회가 안 돼요');
+
+    await assert.rejects(points.remove('민지'), (error) => error.code === 'NOT_FOUND', '이미 지운 이름을 또 지우면 실패해요');
+    await assert.rejects(points.remove('없는사람'), (error) => error.code === 'NOT_FOUND');
+
+    const relogin = await points.login('민지', '9999'); // PIN도 새로 정할 수 있어요(완전히 새 계정 취급)
+    assert.equal(relogin.points, STARTING_POINTS, '지운 이름으로 다시 로그인하면 시작 포인트부터예요');
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('listAll reports every registered name with their current points', async () => {
   const { directory, file } = await tmpFile();
   try {

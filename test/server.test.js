@@ -525,6 +525,19 @@ test('admin endpoints require the configured admin key and let an admin grant po
     const players = await (await fetch(base + '/api/admin/players', { headers: asAdmin })).json();
     assert.deepEqual(players, [{ name: '관리자테스트', points: STARTING_POINTS + 8 }]);
 
+    const deleteNoAuth = await postJson('/api/admin/delete', { name: '관리자테스트' });
+    assert.equal(deleteNoAuth.status, 401);
+
+    const deleteUnknown = await postJson('/api/admin/delete', { name: '없는사람' }, asAdmin);
+    assert.equal(deleteUnknown.status, 404);
+
+    const deleted = await postJson('/api/admin/delete', { name: '관리자테스트' }, asAdmin);
+    assert.equal(deleted.status, 200);
+    assert.deepEqual(await deleted.json(), { name: '관리자테스트', deleted: true });
+
+    const playersAfterDelete = await (await fetch(base + '/api/admin/players', { headers: asAdmin })).json();
+    assert.deepEqual(playersAfterDelete, [], '삭제한 이름은 목록에서도 사라져요');
+
     const setCost = await postJson('/api/admin/costs', { gameId: 'fishing', cost: 12 }, asAdmin);
     assert.equal(setCost.status, 200);
     assert.equal((await setCost.json()).fishing, 12);
