@@ -1,6 +1,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { createStorageBackend } = require('./storage');
 
 const TOKEN_TTL_MS = 60 * 24 * 60 * 60 * 1000; // 60일: 가족 서비스라 자주 다시 로그인하지 않아도 되게 넉넉히 잡아요
 const STARTING_POINTS = 30; // 처음 등록할 때부터 즐거운 게임을 한 판이라도 해볼 수 있게 주는 시작 포인트
@@ -58,6 +59,7 @@ function isValidEntry(name, entry) {
 function createPoints(file = path.join(__dirname, '..', 'data', 'points.json'), secret = process.env.POINTS_SECRET || 'dev-secret-change-me', options = {}) {
   let queue = Promise.resolve();
   const gamesDir = options.gamesDir || path.join(__dirname, '..', 'public');
+  const backend = options.backend || createStorageBackend();
 
   function hashPin(name, pin) {
     return crypto.createHmac('sha256', secret).update(`${name}\u0000${pin}`).digest('hex');
@@ -82,21 +84,15 @@ function createPoints(file = path.join(__dirname, '..', 'data', 'points.json'), 
   }
 
   async function read() {
-    let raw;
-    try {
-      raw = await fs.readFile(file, 'utf8');
-    } catch (error) {
-      if (error.code === 'ENOENT') return {};
-      throw error;
-    }
+    const raw = await backend.read(file);
+    if (raw == null) return {};
     let data;
     try {
       data = JSON.parse(raw);
     } catch (error) {
-      // 파일이 깨져 있으면 옆으로 격리해두고 빈 상태로 계속 진행해요 (안 그러면 로그인/조회가 영구히 실패해요)
-      const quarantine = `${file}.corrupt-${Date.now()}`;
-      await fs.rename(file, quarantine).catch(() => {});
-      console.error('포인트 파일이 손상돼서 격리했어요:', quarantine, error);
+      // 저장된 내용이 깨져 있으면 옆으로 격리해두고 빈 상태로 계속 진행해요 (안 그러면 로그인/조회가 영구히 실패해요)
+      const quarantine = await backend.quarantine(file);
+      console.error('포인트가 손상돼서 격리했어요:', quarantine, error);
       return {};
     }
     if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
@@ -104,10 +100,7 @@ function createPoints(file = path.join(__dirname, '..', 'data', 'points.json'), 
   }
 
   async function write(data) {
-    await fs.mkdir(path.dirname(file), { recursive: true });
-    const temp = file + '.tmp';
-    await fs.writeFile(temp, JSON.stringify(data), 'utf8');
-    await fs.rename(temp, file);
+    await backend.write(file, JSON.stringify(data));
   }
 
   // 처음 보는 이름이면 그 PIN으로 새로 등록하고, 이미 있는 이름이면 PIN이 맞는지 확인해요.
