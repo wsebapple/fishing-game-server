@@ -126,6 +126,12 @@
   #levelGrid button[data-lv="4"] { background: #c0672b; box-shadow: 0 6px 0 #8f4a1c; }
   #levelGrid button[data-lv="5"] { background: #c0392b; box-shadow: 0 6px 0 #8e2a1f; }
 
+  .sessionPill {
+    display: inline-block; margin: 0 0 10px; background: var(--panel-alt);
+    border: 2px solid var(--ink); border-radius: 999px; padding: 6px 16px;
+    font-size: clamp(13px, 2.4vw, 16px);
+  }
+
   @keyframes shake { 10%,90%{transform:translateX(-1px)} 20%,80%{transform:translateX(2px)} 30%,50%,70%{transform:translateX(-7px)} 40%,60%{transform:translateX(7px)} }
   @keyframes charBounce { 0%{transform:scale(.7) rotate(-6deg);opacity:.4} 55%{transform:scale(1.15) rotate(3deg);opacity:1} 100%{transform:scale(1) rotate(0)} }
   @keyframes floatUp { 0%{transform:translate(-50%,0) scale(.8);opacity:0} 18%{opacity:1;transform:translate(-50%,-8px) scale(1.08)} 100%{transform:translate(-50%,-58px) scale(1);opacity:0} }
@@ -163,11 +169,13 @@
         🌱→🌳 1단계(씨앗)부터 5단계(나무)까지, 단계가 올라갈수록 단어가 더 어려워지고 점수도 더 높아요!<br>
         ⏳ 시간은 60초! 정답을 많이 맞힐수록 시간이 늘어나요.<br>
         🔥 연속으로 맞히면 콤보가 쌓이고 점수 배율도 쭉쭉 올라가요. 5콤보마다 시간이 3초 늘어나요!<br>
-        ❤️ 틀리면 목숨이 하나 줄고 시간도 2초 줄어요. 목숨 3개를 모두 잃으면 끝이에요.
+        ❤️ 틀리면 목숨이 하나 줄고 시간도 2초 줄어요. 목숨 3개를 모두 잃으면 끝이에요.<br>
+        🎯 여러 단계를 이어서 풀면 점수가 계속 쌓이고, 게임 놀이터로 완전히 나갈 때 모은 점수가 포인트로 바뀌어요!
       </p>
+      <div class="sessionPill hidden" id="sessionPill"></div>
       <p style="text-align:center;font-size:clamp(13px,2.1vw,16px);margin-bottom:4px;">원하는 단계를 골라 시작해요!</p>
       <div id="levelGrid"></div>
-      <br><a class="home" href="/">🏠 게임 놀이터로</a>
+      <br><a class="home" href="/" id="homeFromStart">🏠 게임 놀이터로</a>
     </div>
   </div>
 
@@ -179,16 +187,24 @@
       <p class="stats">이 단계 최고 점수: <span id="bestOver">0</span>점</p>
       <button id="againBtn">다시하기</button>
       <button id="pickLevelBtn" class="small">다른 단계 고르기</button>
-      <br><a class="home" href="/">🏠 게임 놀이터로</a>
+      <br><a class="home" href="/" id="homeFromOver">🏠 게임 놀이터로</a>
     </div>
   </div>
 
   <div class="modal hidden" id="quitConfirm">
     <div class="card">
       <h1>⚠️ 잠깐!</h1>
-      <p style="text-align:center">정말 그만하고 처음 화면으로 돌아갈까요?<br>지금까지 점수는 사라져요.</p>
+      <p style="text-align:center">정말 그만하고 단계 선택 화면으로 돌아갈까요?<br>지금까지 모은 점수는 그대로 저장돼요.</p>
       <button id="quitYes">네, 나갈게요</button>
       <button id="quitNo" class="small">아니요</button>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="roundResult">
+    <div class="card">
+      <h1>🎉 잘했어요!</h1>
+      <p class="stats" id="roundResultText" style="text-align:center"></p>
+      <button id="roundResultOk">확인</button>
     </div>
   </div>
 </div>
@@ -458,40 +474,70 @@ function endGame() {
   playArea.classList.add('hidden');
   el('quitBtn').classList.add('hidden');
   const best = saveBest(currentLevel, score);
+  const totalScore = addSessionScore(score);
+  addSessionCorrect(totalCorrect);
   const acc = totalAnswered ? Math.round((totalCorrect / totalAnswered) * 100) : 0;
   el('overTitle').textContent = lives <= 0 ? '아쉬워요! 💔' : '시간 종료! ⏰';
   el('overStats').textContent = currentLevel + '단계 · 점수 ' + score + '점 · 정답 ' + totalCorrect + '/' + totalAnswered + ' (' + acc + '%) · 최고 콤보 x' + bestCombo;
+  el('earnResult').textContent = describeAccumulation(score, totalScore);
   el('bestOver').textContent = best;
   el('overScreen').classList.remove('hidden');
-  reportEarnedPoints();
+  updateSessionPill();
 }
 
-// ---------- 게임 놀이터 포인트 적립 ----------
-// 게임 놀이터 허브와 같은 주소(origin)라서 localStorage에 저장된 로그인 토큰을 그대로 읽을 수 있어요.
-// 정답 개수만 서버로 보내고, 실제로 몇 점을 줄지(하루 한도 포함)는 서버가 정해요.
+// ---------- 이번 방문에서 모은 점수 (여러 단계를 이어서 풀면 계속 쌓여요) ----------
+// 실제 게임 놀이터 포인트로 바꾸는 건 이 게임을 완전히 나갈 때(leaveToHub) 한 번만 해요.
 const POINTS_TOKEN_KEY = 'fishing.points.token';
+const SESSION_SCORE_KEY = 'englishWordGameSessionScore';
+const SESSION_CORRECT_KEY = 'englishWordGameSessionCorrect';
 
-async function reportEarnedPoints() {
-  const earnEl = el('earnResult');
+function loadSessionScore() { return Number(sessionStorage.getItem(SESSION_SCORE_KEY)) || 0; }
+function loadSessionCorrect() { return Number(sessionStorage.getItem(SESSION_CORRECT_KEY)) || 0; }
+function addSessionScore(value) {
+  const total = loadSessionScore() + value;
+  sessionStorage.setItem(SESSION_SCORE_KEY, String(total));
+  return total;
+}
+function addSessionCorrect(value) {
+  const total = loadSessionCorrect() + value;
+  sessionStorage.setItem(SESSION_CORRECT_KEY, String(total));
+  return total;
+}
+
+function describeAccumulation(roundScore, totalScore) {
   const token = localStorage.getItem(POINTS_TOKEN_KEY);
-  if (!token) {
-    earnEl.textContent = '🏠 게임 놀이터에서 이름으로 로그인하면 정답 개수만큼 포인트를 모을 수 있어요!';
-    return;
+  if (!token) return '🏠 게임 놀이터에서 이름으로 로그인하면 모은 점수를 포인트로 바꿀 수 있어요!';
+  return '이번 게임에서 ' + roundScore + '점 획득했어요! (모은 점수 총 ' + totalScore + '점 — 게임 놀이터로 나갈 때 포인트로 바뀌어요)';
+}
+
+function updateSessionPill() {
+  const pillEl = el('sessionPill');
+  const totalScore = loadSessionScore();
+  if (totalScore > 0) {
+    pillEl.textContent = '🎯 획득한 점수(포인트): ' + totalScore + '점';
+    pillEl.classList.remove('hidden');
+  } else {
+    pillEl.classList.add('hidden');
   }
-  try {
-    const res = await fetch('/api/points/earn', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-      body: JSON.stringify({ gameId: 'english-word-game', units: totalCorrect }),
-    });
-    const data = await res.json();
-    if (!res.ok) { earnEl.textContent = data.error || '포인트를 적립하지 못했어요.'; return; }
-    earnEl.textContent = data.awarded > 0
-      ? '🎉 포인트 +' + data.awarded + '점 적립! (지금 ' + data.points + '점)' + (data.dailyCapped ? ' — 오늘은 이 게임으로 더 못 모아요' : '')
-      : '오늘은 영단어 맞추기로 모을 수 있는 포인트를 다 모았어요. (지금 ' + data.points + '점)';
-  } catch (err) {
-    earnEl.textContent = '포인트 적립에 실패했어요. 인터넷 연결을 확인해주세요.';
+}
+
+// 게임 놀이터 허브와 같은 주소(origin)라서 localStorage에 저장된 로그인 토큰을 그대로 읽을 수 있어요.
+// 모은 정답 개수를 서버로 보내고, 실제로 몇 점을 줄지(하루 한도 포함)는 서버가 정해요.
+async function leaveToHub() {
+  const token = localStorage.getItem(POINTS_TOKEN_KEY);
+  const units = loadSessionCorrect();
+  if (token && units > 0) {
+    try {
+      await fetch('/api/points/earn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ gameId: 'english-word-game', units }),
+      });
+    } catch (err) { /* 실패해도 그냥 나가요 */ }
   }
+  sessionStorage.removeItem(SESSION_SCORE_KEY);
+  sessionStorage.removeItem(SESSION_CORRECT_KEY);
+  window.location.href = '/';
 }
 
 // ---------- 단계 선택 화면 ----------
@@ -509,8 +555,14 @@ function renderLevelGrid() {
     btn.addEventListener('click', () => startGame(lv.n));
     grid.appendChild(btn);
   });
+  updateSessionPill();
 }
 renderLevelGrid();
+
+function showRoundResult(message) {
+  el('roundResultText').textContent = message;
+  el('roundResult').classList.remove('hidden');
+}
 
 // ---------- 버튼 연결 ----------
 el('againBtn').addEventListener('click', () => startGame(currentLevel));
@@ -530,13 +582,23 @@ el('quitYes').addEventListener('click', () => {
   el('quitConfirm').classList.add('hidden');
   gameOver = true;
   clearInterval(timerHandle);
-  playArea.classList.add('hidden');
   el('quitBtn').classList.add('hidden');
-  el('overScreen').classList.add('hidden');
+  const totalScore = addSessionScore(score);
+  addSessionCorrect(totalCorrect);
+  showRoundResult(describeAccumulation(score, totalScore));
+});
+el('quitNo').addEventListener('click', () => el('quitConfirm').classList.add('hidden'));
+
+el('roundResultOk').addEventListener('click', () => {
+  el('roundResult').classList.add('hidden');
+  playArea.classList.add('hidden');
   renderLevelGrid();
   el('startScreen').classList.remove('hidden');
 });
-el('quitNo').addEventListener('click', () => el('quitConfirm').classList.add('hidden'));
+
+['homeFromStart', 'homeFromOver'].forEach(id => {
+  el(id).addEventListener('click', e => { e.preventDefault(); leaveToHub(); });
+});
 
 document.addEventListener('visibilitychange', () => { paused = document.hidden; });
 
