@@ -352,6 +352,19 @@ window.addEventListener('keyup', e => { keys[e.code] = false; }, true);
 document.querySelectorAll('button').forEach(b => b.addEventListener('click', () => b.blur()));
 
 const PLAYER_MARGIN = 24;
+function hitsObstacle(x, y, r) {
+  for (const o of obstacles) {
+    const dx = x - o.x, dy = y - o.y;
+    if (dx * dx + dy * dy < (o.r + r) * (o.r + r)) return true;
+  }
+  return false;
+}
+function spark(x, y) {
+  for (let i = 0; i < 4; i++) {
+    const a = Math.random() * Math.PI * 2, spd = 40 + Math.random() * 80;
+    particles.push({ x, y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, life: 0.18, maxLife: 0.18, r: 1.5 + Math.random() * 1.5, color: '#d8c9a8' });
+  }
+}
 function resolveObstacles(entity) {
   for (const o of obstacles) {
     const dx = entity.x - o.x, dy = entity.y - o.y;
@@ -902,10 +915,16 @@ function update(dt) {
     player.fireT = player.rapidT > 0 ? g.fireRate * 0.55 : g.fireRate;
   }
 
-  for (const b of bullets) { b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt; }
+  for (const b of bullets) {
+    b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
+    if (!b.dead && hitsObstacle(b.x, b.y, b.r)) { b.dead = true; spark(b.x, b.y); }
+  }
   bullets = bullets.filter(b => !b.dead && b.life > 0);
 
-  for (const b of enemyBullets) { b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt; }
+  for (const b of enemyBullets) {
+    b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
+    if (!b.dead && hitsObstacle(b.x, b.y, b.r)) { b.dead = true; spark(b.x, b.y); }
+  }
   enemyBullets = enemyBullets.filter(b => !b.dead && b.life > 0);
 
   updateSpawning(dt);
