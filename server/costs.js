@@ -9,6 +9,8 @@ const DEFAULT_COSTS = {
   'nemo-adventure': 3,
   spaceship: 4,
   'fruit-game': 2,
+  gunner: 4,
+  'land-grab': 3,
 };
 
 function createCosts(file = path.join(__dirname, '..', 'data', 'game-costs.json')) {
