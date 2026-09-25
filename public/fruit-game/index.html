@@ -61,7 +61,9 @@
   }
   canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 
-  #guidePanel {
+  #sidePanel { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+
+  #guidePanel, #comboPanel {
     background: var(--panel);
     border: 3px solid var(--ink);
     border-radius: 14px;
@@ -70,15 +72,21 @@
     display: flex; flex-direction: column; align-items: center; gap: 4px;
     max-width: min(94vw, calc(78dvh * (640 / 860)));
   }
-  #guideTitle { font-size: 13px; white-space: nowrap; }
+  #guideTitle, #comboTitle { font-size: 13px; white-space: nowrap; }
   #guideList { display: flex; flex-direction: row; align-items: center; gap: 4px; overflow-x: auto; max-width: 100%; padding: 2px; }
   .guideArrow { font-size: 12px; opacity: 0.7; flex-shrink: 0; }
   .arrowV { display: none; }
+  #comboList { display: flex; flex-direction: column; gap: 6px; max-width: 100%; padding: 2px; }
+  .comboRow { display: flex; flex-direction: row; align-items: center; gap: 3px; font-size: 12px; white-space: nowrap; }
+  .comboPlus { opacity: 0.6; font-size: 11px; }
+  .comboArrow { opacity: 0.8; font-size: 13px; margin: 0 2px; }
+  .comboLabel { margin-left: 2px; }
   @media (min-width: 820px) {
-    #guidePanel { max-width: none; width: 118px; }
-    #guideList { flex-direction: column; max-height: 70vh; overflow-y: auto; overflow-x: visible; }
+    #guidePanel, #comboPanel { max-width: none; width: 150px; }
+    #guideList { flex-direction: column; max-height: 50vh; overflow-y: auto; overflow-x: visible; }
     .arrowH { display: none; }
     .arrowV { display: inline; }
+    .comboRow { flex-wrap: wrap; }
   }
 
   .overlay {
@@ -157,8 +165,8 @@
          드래그해서 자리를 정하고 손을 떼면 쿵! 떨어져요.<br>
          (방향키로 움직이고 스페이스바로 떨어뜨릴 수도 있어요)<br>
          빨간 줄 위로 과일이 쌓이면 게임이 끝나요. 수박까지 만들어봐요!<br>
-         💣 폭탄 과일은 가끔 나오고, 착지하면 잠시 뒤 터져서 주변 과일을 없애요.<br>
-         빠르게 연속으로 합치면 콤보 점수와 보너스가 생겨요!<br>
+         ✨ 정해진 순서대로 과일을 떨어뜨리면 폭탄이나 무지개 과일이 나와요(아래 조합표 참고)!<br>
+         빠르게 연속으로 합치면 콤보 점수와 보너스가 생기고, 콤보를 많이 쌓아도 폭탄을 얻어요!<br>
          🍉 수박이 나오면 그때부터 배경음악이 깔리고 시간이 지나면 자동으로도 떨어져요.<br>
          수박 두 개를 합치면 보너스와 함께 화면이 싹 비워져요!</p>
       <p class="best">최고 점수: <span id="bestStart">0</span></p>
@@ -178,9 +186,15 @@
   </div>
 </div>
 
-<div id="guidePanel" aria-label="과일이 커지는 순서 안내">
-  <div id="guideTitle">🍒 합체 순서 🍉</div>
-  <div id="guideList"></div>
+<div id="sidePanel">
+  <div id="guidePanel" aria-label="과일이 커지는 순서 안내">
+    <div id="guideTitle">🍒 합체 순서 🍉</div>
+    <div id="guideList"></div>
+  </div>
+  <div id="comboPanel" aria-label="특수 아이템이 나오는 조합">
+    <div id="comboTitle">✨ 특수 조합</div>
+    <div id="comboList"></div>
+  </div>
 </div>
 </div>
 
@@ -194,10 +208,11 @@ const SETTINGS = {
   moveSpeed: 420,      // 방향키로 움직이는 빠르기
   dropCooldown: 0.45,  // 떨어뜨린 뒤 다음 과일이 준비될 때까지 쉬는 시간(초)
   dangerLimit: 1.2,    // 빨간 줄 위에 이만큼(초) 쌓여 있으면 게임 끝
-  bombChance: 0.07,    // 떨어질 과일이 폭탄일 확률
   bombBodyR: 32,       // 폭탄의 크기(부딪히는 반지름)
   bombFuse: 0.55,      // 폭탄이 가만히 멈춘 뒤 터지기까지 걸리는 시간(초)
   bombBlastR: 130,      // 폭탄이 터질 때 영향을 주는 반경
+  rainbowBodyR: 30,     // 무지개 과일의 크기(부딪히는 반지름)
+  recipeHistoryLen: 5,  // 조합을 확인할 때 최근 몇 번 떨어뜨린 것까지 기억할지
   comboWindow: 1.4,    // 이 시간(초) 안에 또 합치면 콤보가 이어져요
   comboBombAt: 5,       // 콤보가 이만큼 쌓이면 보너스로 폭탄 과일이 나와요
   autoDropLimit: 6,     // 수박이 나온 뒤로는, 이 시간(초) 안에 안 떨어뜨리면 자동으로 떨어져요
@@ -218,6 +233,13 @@ const FRUITS = [
 ];
 // 새로 떨어지는 과일은 이 중에서만 골라요(뒤 숫자일수록 잘 안 나와요)
 const SPAWN_WEIGHTS = [30, 25, 20, 15, 10];
+
+// 특수 아이템은 운이 아니라 "이 순서대로 떨어뜨렸을 때"만 나와요(숫자는 위 FRUITS 목록의 순서예요).
+// 마지막에 떨어뜨린 것부터 거꾸로 맞춰보고, 맞으면 바로 다음 과일이 그 아이템으로 바뀌어요.
+const RECIPES = [
+  { pattern: [5, 0, 5], item: 'bomb', icon: '💣', name: '폭탄 과일' },      // 사과 → 체리 → 사과
+  { pattern: [0, 0, 0], item: 'rainbow', icon: '🌈', name: '무지개 과일' }, // 체리 → 체리 → 체리 (아무 과일과도 합쳐져요)
+];
 
 // ---------- 화면 준비 ----------
 const W = 640, H = 860;
@@ -310,6 +332,7 @@ const Music = {
 // ---------- 과일 그리기 (c는 그릴 대상 캔버스 컨텍스트예요: 게임 화면일 수도, 작은 안내 아이콘일 수도 있어요) ----------
 function drawFruit(c, f, now) {
   if (f.special === 'bomb') return drawBomb(c, f, now);
+  if (f.special === 'rainbow') return drawRainbow(c, f, now);
   const cfg = FRUITS[f.level];
   let scale = 1;
   if (f.born) { const t = (now - f.born) / 150; scale = t < 1 ? (0.55 + 0.45 * Math.max(0, t)) : 1; }
@@ -384,6 +407,45 @@ function drawBomb(c, f, now) {
   c.restore();
 }
 
+// ---------- 무지개 과일: 아무 과일과 닿아도 그 과일의 다음 단계로 합쳐져요 ----------
+function drawRainbow(c, f, now) {
+  const r = f.r;
+  const colors = ['#ff5d7a', '#ffa726', '#ffe14d', '#7ed957', '#4fc3f7', '#9b59b6'];
+  c.save();
+  c.translate(f.x, f.y);
+  c.save();
+  c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.clip();
+  const seg = (Math.PI * 2) / colors.length;
+  colors.forEach((col, i) => {
+    c.fillStyle = col;
+    c.beginPath();
+    c.moveTo(0, 0);
+    c.arc(0, 0, r * 1.05, i * seg - Math.PI / 2, (i + 1) * seg - Math.PI / 2);
+    c.closePath(); c.fill();
+  });
+  c.restore();
+  c.strokeStyle = '#5a3921'; c.lineWidth = Math.max(2, r * 0.06);
+  c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.stroke();
+
+  const twinkle = 0.6 + 0.4 * Math.sin(now / 150);
+  c.save();
+  c.translate(-r * 0.15, -r * 0.4);
+  c.fillStyle = `rgba(255,255,255,${twinkle})`;
+  c.beginPath();
+  c.moveTo(0, -r * 0.22); c.lineTo(r * 0.06, -r * 0.06); c.lineTo(r * 0.22, 0);
+  c.lineTo(r * 0.06, r * 0.06); c.lineTo(0, r * 0.22); c.lineTo(-r * 0.06, r * 0.06);
+  c.lineTo(-r * 0.22, 0); c.lineTo(-r * 0.06, -r * 0.06); c.closePath(); c.fill();
+  c.restore();
+
+  const eyeX = r * 0.3, eyeY = -r * 0.02, eyeR = Math.max(1.5, r * 0.09);
+  c.fillStyle = '#fff';
+  c.beginPath(); c.arc(-eyeX, eyeY, eyeR, 0, Math.PI * 2); c.fill();
+  c.beginPath(); c.arc(eyeX, eyeY, eyeR, 0, Math.PI * 2); c.fill();
+  c.strokeStyle = '#fff'; c.lineWidth = Math.max(1.5, r * 0.06);
+  c.beginPath(); c.arc(0, r * 0.22, r * 0.3, 0.15 * Math.PI, 0.85 * Math.PI); c.stroke();
+  c.restore();
+}
+
 // ---------- 반짝이는 조각(합쳐지거나 터질 때 팡!) ----------
 let particles = [];
 function burst(x, y, color, count) {
@@ -446,6 +508,7 @@ let leftHeld = false, rightHeld = false;
 let comboCount = 0, lastMergeAt = -Infinity;
 let watermelonAppeared = false;   // 수박이 한 번이라도 나오면 그때부터 자동 낙하 + 긴장되는 배경음악이 켜져요
 let autoDropTimer = 0;
+let dropHistory = [];   // 최근에 떨어뜨린 과일 순서(특수 조합을 맞았는지 확인하는 데 써요)
 
 function randomLevel() {
   const total = SPAWN_WEIGHTS.reduce((a, b) => a + b, 0);
@@ -456,8 +519,9 @@ function randomLevel() {
   }
   return 0;
 }
+// 폭탄·무지개 같은 특수 아이템은 여기서 무작위로 나오지 않아요 — RECIPES에 정해둔 순서대로
+// 과일을 떨어뜨려야만 checkRecipes()를 통해 얻을 수 있어요.
 function randomSpawn() {
-  if (Math.random() < SETTINGS.bombChance) return { special: 'bomb', level: null, r: SETTINGS.bombBodyR };
   const level = randomLevel();
   return { special: null, level, r: FRUITS[level].r };
 }
@@ -466,9 +530,28 @@ function clampDropX(x, spawn) {
 }
 function addScore(n) { score += n; }
 
+// 방금 떨어뜨린 과일까지 포함해서 최근 순서가 RECIPES의 어떤 조합과 맞아떨어지는지 확인해요.
+// 맞으면 바로 다음에 떨어질 과일을 그 아이템으로 바꿔줘요.
+function checkRecipes() {
+  for (const recipe of RECIPES) {
+    const p = recipe.pattern;
+    if (dropHistory.length < p.length) continue;
+    const tail = dropHistory.slice(-p.length);
+    if (tail.every((lv, i) => lv === p[i])) {
+      const r = recipe.item === 'bomb' ? SETTINGS.bombBodyR : SETTINGS.rainbowBodyR;
+      current = { special: recipe.item, level: null, r };
+      dropX = clampDropX(dropX, current);
+      popText(W / 2, JAR.top - 20, recipe.icon + ' ' + recipe.name + ' 획득!');
+      Music.sfx('combo', 4);
+      dropHistory = [];
+      return;
+    }
+  }
+}
+
 function resetGame() {
   fruits = []; particles = []; floatingTexts = []; score = 0; dangerTimer = 0; dropCooldown = 0;
-  comboCount = 0; lastMergeAt = -Infinity;
+  comboCount = 0; lastMergeAt = -Infinity; dropHistory = [];
   watermelonAppeared = false; autoDropTimer = 0;
   Music.stopBgm();
   current = randomSpawn(); next = randomSpawn();
@@ -486,13 +569,22 @@ function startGame() {
 
 function tryDrop() {
   if (state !== 'play' || dropCooldown > 0) return;
-  fruits.push({ id: uid++, level: current.level, special: current.special, x: dropX, y: DROP_Y, vx: 0, vy: 0, r: current.r, fuse: 0, aboveTimer: 0 });
+  // 가로 속도를 살짝 무작위로 줘요: 정확히 0으로 떨어지면 원기둥처럼 완벽하게 일직선으로 쌓일 수 있는데,
+  // 실제로는 그렇게 완벽한 균형이 불안정해서 무너져야 해요(회전이 없는 모델이라 한 번 완벽히 겹치면
+  // 스스로는 절대 안 무너지니, 시작부터 살짝 어긋나게 만들어요)
+  fruits.push({ id: uid++, level: current.level, special: current.special, x: dropX, y: DROP_Y, vx: (Math.random() - 0.5) * 8, vy: 0, r: current.r, fuse: 0, aboveTimer: 0 });
   Music.sfx('drop');
+  const droppedLevel = current.special ? null : current.level;
   current = next;
   next = randomSpawn();
   dropX = clampDropX(dropX, current);
   dropCooldown = SETTINGS.dropCooldown;
   autoDropTimer = 0;
+  if (droppedLevel !== null) {
+    dropHistory.push(droppedLevel);
+    if (dropHistory.length > SETTINGS.recipeHistoryLen) dropHistory.shift();
+    checkRecipes();
+  }
 }
 
 function clampFruit(f) {
@@ -508,12 +600,15 @@ function clampFruit(f) {
 // 여러 번 반복해서 겹친 만큼만 서로 밀어내요(진짜 물리 엔진이 아니라 간단히 흉내낸 거예요). 폭탄도 같은 몸체로 취급해요.
 // 서로 밀다 보면 벽 밖으로 밀려날 수 있어서, 매 반복마다 벽/바닥 안으로 다시 당겨줘요.
 function resolveCollisions() {
-  const n = fruits.length;
-  for (let iter = 0; iter < 6; iter++) {
+  // 바닥에 가까운 과일부터 순서대로 겹침을 풀어야, 탑처럼 쌓인 줄에서도 보정이 한 번의 반복 안에
+  // 아래에서 위로 쭉 전달돼요(순서 없이 풀면 위쪽까지 다 전달되는 데 훨씬 더 많이 반복해야 해요).
+  const ordered = fruits.slice().sort((a, b) => b.y - a.y);
+  const n = ordered.length;
+  for (let iter = 0; iter < 16; iter++) {
     for (let i = 0; i < n; i++) {
-      const a = fruits[i];
+      const a = ordered[i];
       for (let j = i + 1; j < n; j++) {
-        const b = fruits[j];
+        const b = ordered[j];
         const dx = b.x - a.x, dy = b.y - a.y;
         const dist = Math.hypot(dx, dy);
         const minDist = a.r + b.r;
@@ -533,7 +628,7 @@ function resolveCollisions() {
         }
       }
     }
-    for (let i = 0; i < n; i++) clampFruit(fruits[i]);
+    for (let i = 0; i < n; i++) clampFruit(ordered[i]);
   }
 }
 
@@ -544,16 +639,24 @@ function mergeCheck(now) {
   const toAdd = [];
   for (let i = 0; i < fruits.length; i++) {
     const a = fruits[i];
-    if (toRemove.has(a.id) || a.special) continue;
+    if (toRemove.has(a.id) || a.special === 'bomb') continue;
     for (let j = i + 1; j < fruits.length; j++) {
       const b = fruits[j];
-      if (toRemove.has(b.id) || b.special || a.level !== b.level) continue;
+      if (toRemove.has(b.id) || b.special === 'bomb') continue;
+      // 보통은 같은 레벨끼리만 합쳐지지만, 무지개 과일은 아무 레벨과 닿아도 그 레벨로 쳐줘요
+      // (무지개끼리 만나는 경우는 뭘로 합쳐야 할지 애매해서 그냥 패스해요)
+      const aRainbow = a.special === 'rainbow', bRainbow = b.special === 'rainbow';
+      let level;
+      if (aRainbow && bRainbow) continue;
+      else if (aRainbow) level = b.level;
+      else if (bRainbow) level = a.level;
+      else if (a.level === b.level) level = a.level;
+      else continue;
       const dist = Math.hypot(b.x - a.x, b.y - a.y);
       // 겹침 풀기가 두 과일을 "안 겹치는 최소 거리"에 딱 맞춰놓기 때문에, 살짝 여유(5%)를 둬서
       // 완전히 겹쳤을 때뿐 아니라 그냥 맞닿아 있을 때도 합쳐지게 해요
       if (dist >= (a.r + b.r) * 1.05) continue;
       const midX = (a.x + b.x) / 2, midY = (a.y + b.y) / 2;
-      const level = a.level;
       if (level + 1 >= FRUITS.length) {
         // 수박 두 개가 만나면: 보너스를 딱 터뜨리고 화면 속 과일을 싹 비운 뒤 다시 시작해요
         triggerGrandSlam(midX, midY);
@@ -564,7 +667,7 @@ function mergeCheck(now) {
       addScore(FRUITS[newLevel].score);
       toAdd.push({
         id: uid++, level: newLevel, special: null, x: midX, y: midY,
-        vx: (a.vx + b.vx) * 0.15, vy: Math.min(0, (a.vy + b.vy) * 0.15) - 30,
+        vx: (a.vx + b.vx) * 0.15 + (Math.random() - 0.5) * 6, vy: Math.min(0, (a.vy + b.vy) * 0.15) - 30,
         r: FRUITS[newLevel].r, born: now, aboveTimer: 0,
       });
       burst(midX, midY, FRUITS[newLevel].color, 14);
@@ -805,6 +908,46 @@ function loop(now) {
       arrow.innerHTML = '<span class="arrowH">→</span><span class="arrowV">↓</span>';
       list.appendChild(arrow);
     }
+  });
+})();
+
+// ---------- 특수 조합표 만들기: 어떤 순서로 떨어뜨리면 어떤 아이템이 나오는지 보여줘요 ----------
+(function buildComboTable() {
+  const list = document.getElementById('comboList');
+  const drawItemIcon = { bomb: drawBomb, rainbow: drawRainbow };
+  RECIPES.forEach(recipe => {
+    const row = document.createElement('div');
+    row.className = 'comboRow';
+    recipe.pattern.forEach((lv, idx) => {
+      const r = 12, size = r * 2 + 6;
+      const icon = document.createElement('canvas');
+      icon.width = size; icon.height = size;
+      icon.style.width = size + 'px'; icon.style.height = size + 'px';
+      icon.title = FRUITS[lv].name;
+      drawFruit(icon.getContext('2d'), { level: lv, special: null, x: size / 2, y: size / 2, r }, 0);
+      row.appendChild(icon);
+      if (idx < recipe.pattern.length - 1) {
+        const plus = document.createElement('span');
+        plus.className = 'comboPlus'; plus.textContent = '→';
+        row.appendChild(plus);
+      }
+    });
+    const arrow = document.createElement('span');
+    arrow.className = 'comboArrow'; arrow.textContent = '⇒';
+    row.appendChild(arrow);
+
+    const itemR = 13, itemSize = itemR * 2 + 6;
+    const itemIcon = document.createElement('canvas');
+    itemIcon.width = itemSize; itemIcon.height = itemSize;
+    itemIcon.style.width = itemSize + 'px'; itemIcon.style.height = itemSize + 'px';
+    drawItemIcon[recipe.item](itemIcon.getContext('2d'), { x: itemSize / 2, y: itemSize / 2, r: itemR }, 0);
+    row.appendChild(itemIcon);
+
+    const label = document.createElement('span');
+    label.className = 'comboLabel'; label.textContent = recipe.name;
+    row.appendChild(label);
+
+    list.appendChild(row);
   });
 })();
 
