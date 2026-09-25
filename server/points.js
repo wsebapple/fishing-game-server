@@ -5,6 +5,13 @@ const crypto = require('node:crypto');
 const TOKEN_TTL_MS = 60 * 24 * 60 * 60 * 1000; // 60일: 가족 서비스라 자주 다시 로그인하지 않아도 되게 넉넉히 잡아요
 const STARTING_POINTS = 30; // 처음 등록할 때부터 즐거운 게임을 한 판이라도 해볼 수 있게 주는 시작 포인트
 
+// 학습게임이 "정답 개수"를 보내오면 이 기준으로 포인트를 환산해요. 게임이 스스로 매기는 점수(배율·콤보 포함)는
+// 믿지 않고 정답 개수만 받아서, 한 판에 인정하는 정답 개수와 하루 적립 한도를 서버가 강제로 제한해요.
+// 완벽한 부정 방지는 아니지만(진짜 정답을 맞혔는지까지는 확인 안 해요), 남용 규모를 작게 묶어둬요.
+const EARN_CONFIG = {
+  'hanja-game': { pointsPerCorrect: 1, maxCorrectPerRound: 30, maxPointsPerDay: 50 },
+};
+
 // 이름은 방 코드와 달리 대문자로 바꾸지 않아요(사람 이름의 대소문자를 그대로 존중) — 그래서 rooms.js의
 // normalizeRoomCode와는 다른 함수예요. 제어문자만 걷어내고, 이모지 같은 문자가 코드포인트 중간에서
 // 잘리지 않게 Array.from으로 잘라요.
@@ -161,7 +168,40 @@ function createPoints(file = path.join(__dirname, '..', 'data', 'points.json'), 
     return attempt;
   }
 
-  return { login, getPoints, listAll, spend, grant, verifyToken, normalizeName, normalizePin };
+  // 학습게임에서 맞힌 정답 개수만큼 포인트를 적립해요. 한 판에 인정하는 정답 개수(maxCorrectPerRound)와
+  // 오늘 이 게임으로 이미 적립한 만큼을 빼고 남은 하루 한도(maxPointsPerDay) 중 더 작은 쪽만큼만 줘요.
+  function earn(name, gameId, correct, now = Date.now()) {
+    const config = EARN_CONFIG[gameId];
+    const attempt = queue.catch(() => {}).then(async () => {
+      if (!config) {
+        const error = new Error('알 수 없는 학습게임이에요.');
+        error.code = 'UNKNOWN_GAME';
+        throw error;
+      }
+      const data = await read();
+      const entry = data[name];
+      if (!entry) {
+        const error = new Error('로그인이 필요해요.');
+        error.code = 'NOT_FOUND';
+        throw error;
+      }
+      const cappedCorrect = Math.min(Math.max(0, Math.floor(correct) || 0), config.maxCorrectPerRound);
+      const rawPoints = cappedCorrect * config.pointsPerCorrect;
+      const today = new Date(now).toISOString().slice(0, 10);
+      const todaysEntry = entry.dailyEarn && entry.dailyEarn[gameId];
+      const earnedToday = todaysEntry && todaysEntry.date === today ? todaysEntry.amount : 0;
+      const awarded = Math.max(0, Math.min(rawPoints, config.maxPointsPerDay - earnedToday));
+      const nextPoints = entry.points + awarded;
+      const dailyEarn = { ...(entry.dailyEarn || {}), [gameId]: { date: today, amount: earnedToday + awarded } };
+      data[name] = { ...entry, points: nextPoints, dailyEarn, updatedAt: new Date(now).toISOString() };
+      await write(data);
+      return { awarded, points: nextPoints, dailyCapped: awarded < rawPoints };
+    });
+    queue = attempt.catch(() => {});
+    return attempt;
+  }
+
+  return { login, getPoints, listAll, spend, grant, earn, verifyToken, normalizeName, normalizePin };
 }
 
-module.exports = { createPoints, STARTING_POINTS };
+module.exports = { createPoints, STARTING_POINTS, EARN_CONFIG };

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { createPoints, STARTING_POINTS } = require('../server/points');
+const { createPoints, STARTING_POINTS, EARN_CONFIG } = require('../server/points');
 
 async function tmpFile() {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-points-'));
@@ -118,6 +118,59 @@ test('listAll reports every registered name with their current points', async ()
       all.map(p => [p.name, p.points]).sort(),
       [['영희', STARTING_POINTS + 7], ['철수', STARTING_POINTS]],
     );
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('earn awards points per correct answer, capped per round, and rejects an unknown game or a logged-out name', async () => {
+  const { directory, file } = await tmpFile();
+  const { pointsPerCorrect, maxCorrectPerRound } = EARN_CONFIG['hanja-game'];
+  try {
+    const points = createPoints(file, 'test-secret');
+    await points.login('민수', '1234');
+
+    const result = await points.earn('민수', 'hanja-game', 5);
+    assert.equal(result.awarded, 5 * pointsPerCorrect);
+    assert.equal(result.points, STARTING_POINTS + 5 * pointsPerCorrect);
+    assert.equal(result.dailyCapped, false);
+
+    // 한 판에 인정하는 정답 개수를 넘겨 보내도 상한만큼만 쳐줘요
+    const overReport = await points.earn('민수', 'hanja-game', maxCorrectPerRound + 1000);
+    assert.equal(overReport.awarded, maxCorrectPerRound * pointsPerCorrect);
+
+    await assert.rejects(points.earn('민수', 'no-such-game', 3), (error) => error.code === 'UNKNOWN_GAME');
+    await assert.rejects(points.earn('없는사람', 'hanja-game', 3), (error) => error.code === 'NOT_FOUND');
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('earn stops handing out points once the daily cap for that game is reached, and resets the next day', async () => {
+  const { directory, file } = await tmpFile();
+  const { pointsPerCorrect, maxCorrectPerRound, maxPointsPerDay } = EARN_CONFIG['hanja-game'];
+  const maxPerRoundPoints = maxCorrectPerRound * pointsPerCorrect;
+  const day1 = Date.parse('2026-01-01T00:00:00.000Z');
+  const day2 = Date.parse('2026-01-02T00:00:00.000Z');
+  try {
+    const points = createPoints(file, 'test-secret');
+    await points.login('지호', '1234');
+
+    // 한 판 최대치를 여러 판 연달아 보내서 하루 한도(maxPointsPerDay)를 넘겨봐요
+    let awardedSoFar = 0, capped = false;
+    for (let round = 0; round < Math.ceil(maxPointsPerDay / maxPerRoundPoints) + 1; round++) {
+      const result = await points.earn('지호', 'hanja-game', maxCorrectPerRound, day1);
+      awardedSoFar += result.awarded;
+      if (result.dailyCapped) capped = true;
+    }
+    assert.equal(awardedSoFar, maxPointsPerDay, '아무리 여러 판 해도 하루 한도만큼만 쌓여요');
+    assert.ok(capped, '한도를 넘기는 시도에서는 dailyCapped가 true예요');
+
+    const stillToday = await points.earn('지호', 'hanja-game', 5, day1);
+    assert.equal(stillToday.awarded, 0, '오늘은 이미 한도를 다 썼어요');
+
+    const nextDay = await points.earn('지호', 'hanja-game', 5, day2);
+    assert.ok(nextDay.awarded > 0, '날짜가 바뀌면 한도가 다시 초기화돼요');
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
   }

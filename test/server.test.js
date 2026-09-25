@@ -462,6 +462,37 @@ test('points spend: costs are public, spending deducts and blocks entry when sho
   }
 });
 
+test('points earn: a learning game reports correct answers and gets points back, gated by login', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-test-'));
+  const { server, io } = createApp({ leaderboardFile: path.join(directory, 'scores.json'), pointsFile: path.join(directory, 'points.json'), pointsSecret: 'test-secret' });
+  await new Promise(resolve => server.listen(0, resolve));
+  try {
+    const base = 'http://127.0.0.1:' + server.address().port;
+    const postJson = (route, body, headers) => fetch(base + route, { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, headers), body: JSON.stringify(body) });
+
+    const noLogin = await postJson('/api/points/earn', { gameId: 'hanja-game', correct: 5 });
+    assert.equal(noLogin.status, 401);
+
+    const login = await (await postJson('/api/points/login', { name: '한자테스트', pin: '1234' })).json();
+    const auth = { Authorization: 'Bearer ' + login.token };
+
+    const earned = await postJson('/api/points/earn', { gameId: 'hanja-game', correct: 5 }, auth);
+    assert.equal(earned.status, 200);
+    const earnedBody = await earned.json();
+    assert.equal(earnedBody.awarded, 5);
+    assert.equal(earnedBody.points, STARTING_POINTS + 5);
+
+    const unknownGame = await postJson('/api/points/earn', { gameId: 'no-such-learning-game', correct: 5 }, auth);
+    assert.equal(unknownGame.status, 404);
+
+    const badCorrect = await postJson('/api/points/earn', { gameId: 'hanja-game', correct: -1 }, auth);
+    assert.equal(badCorrect.status, 400);
+  } finally {
+    await new Promise(resolve => io.close(resolve));
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('admin endpoints require the configured admin key and let an admin grant points and change costs', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-test-'));
   const { server, io } = createApp({
