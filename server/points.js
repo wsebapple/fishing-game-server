@@ -3,6 +3,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 
 const TOKEN_TTL_MS = 60 * 24 * 60 * 60 * 1000; // 60일: 가족 서비스라 자주 다시 로그인하지 않아도 되게 넉넉히 잡아요
+const STARTING_POINTS = 30; // 처음 등록할 때부터 즐거운 게임을 한 판이라도 해볼 수 있게 주는 시작 포인트
 
 // 이름은 방 코드와 달리 대문자로 바꾸지 않아요(사람 이름의 대소문자를 그대로 존중) — 그래서 rooms.js의
 // normalizeRoomCode와는 다른 함수예요. 제어문자만 걷어내고, 이모지 같은 문자가 코드포인트 중간에서
@@ -96,9 +97,9 @@ function createPoints(file = path.join(__dirname, '..', 'data', 'points.json'), 
         }
         return entry.points;
       }
-      data[name] = { pinHash, points: 0, updatedAt: new Date().toISOString() };
+      data[name] = { pinHash, points: STARTING_POINTS, updatedAt: new Date().toISOString() };
       await write(data);
-      return 0;
+      return STARTING_POINTS;
     });
     queue = attempt.catch(() => {}); // 이번 시도가 실패해도 다음 요청은 계속 처리돼요
     return attempt.then(points => ({ points, token: makeToken(name) }));
@@ -163,4 +164,4 @@ function createPoints(file = path.join(__dirname, '..', 'data', 'points.json'), 
   return { login, getPoints, listAll, spend, grant, verifyToken, normalizeName, normalizePin };
 }
 
-module.exports = { createPoints };
+module.exports = { createPoints, STARTING_POINTS };

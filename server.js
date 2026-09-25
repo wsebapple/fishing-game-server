@@ -35,10 +35,14 @@ function createApp(options = {}) {
   const app = express();
   const server = http.createServer(app);
   const io = new Server(server, { cors: { origin: '*' } });
-  const leaderboard = createLeaderboard(options.leaderboardFile);
+  // 배포 환경에 영구 디스크가 따로 있으면(예: Render Disk) DATA_DIR을 그 경로로 맞춰서, 서버가
+  // 재배포되거나 다시 시작돼도 순위표·포인트·입장료 데이터가 사라지지 않게 해요. 안 정해주면
+  // 예전처럼 이 저장소 안의 data/ 폴더를 그대로 써요(로컬 개발용 기본값).
+  const dataDir = options.dataDir || process.env.DATA_DIR || path.join(__dirname, 'data');
+  const leaderboard = createLeaderboard(options.leaderboardFile || path.join(dataDir, 'leaderboard.json'));
   const roomApi = createRooms(io, leaderboard);
-  const points = createPoints(options.pointsFile, options.pointsSecret);
-  const costs = createCosts(options.costsFile);
+  const points = createPoints(options.pointsFile || path.join(dataDir, 'points.json'), options.pointsSecret);
+  const costs = createCosts(options.costsFile || path.join(dataDir, 'game-costs.json'));
   const adminKey = options.adminKey || process.env.ADMIN_KEY || '';
   // 관리자 코드는 길이가 달라도 안전하게 시간차 공격 없이 비교해요. 코드가 설정 안 돼 있으면 항상 거부해요.
   function isAdmin(req) {

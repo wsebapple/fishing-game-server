@@ -3,23 +3,23 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { createPoints } = require('../server/points');
+const { createPoints, STARTING_POINTS } = require('../server/points');
 
 async function tmpFile() {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-points-'));
   return { directory, file: path.join(directory, 'points.json') };
 }
 
-test('a new name registers with 0 points, and the same name+PIN logs back in with the same points', async () => {
+test('a new name registers with the starting points, and the same name+PIN logs back in with the same points', async () => {
   const { directory, file } = await tmpFile();
   try {
     const points = createPoints(file, 'test-secret');
     const first = await points.login('철수', '1234');
-    assert.equal(first.points, 0);
+    assert.equal(first.points, STARTING_POINTS);
     assert.equal(points.verifyToken(first.token), '철수');
 
     const second = await points.login('철수', '1234');
-    assert.equal(second.points, 0);
+    assert.equal(second.points, STARTING_POINTS);
 
     const saved = JSON.parse(await fs.readFile(file, 'utf8'));
     assert.ok(saved['철수'].pinHash, 'PIN은 해시로 저장돼요');
@@ -37,7 +37,7 @@ test('logging back in with the wrong PIN is rejected and does not change stored 
     await assert.rejects(points.login('영희', '9999'), (error) => error.code === 'PIN_MISMATCH');
 
     const saved = JSON.parse(await fs.readFile(file, 'utf8'));
-    assert.equal(saved['영희'].points, 0);
+    assert.equal(saved['영희'].points, STARTING_POINTS);
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
   }
@@ -64,7 +64,7 @@ test('points can be read for an existing name without going through login', asyn
   try {
     const points = createPoints(file, 'test-secret');
     await points.login('지민', '2468');
-    assert.equal(await points.getPoints('지민'), 0);
+    assert.equal(await points.getPoints('지민'), STARTING_POINTS);
     assert.equal(await points.getPoints('없는사람'), null);
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
@@ -75,12 +75,13 @@ test('spend deducts on success, rejects when short, and never lets points go neg
   const { directory, file } = await tmpFile();
   try {
     const points = createPoints(file, 'test-secret');
-    await points.login('철수', '1234');
+    await points.login('철수', '1234'); // 시작 포인트(STARTING_POINTS)로 시작해요
     await points.grant('철수', 10);
 
-    assert.equal(await points.spend('철수', 4), 6);
-    await assert.rejects(points.spend('철수', 100), (error) => error.code === 'INSUFFICIENT');
-    assert.equal(await points.getPoints('철수'), 6, '실패한 시도는 포인트를 깎지 않아요');
+    const afterGrant = STARTING_POINTS + 10;
+    assert.equal(await points.spend('철수', 4), afterGrant - 4);
+    await assert.rejects(points.spend('철수', 1000), (error) => error.code === 'INSUFFICIENT');
+    assert.equal(await points.getPoints('철수'), afterGrant - 4, '실패한 시도는 포인트를 깎지 않아요');
 
     await assert.rejects(points.spend('없는사람', 1), (error) => error.code === 'NOT_FOUND');
   } finally {
@@ -92,11 +93,11 @@ test('grant adds or subtracts points for an existing name, clamped at 0, and rej
   const { directory, file } = await tmpFile();
   try {
     const points = createPoints(file, 'test-secret');
-    await points.login('영희', '1111');
+    await points.login('영희', '1111'); // 시작 포인트(STARTING_POINTS)로 시작해요
 
-    assert.equal(await points.grant('영희', 5), 5);
-    assert.equal(await points.grant('영희', -3), 2);
-    assert.equal(await points.grant('영희', -100), 0, '0 밑으로는 안 내려가요');
+    assert.equal(await points.grant('영희', 5), STARTING_POINTS + 5);
+    assert.equal(await points.grant('영희', -3), STARTING_POINTS + 2);
+    assert.equal(await points.grant('영희', -1000), 0, '0 밑으로는 안 내려가요');
 
     await assert.rejects(points.grant('없는사람', 5), (error) => error.code === 'NOT_FOUND');
   } finally {
@@ -115,7 +116,7 @@ test('listAll reports every registered name with their current points', async ()
     const all = await points.listAll();
     assert.deepEqual(
       all.map(p => [p.name, p.points]).sort(),
-      [['영희', 7], ['철수', 0]],
+      [['영희', STARTING_POINTS + 7], ['철수', STARTING_POINTS]],
     );
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
@@ -129,7 +130,7 @@ test('a corrupted points file is quarantined instead of breaking logins forever'
     const points = createPoints(file, 'test-secret');
 
     const result = await points.login('새친구', '0000');
-    assert.equal(result.points, 0);
+    assert.equal(result.points, STARTING_POINTS);
     const siblings = await fs.readdir(directory);
     assert.ok(siblings.some(name => name.startsWith('points.json.corrupt-')), '원본 파일은 지우지 않고 옆으로 격리해요');
   } finally {
