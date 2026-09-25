@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>완전한 9이닝 대전 야구</title>
+<meta name="description" content="친구와 방을 만들어 투구 코스와 스윙을 눈치싸움으로 겨루는 9이닝 대전 야구">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚾</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --page-top: #142042; --page-bottom: #070a16;
+    --ink: #eef1ff; --panel: #1b2750; --panel-alt: #24325f;
+    --line: #3c4d8a; --accent: #ffcf4d; --accent-dark: #cf9e1c;
+    --good: #57d68d; --bad: #ff7676; --muted: #93a1d6;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) { --page-top:#dfe9ff; --page-bottom:#b9caf7; --ink:#161c33; --panel:#ffffff; --panel-alt:#eef2ff; --line:#c3cdf2; --muted:#5a659c; }
+  }
+  :root[data-theme="light"] { --page-top:#dfe9ff; --page-bottom:#b9caf7; --ink:#161c33; --panel:#ffffff; --panel-alt:#eef2ff; --line:#c3cdf2; --muted:#5a659c; }
+  * { box-sizing: border-box; }
+  html { height: 100%; }
+  body {
+    margin: 0; min-height: 100%;
+    background: linear-gradient(180deg, var(--page-top), var(--page-bottom));
+    font-family: 'Jua', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+    color: var(--ink);
+    display: flex; align-items: flex-start; justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #wrap { width: min(96vw, 620px); margin: 14px 0 28px; }
+  #hubLink { display: block; text-align: center; margin-bottom: 8px; }
+  #hubLink a { color: var(--muted); text-decoration: none; font-size: 14px; }
+  .panel {
+    border-radius: 20px; border: 3px solid var(--line); background: var(--panel);
+    box-shadow: 0 6px 0 rgba(0,0,0,.25); padding: 18px 16px 20px; margin-bottom: 14px;
+  }
+  h1 { font-size: clamp(22px, 6vw, 30px); text-align: center; margin: 4px 0 16px; }
+  h2 { font-size: clamp(18px, 5vw, 22px); text-align: center; margin: 0 0 14px; }
+  .hidden { display: none !important; }
+  label.field { display: block; margin: 10px 0; font-size: 14px; color: var(--muted); }
+  input[type="text"] {
+    width: 100%; margin-top: 4px; padding: 10px 12px; border-radius: 10px;
+    border: 2px solid var(--line); background: var(--panel-alt); color: var(--ink); font-size: 16px;
+  }
+  input[type="color"] { width: 56px; height: 36px; border: 2px solid var(--line); border-radius: 8px; background: none; vertical-align: middle; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  button {
+    font-family: inherit; cursor: pointer; border: none; border-radius: 12px;
+    background: var(--accent); color: #3a2b00; font-weight: bold; padding: 12px 18px;
+    font-size: 16px; box-shadow: 0 4px 0 var(--accent-dark);
+  }
+  button:active { transform: translateY(2px); box-shadow: 0 2px 0 var(--accent-dark); }
+  button.secondary { background: var(--panel-alt); color: var(--ink); box-shadow: 0 4px 0 var(--line); }
+  button.secondary:active { box-shadow: 0 2px 0 var(--line); }
+  button:disabled { opacity: .45; cursor: default; box-shadow: none; transform: none; }
+  button.chip { padding: 8px 14px; font-size: 14px; border-radius: 999px; }
+  button.chip.selected { background: var(--good); box-shadow: 0 4px 0 #2c8f5c; color: #06230f; }
+  #joinStatus, #teamWaitStatus, #rematchStatus { min-height: 20px; text-align: center; color: var(--bad); font-size: 14px; margin-top: 8px; }
+
+  #emojiPicker { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  #emojiPicker button { font-size: 20px; padding: 6px 10px; }
+
+  .statRow { display: grid; grid-template-columns: 76px 1fr 28px; align-items: center; gap: 8px; margin: 8px 0; font-size: 14px; }
+  .statRow input[type=range] { width: 100%; }
+  #statBudget { text-align: right; font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+  #scoreboard { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .teamBox { flex: 1; text-align: center; padding: 8px 4px; border-radius: 12px; background: var(--panel-alt); }
+  .teamBox .teamName { display: block; font-size: 13px; color: var(--muted); }
+  .teamBox .teamScore { display: block; font-size: 30px; font-weight: bold; }
+  #inningBox { min-width: 72px; text-align: center; font-size: 15px; }
+  #countBoard { display: flex; justify-content: center; gap: 18px; margin: 10px 0; font-size: 14px; }
+  .pips { display: inline-flex; gap: 3px; vertical-align: middle; margin-left: 4px; }
+  .pip { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+  .pip.lit.ball { background: var(--good); }
+  .pip.lit.strike { background: var(--bad); }
+  .pip.lit.out { background: var(--accent); }
+
+  #diamond { position: relative; width: 150px; height: 130px; margin: 10px auto 14px; }
+  #diamond .base { position: absolute; width: 26px; height: 26px; background: var(--panel-alt); border: 2px solid var(--line); transform: rotate(45deg); }
+  #diamond .base.lit { background: var(--accent); border-color: var(--accent-dark); }
+  #diamond .base.second { top: 0; left: 62px; }
+  #diamond .base.third { top: 52px; left: 8px; }
+  #diamond .base.first { top: 52px; left: 116px; }
+  #diamond .base.home { top: 100px; left: 62px; background: transparent; border: none; font-size: 18px; transform: none; text-align: center; }
+
+  #roleBanner { text-align: center; font-size: 15px; margin: 6px 0 10px; min-height: 22px; }
+  #zoneGrid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; width: min(100%, 300px); margin: 0 auto 12px; aspect-ratio: 1; }
+  .zoneCell { border: 2px solid var(--line); border-radius: 6px; background: var(--panel-alt); }
+  .zoneCell.strikeZone { border-style: dashed; border-color: var(--accent-dark); }
+  .zoneCell.selected { background: var(--accent); border-color: var(--accent-dark); }
+  #pitchTypeRow, #swingModeRow { display: flex; justify-content: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  #actionRow { display: flex; justify-content: center; gap: 10px; margin-bottom: 6px; }
+  #turnTimerBar { height: 6px; border-radius: 3px; background: var(--panel-alt); overflow: hidden; margin-bottom: 10px; }
+  #turnTimerFill { height: 100%; background: var(--accent); width: 100%; }
+  #resultBanner { text-align: center; font-size: 18px; font-weight: bold; min-height: 26px; margin-bottom: 8px; }
+  #playLog { max-height: 130px; overflow-y: auto; font-size: 13px; color: var(--muted); border-top: 2px solid var(--line); padding-top: 8px; }
+  #playLog div { padding: 2px 0; }
+
+  #endScore { text-align: center; font-size: 26px; margin: 6px 0 16px; }
+  #endActions { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="hubLink"><a href="/">← 게임 허브로</a></div>
+
+  <div id="screen-join" class="screen panel">
+    <h1>⚾ 완전한 9이닝 대전 야구</h1>
+    <label class="field">이름
+      <input type="text" id="nameInput" maxlength="12" placeholder="내 이름">
+    </label>
+    <label class="field">방 코드 (친구와 똑같이 입력해요)
+      <input type="text" id="roomInput" maxlength="24" placeholder="예: HOYA123">
+    </label>
+    <div class="row" style="justify-content:center; margin-top:10px;">
+      <button id="joinBtn">입장하기</button>
+    </div>
+    <div id="joinStatus"></div>
+  </div>
+
+  <div id="screen-team" class="screen panel hidden">
+    <h2>우리 팀을 만들어요</h2>
+    <label class="field">팀 이름
+      <input type="text" id="teamNameInput" maxlength="16" placeholder="예: 탱탱볼 타이거즈">
+    </label>
+    <div class="row">
+      <span style="font-size:14px;color:var(--muted)">팀 색깔</span>
+      <input type="color" id="teamColorInput" value="#3b82f6">
+      <span style="font-size:14px;color:var(--muted)">팀 이모지</span>
+      <span id="emojiSelected" style="font-size:22px">🦅</span>
+    </div>
+    <div id="emojiPicker"></div>
+    <p style="font-size:13px;color:var(--muted);margin:14px 0 4px;">능력치를 나눠줘요 (많이 줄수록 그 능력이 좋아져요, 1~5)</p>
+    <div class="statRow"><span>정교함</span><input type="range" id="statContact" min="1" max="5" value="3"><span id="statContactVal">3</span></div>
+    <div class="statRow"><span>파워</span><input type="range" id="statPower" min="1" max="5" value="3"><span id="statPowerVal">3</span></div>
+    <div class="statRow"><span>제구력</span><input type="range" id="statControl" min="1" max="5" value="3"><span id="statControlVal">3</span></div>
+    <div class="statRow"><span>구위</span><input type="range" id="statStuff" min="1" max="5" value="3"><span id="statStuffVal">3</span></div>
+    <div id="statBudget">배분 합계: 12 / 권장 16 이하</div>
+    <div class="row" style="justify-content:center; margin-top:14px;">
+      <button id="readyBtn">준비 완료</button>
+    </div>
+    <div id="teamWaitStatus"></div>
+  </div>
+
+  <div id="screen-game" class="screen panel hidden">
+    <div id="scoreboard">
+      <div class="teamBox away"><span class="teamEmoji">🦅</span><span class="teamName">원정팀</span><span class="teamScore">0</span></div>
+      <div id="inningBox">1회초</div>
+      <div class="teamBox home"><span class="teamEmoji">🐯</span><span class="teamName">홈팀</span><span class="teamScore">0</span></div>
+    </div>
+    <div id="countBoard">
+      <span>볼<span class="pips" id="ballPips"></span></span>
+      <span>스트라이크<span class="pips" id="strikePips"></span></span>
+      <span>아웃<span class="pips" id="outPips"></span></span>
+    </div>
+    <div id="diamond">
+      <div class="base second" id="baseSecond"></div>
+      <div class="base third" id="baseThird"></div>
+      <div class="base first" id="baseFirst"></div>
+      <div class="base home">🏠</div>
+    </div>
+
+    <div id="roleBanner">대기 중...</div>
+    <div id="turnTimerBar"><div id="turnTimerFill"></div></div>
+    <div id="zoneGrid"></div>
+    <div id="pitchTypeRow"></div>
+    <div id="swingModeRow" class="hidden"></div>
+    <div id="actionRow">
+      <button id="confirmBtn">확정</button>
+      <button id="takeBtn" class="secondary hidden">지켜보기</button>
+    </div>
+    <div id="resultBanner"></div>
+    <div id="playLog"></div>
+  </div>
+
+  <div id="screen-end" class="screen panel hidden">
+    <h2 id="endTitle">경기 종료</h2>
+    <div id="endScore"></div>
+    <div id="endActions">
+      <button id="rematchBtn">재대결 신청</button>
+      <a href="/"><button class="secondary" type="button">허브로 돌아가기</button></a>
+    </div>
+    <div id="rematchStatus"></div>
+  </div>
+</div>
+<script src="js/core.js?v=__BUILD_ID__"></script>
+<script src="js/ui.js?v=__BUILD_ID__"></script>
+<script src="js/multiplayer.js?v=__BUILD_ID__"></script>
+</body>
+</html>

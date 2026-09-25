@@ -25,6 +25,8 @@ const { createLeaderboard } = require('./server/leaderboard');
 const { createPoints } = require('./server/points');
 const { createCosts } = require('./server/costs');
 const { attachSockets } = require('./server/socket');
+const { createBaseballRooms } = require('./server/baseball-rooms');
+const { attachBaseballSockets } = require('./server/baseball-socket');
 
 function getBearerToken(req) {
   const match = /^Bearer (.+)$/.exec(req.get('authorization') || '');
@@ -41,6 +43,7 @@ function createApp(options = {}) {
   const dataDir = options.dataDir || process.env.DATA_DIR || path.join(__dirname, 'data');
   const leaderboard = createLeaderboard(options.leaderboardFile || path.join(dataDir, 'leaderboard.json'));
   const roomApi = createRooms(io, leaderboard);
+  const baseballRoomApi = createBaseballRooms(io, { turnMs: options.baseballTurnMs });
   const points = createPoints(options.pointsFile || path.join(dataDir, 'points.json'), options.pointsSecret);
   const costs = createCosts(options.costsFile || path.join(dataDir, 'game-costs.json'));
   const adminKey = options.adminKey || process.env.ADMIN_KEY || '';
@@ -83,6 +86,12 @@ function createApp(options = {}) {
   }));
   app.get('/rooms', (req, res) => {
     res.json(Object.entries(roomApi.rooms)
+      .filter(([, room]) => Object.keys(room.players).length > 0)
+      .map(([code, room]) => ({ code, players: Object.keys(room.players).length }))
+      .sort((a, b) => b.players - a.players));
+  });
+  app.get('/baseball/rooms', (req, res) => {
+    res.json(Object.entries(baseballRoomApi.rooms)
       .filter(([, room]) => Object.keys(room.players).length > 0)
       .map(([code, room]) => ({ code, players: Object.keys(room.players).length }))
       .sort((a, b) => b.players - a.players));
@@ -182,7 +191,8 @@ function createApp(options = {}) {
   });
 
   attachSockets(io, roomApi);
-  return { app, server, io, roomApi, leaderboard, points, costs };
+  attachBaseballSockets(io, baseballRoomApi);
+  return { app, server, io, roomApi, baseballRoomApi, leaderboard, points, costs };
 }
 
 if (require.main === module) {
