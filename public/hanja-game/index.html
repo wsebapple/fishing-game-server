@@ -178,14 +178,14 @@
       <p class="stats" id="earnResult"></p>
       <p class="best">최고 점수: <span id="bestOver">0</span>점</p>
       <button id="againBtn">다시하기</button>
-      <br><a class="home" href="/">🏠 게임 놀이터로</a>
+      <br><a class="home" id="overHomeLink" href="/">🏠 게임 놀이터로</a>
     </div>
   </div>
 
   <div class="modal hidden" id="quitConfirm">
     <div class="card">
       <h1>⚠️ 잠깐!</h1>
-      <p style="text-align:center">정말 그만하고 처음 화면으로 돌아갈까요?<br>지금까지 점수는 사라져요.</p>
+      <p style="text-align:center">정말 그만하고 처음 화면으로 돌아갈까요?<br>지금까지 맞힌 정답만큼 포인트는 적립되지만, 이번 판 점수는 사라져요.</p>
       <button id="quitYes">네, 나갈게요</button>
       <button id="quitNo" class="small">아니요</button>
     </div>
@@ -470,13 +470,16 @@ function endGame() {
   el('overStats').textContent = '점수 ' + score + '점 · 정답 ' + totalCorrect + '/' + totalAnswered + ' (' + acc + '%) · 최고 콤보 x' + bestCombo;
   el('bestOver').textContent = best;
   el('overScreen').classList.remove('hidden');
-  reportEarnedPoints();
+  earnPromise = reportEarnedPoints();
 }
 
 // ---------- 게임 놀이터 포인트 적립 ----------
 // 게임 놀이터 허브와 같은 주소(origin)라서 localStorage에 저장된 로그인 토큰을 그대로 읽을 수 있어요.
 // 정답 개수만 서버로 보내고, 실제로 몇 점을 줄지(하루 한도 포함)는 서버가 정해요.
 const POINTS_TOKEN_KEY = 'fishing.points.token';
+// 적립 요청이 끝나기 전에 "게임 놀이터로" 링크를 눌러서 페이지를 벗어나면 요청이 끊겨 포인트가
+// 안 쌓일 수 있어요. 이 프라미스를 만든 뒤 이동 전에 꼭 기다리게(goHome) 해서 그런 일이 없게 해요.
+let earnPromise = null;
 
 async function reportEarnedPoints() {
   const earnEl = el('earnResult');
@@ -525,8 +528,25 @@ el('muteBtn').addEventListener('click', () => {
   el('muteBtn').textContent = Sound.muted ? '🔇' : '🔊';
 });
 
+// 적립 요청이 아직 끝나지 않았으면(최대 3초) 기다렸다가 게임 놀이터로 이동해요.
+// 이렇게 안 하면 페이지가 바뀌면서 적립 요청이 중간에 끊겨 포인트가 안 쌓일 수 있어요.
+function goHome() {
+  Promise.race([
+    earnPromise || Promise.resolve(),
+    new Promise(resolve => setTimeout(resolve, 3000)),
+  ]).finally(() => { window.location.href = '/'; });
+}
+
+el('overHomeLink').addEventListener('click', e => { e.preventDefault(); goHome(); });
+
 el('quitBtn').addEventListener('click', () => el('quitConfirm').classList.remove('hidden'));
-el('quitYes').addEventListener('click', () => { window.location.href = '/'; });
+el('quitYes').addEventListener('click', () => {
+  // 게임 도중에 나가도 그때까지 맞힌 정답만큼은 포인트로 적립해줘요.
+  gameOver = true;
+  clearInterval(timerHandle);
+  earnPromise = reportEarnedPoints();
+  goHome();
+});
 el('quitNo').addEventListener('click', () => el('quitConfirm').classList.add('hidden'));
 
 document.addEventListener('visibilitychange', () => { paused = document.hidden; });
