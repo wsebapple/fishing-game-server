@@ -10,6 +10,7 @@ const STARTING_POINTS = 30; // 처음 등록할 때부터 즐거운 게임을 �
 // 완벽한 부정 방지는 아니지만(진짜 정답을 맞혔는지까지는 확인 안 해요), 남용 규모를 작게 묶어둬요.
 const EARN_CONFIG = {
   'hanja-game': { pointsPerCorrect: 1, maxCorrectPerRound: 30, maxPointsPerDay: 50 },
+  'math-game': { pointsPerCorrect: 1, maxCorrectPerRound: 30, maxPointsPerDay: 50 },
 };
 
 // 이름은 방 코드와 달리 대문자로 바꾸지 않아요(사람 이름의 대소문자를 그대로 존중) — 그래서 rooms.js의
