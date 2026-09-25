@@ -250,7 +250,7 @@ const SPAWN_WEIGHTS = [30, 25, 20, 15, 10];
 // 마지막에 떨어뜨린 것부터 거꾸로 맞춰보고, 맞으면 바로 다음 과일이 그 아이템으로 바뀌어요.
 const RECIPES = [
   { pattern: [5, 0, 5], item: 'bomb', icon: '💣', name: '폭탄 과일' },      // 사과 → 체리 → 사과
-  { pattern: [0, 0, 0], item: 'rainbow', icon: '🌈', name: '무지개 과일' }, // 체리 → 체리 → 체리 (아무 과일과도 합쳐져요)
+  { pattern: [0, 0], item: 'rainbow', icon: '🌈', name: '무지개 과일' },     // 체리 → 체리 (아무 과일과도 합쳐져요)
 ];
 
 // ---------- 화면 준비 ----------
@@ -557,8 +557,8 @@ function drawParticles() {
 
 // ---------- 떠오르는 점수 글자(콤보·스킬 알림) ----------
 let floatingTexts = [];
-function popText(x, y, text) {
-  floatingTexts.push({ x, y, text, life: 1, vy: -42 });
+function popText(x, y, text, life) {
+  floatingTexts.push({ x, y, text, life: life || 1, vy: -42 });
 }
 function updateFloatingTexts(dt) {
   floatingTexts.forEach(t => { t.y += t.vy * dt; t.life -= dt * 0.9; });
@@ -597,6 +597,7 @@ let comboCount = 0, lastMergeAt = -Infinity;
 let musicStage = 0;   // 0=평소 · 1=복숭아 등급 이상 나온 뒤(조금 급해짐) · 2=두리안 나온 뒤(제일 급함)
 let autoDropTimer = 0;
 let dropHistory = [];   // 최근에 떨어뜨린 과일 순서(특수 조합을 맞았는지 확인하는 데 써요)
+let studyReminderShown = false;   // 5000점 넘으면 장난스러운 안내를 한 번만 보여줘요
 
 function randomLevel() {
   const total = SPAWN_WEIGHTS.reduce((a, b) => a + b, 0);
@@ -616,7 +617,14 @@ function randomSpawn() {
 function clampDropX(x, spawn) {
   return Math.min(JAR.right - spawn.r, Math.max(JAR.left + spawn.r, x));
 }
-function addScore(n) { score += n; }
+function addScore(n) {
+  score += n;
+  if (score >= 5000 && !studyReminderShown) {
+    studyReminderShown = true;
+    popText(W / 2, JAR.top - 20, '📚 이제 공부하러 가자~ ㅋㅋ', 2.5);
+    Music.sfx('big');
+  }
+}
 
 // 방금 떨어뜨린 과일까지 포함해서 최근 순서가 RECIPES의 어떤 조합과 맞아떨어지는지 확인해요.
 // 맞으면 바로 다음에 떨어질 과일을 그 아이템으로 바꿔줘요.
