@@ -1,0 +1,845 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>영단어 맞추기</title>
+<meta name="description" content="초등 필수 영단어를 1~5단계로 배우는 타이머·콤보 퀴즈 게임">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔤</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --page-top: #e3f6ff;
+    --page-bottom: #bfe9ff;
+    --ink: #123a57;
+    --panel: #ffffff;
+    --panel-alt: #eaf8ff;
+    --button: #2f9e6e;
+    --button-dark: #1f6f4c;
+    --gold: #2f8fd8;
+    --good: #2e9e52;
+    --good-dark: #1f7a3c;
+    --bad: #d64541;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --page-top:#0d1b26; --page-bottom:#081118; --panel:#16293a; --panel-alt:#1d3448; --ink:#e6f4ff; }
+  }
+  :root[data-theme="dark"] { --page-top:#0d1b26; --page-bottom:#081118; --panel:#16293a; --panel-alt:#1d3448; --ink:#e6f4ff; }
+
+  html { height: 100%; }
+  body {
+    margin: 0; min-height: 100%;
+    background: linear-gradient(180deg, var(--page-top), var(--page-bottom));
+    font-family: 'Jua', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+    color: var(--ink);
+    display: flex; align-items: center; justify-content: center;
+    overflow-x: hidden;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #wrap {
+    position: relative;
+    width: min(94vw, 560px);
+    margin: 16px 0;
+    border-radius: 24px;
+    border: 4px solid var(--ink);
+    background: var(--panel);
+    box-shadow: 8px 8px 0 var(--button-dark);
+    padding: 16px 16px 20px;
+    overflow: hidden;
+  }
+  #wrap.shake { animation: shake .4s; }
+  .hidden { display: none !important; }
+
+  #hud { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin: 4px 0 10px; }
+  .pill { background: var(--panel-alt); border: 2px solid var(--ink); border-radius: 999px; padding: 6px 14px; font-size: clamp(13px, 3vw, 17px); white-space: nowrap; }
+  #timer.lowtime { color: #fff; background: var(--bad); animation: pulseRed 1s infinite; }
+  #combo { opacity: .55; transition: opacity .15s ease; }
+  #combo.hot { opacity: 1; color: var(--button-dark); }
+
+  #muteBtn, #quitBtn { position: absolute; top: 10px; font-size: clamp(15px, 2.4vw, 22px); background: var(--panel-alt); border: 2px solid var(--ink); border-radius: 8px; padding: 0.15em 0.45em; cursor: pointer; z-index: 3; }
+  #muteBtn { right: 10px; }
+  #quitBtn { left: 10px; }
+
+  #questionCard { position: relative; text-align: center; background: var(--panel-alt); border: 3px dashed var(--gold); border-radius: 18px; padding: 18px 10px 22px; margin-top: 6px; }
+  .badge { display: inline-block; font-size: clamp(12px, 2.6vw, 15px); font-weight: bold; border: 2px solid var(--ink); border-radius: 999px; padding: 2px 12px; color: #fff; }
+  .badge.lv1 { background: #4a9d6e; }
+  .badge.lv2 { background: #3f9d4a; }
+  .badge.lv3 { background: #d68a2e; }
+  .badge.lv4 { background: #c0672b; }
+  .badge.lv5 { background: #c0392b; }
+  #wordText { display: block; font-size: clamp(40px, 11vw, 64px); line-height: 1.15; margin-top: 10px; font-weight: bold; word-break: break-word; }
+  #wordText.bounce { animation: charBounce .45s ease; }
+  #popups { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+  .popup { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); font-size: clamp(16px, 4vw, 24px); font-weight: bold; white-space: nowrap; animation: floatUp 1s ease forwards; }
+  .popup.good { color: var(--good-dark); }
+  .popup.bad { color: var(--button-dark); }
+  .popup.bonus { color: var(--gold); font-size: clamp(18px, 4.4vw, 27px); }
+  .confetti { position: absolute; font-size: 20px; animation: confettiRise .8s ease forwards; }
+
+  #choices { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+  #choices button {
+    font-family: inherit; font-size: clamp(16px, 3.6vw, 21px); color: var(--ink);
+    background: var(--panel); border: 3px solid var(--ink); border-radius: 12px;
+    padding: 0.6em 0.4em; box-shadow: 0 5px 0 var(--button-dark); cursor: pointer;
+  }
+  #choices button:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 1px 0 var(--button-dark); }
+  #choices button:disabled { cursor: default; }
+  #choices button.good { background: var(--good); color: #fff; border-color: var(--good-dark); box-shadow: 0 5px 0 var(--good-dark); }
+  #choices button.bad { background: var(--bad); color: #fff; border-color: var(--button-dark); animation: shake .4s; }
+  #choices button.reveal { background: var(--good); color: #fff; border-color: var(--good-dark); }
+
+  #playArea { position: relative; }
+  #playArea::after { content: ''; position: absolute; inset: -16px; pointer-events: none; border-radius: 18px; }
+  #playArea.flash-good::after { animation: flashGood .5s ease; }
+  #playArea.flash-bad::after { animation: flashBad .5s ease; }
+
+  .screen { display: flex; align-items: center; justify-content: center; padding: 10px 0; }
+  .modal { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; background: rgba(8,60,95,0.55); border-radius: 20px; }
+  .card { background: var(--panel); border: 4px solid var(--ink); border-radius: 18px; padding: 22px 20px; text-align: center; max-width: 94%; max-height: 92%; overflow: auto; box-shadow: 8px 8px 0 var(--button-dark); }
+  .card h1 { margin: 0 0 0.35em; font-size: clamp(24px, 5.5vw, 36px); font-weight: 400; }
+  .card p { margin: 0 0 0.7em; font-size: clamp(13px, 2.3vw, 16px); line-height: 1.6; text-align: left; }
+  .card .stats { font-size: clamp(13px, 2.1vw, 16px); opacity: .9; margin-bottom: 0.7em; }
+  .card button { font-family: inherit; font-size: clamp(18px, 3.6vw, 26px); color: #fff; background: var(--button); border: 4px solid var(--ink); border-radius: 10px; padding: 0.25em 1.1em; box-shadow: 0 6px 0 var(--button-dark); cursor: pointer; margin: 4px; }
+  .card button:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--button-dark); }
+  .card button.small { font-size: clamp(13px, 2vw, 17px); padding: 0.25em 0.8em; border-width: 3px; box-shadow: 0 3px 0 var(--button-dark); background: var(--panel); color: var(--ink); }
+  .home { display: inline-block; margin-top: 0.7em; font-size: clamp(12px, 1.8vw, 15px); color: var(--ink); }
+
+  #levelGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 10px 0 4px; }
+  #levelGrid button {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    font-family: inherit; color: #fff; border: 4px solid var(--ink); border-radius: 14px;
+    padding: 10px 6px; cursor: pointer; box-shadow: 0 6px 0 var(--button-dark);
+  }
+  #levelGrid button:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--button-dark); }
+  #levelGrid .lvIcon { font-size: 30px; }
+  #levelGrid .lvName { font-size: clamp(15px, 3vw, 19px); }
+  #levelGrid .lvBest { font-size: clamp(11px, 2vw, 13px); opacity: .9; }
+  #levelGrid button[data-lv="1"] { background: #4a9d6e; box-shadow: 0 6px 0 #2f6b48; }
+  #levelGrid button[data-lv="2"] { background: #3f9d4a; box-shadow: 0 6px 0 #276b2e; }
+  #levelGrid button[data-lv="3"] { background: #d68a2e; box-shadow: 0 6px 0 #a3651c; }
+  #levelGrid button[data-lv="4"] { background: #c0672b; box-shadow: 0 6px 0 #8f4a1c; }
+  #levelGrid button[data-lv="5"] { background: #c0392b; box-shadow: 0 6px 0 #8e2a1f; }
+
+  .sessionPill {
+    display: inline-block; margin: 0 0 10px; background: var(--panel-alt);
+    border: 2px solid var(--ink); border-radius: 999px; padding: 6px 16px;
+    font-size: clamp(13px, 2.4vw, 16px);
+  }
+
+  .dirToggle { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin: 8px 0 4px; }
+  .dirToggle button {
+    font-family: inherit; font-size: clamp(12px, 2.4vw, 15px); color: var(--ink);
+    background: var(--panel-alt); border: 2px solid var(--ink); border-radius: 999px;
+    padding: 6px 14px; cursor: pointer;
+  }
+  .dirToggle button.active { color: #fff; background: var(--button); border-color: var(--button-dark); }
+
+  .badge.dirbadge { background: #6b5b95; margin-left: 6px; }
+  .listenWrap { margin-top: 8px; }
+  .listenBtn {
+    font-family: inherit; font-size: clamp(13px, 2.6vw, 16px); color: #fff;
+    background: var(--gold); border: 2px solid var(--ink); border-radius: 999px;
+    padding: 6px 16px; cursor: pointer; box-shadow: 0 4px 0 #1f6fa8;
+  }
+  .listenBtn:active { transform: translateY(2px); box-shadow: 0 2px 0 #1f6fa8; }
+  .listenBtn.hidden { display: none; }
+
+  .reviewWord { font-size: clamp(28px, 7vw, 42px); font-weight: bold; margin: 6px 0; text-align: center; word-break: break-word; }
+
+  @keyframes shake { 10%,90%{transform:translateX(-1px)} 20%,80%{transform:translateX(2px)} 30%,50%,70%{transform:translateX(-7px)} 40%,60%{transform:translateX(7px)} }
+  @keyframes charBounce { 0%{transform:scale(.7) rotate(-6deg);opacity:.4} 55%{transform:scale(1.15) rotate(3deg);opacity:1} 100%{transform:scale(1) rotate(0)} }
+  @keyframes floatUp { 0%{transform:translate(-50%,0) scale(.8);opacity:0} 18%{opacity:1;transform:translate(-50%,-8px) scale(1.08)} 100%{transform:translate(-50%,-58px) scale(1);opacity:0} }
+  @keyframes confettiRise { 0%{transform:translate(0,0) rotate(0);opacity:1} 100%{transform:translate(var(--dx),-100px) rotate(var(--rot));opacity:0} }
+  @keyframes flashGood { 0%{background:rgba(46,158,82,0)} 30%{background:rgba(46,158,82,.32)} 100%{background:rgba(46,158,82,0)} }
+  @keyframes flashBad { 0%{background:rgba(214,69,65,0)} 30%{background:rgba(214,69,65,.32)} 100%{background:rgba(214,69,65,0)} }
+  @keyframes pulseRed { 0%,100%{box-shadow:inset 0 0 0 rgba(214,69,65,0)} 50%{box-shadow:inset 0 0 22px rgba(214,69,65,.7)} }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <button id="muteBtn" aria-label="소리 켜기 끄기">🔊</button>
+  <button id="quitBtn" class="hidden" aria-label="그만하기">🏠</button>
+
+  <div id="playArea" class="hidden">
+    <div id="hud">
+      <span class="pill" id="score">🏆 0점</span>
+      <span class="pill" id="timer">⏳ 60</span>
+      <span class="pill" id="lives">❤️❤️❤️</span>
+      <span class="pill" id="combo">🔥 콤보</span>
+    </div>
+    <div id="questionCard">
+      <span id="levelBadge" class="badge lv1">1단계</span>
+      <span id="dirBadge" class="badge dirbadge">🔤→🇰🇷</span>
+      <span id="wordText">cat</span>
+      <div class="listenWrap"><button type="button" id="listenBtn" class="listenBtn" aria-label="영단어 발음 듣기">🔊 발음 듣기</button></div>
+      <div id="popups"></div>
+    </div>
+    <div id="choices"></div>
+  </div>
+
+  <div class="screen" id="startScreen">
+    <div class="card">
+      <h1>🔤 영단어 맞추기</h1>
+      <p>
+        🔤 화면에 나온 영어 단어를 보고, 알맞은 우리말 뜻을 골라보세요!<br>
+        🌱→🌳 1단계(씨앗)부터 5단계(나무)까지, 단계가 올라갈수록 단어가 더 어려워지고 점수도 더 높아요!<br>
+        ⏳ 시간은 60초! 정답을 많이 맞힐수록 시간이 늘어나요.<br>
+        🔥 연속으로 맞히면 콤보가 쌓이고 점수 배율도 쭉쭉 올라가요. 5콤보마다 시간이 3초 늘어나요!<br>
+        ❤️ 틀리면 목숨이 하나 줄고 시간도 2초 줄어요. 목숨 3개를 모두 잃으면 끝이에요.<br>
+        🔊 문제에 나온 단어의 발음이 궁금하면 "발음 듣기" 버튼을 눌러보세요!<br>
+        🎯 정답을 맞히면 그 자리에서 바로 게임 놀이터 포인트로 적립돼요. 여러 단계를 이어서 풀면 이번 방문 점수도 계속 쌓여요!
+      </p>
+      <div class="sessionPill hidden" id="sessionPill"></div>
+      <p style="text-align:center;font-size:clamp(13px,2.1vw,16px);margin:6px 0 2px;">문제 방향을 골라요!</p>
+      <div class="dirToggle" id="dirToggle">
+        <button type="button" data-dir="en2ko">🔤→🇰🇷 영어 보고 뜻 맞히기</button>
+        <button type="button" data-dir="ko2en">🇰🇷→🔤 뜻 보고 영어 맞히기</button>
+      </div>
+      <p style="text-align:center;font-size:clamp(13px,2.1vw,16px);margin:10px 0 4px;">원하는 단계를 골라 시작해요!</p>
+      <div id="levelGrid"></div>
+      <br><a class="home" href="/" id="homeFromStart">🏠 게임 놀이터로</a>
+    </div>
+  </div>
+
+  <div class="screen hidden" id="overScreen">
+    <div class="card">
+      <h1 id="overTitle">게임 끝! 🔤</h1>
+      <p class="stats" id="overStats"></p>
+      <p class="stats" id="earnResult"></p>
+      <p class="stats">이 단계 최고 점수: <span id="bestOver">0</span>점</p>
+      <button id="againBtn">다시하기</button>
+      <button id="pickLevelBtn" class="small">다른 단계 고르기</button>
+      <br><a class="home" href="/" id="homeFromOver">🏠 게임 놀이터로</a>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="quitConfirm">
+    <div class="card">
+      <h1>⚠️ 잠깐!</h1>
+      <p style="text-align:center">정말 그만하고 단계 선택 화면으로 돌아갈까요?<br>지금까지 맞힌 정답은 포인트로 적립돼요.</p>
+      <button id="quitYes">네, 나갈게요</button>
+      <button id="quitNo" class="small">아니요</button>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="roundResult">
+    <div class="card">
+      <h1>🎉 잘했어요!</h1>
+      <p class="stats" id="roundResultText" style="text-align:center"></p>
+      <button id="roundResultOk">확인</button>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="reviewIntro">
+    <div class="card">
+      <h1>🔁 복습해볼까요?</h1>
+      <p style="text-align:center">이번에 틀린 단어 <b id="reviewIntroCount">0</b>개를 다시 보면 포인트를 받을 수 있어요!</p>
+      <button id="reviewStartBtn">복습하기</button>
+      <br><button type="button" class="small" id="reviewIntroLeave">복습 없이 나가기</button>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="reviewCard">
+    <div class="card">
+      <h1>🔁 복습 중</h1>
+      <p class="stats" id="reviewProgress" style="text-align:center">1 / 1</p>
+      <div class="reviewWord" id="reviewWord"></div>
+      <p class="stats hidden" id="reviewMeaning" style="text-align:center"></p>
+      <button id="reviewRevealBtn">👆 터치해서 뜻 보기</button>
+      <button id="reviewNextBtn" class="hidden">다음 단어</button>
+      <br><button type="button" class="small" id="reviewCardLeave">복습 없이 나가기</button>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="reviewLeaveConfirm">
+    <div class="card">
+      <h1>⚠️ 잠깐!</h1>
+      <p style="text-align:center">복습을 마치지 않으면 이번 포인트는 받을 수 없어요!<br>그래도 나갈까요?</p>
+      <button id="reviewLeaveStay">복습 계속하기</button>
+      <button id="reviewLeaveForfeit" class="small">포인트 포기하고 나가기</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- 단계 정보 ----------
+const LEVELS = [
+  { n: 1, icon: '🌱', name: '씨앗',     points: 10 },
+  { n: 2, icon: '🌿', name: '새싹',     points: 12 },
+  { n: 3, icon: '🌸', name: '꽃봉오리', points: 15 },
+  { n: 4, icon: '🍎', name: '열매',     points: 18 },
+  { n: 5, icon: '🌳', name: '나무',     points: 22 },
+];
+
+// ---------- 영단어 데이터 (초등 필수 영단어, 1~5단계) ----------
+// w: 영어 단어, m: 우리말 뜻, lvl: 난이도(1=가장 쉬움 ~ 5=가장 어려움)
+const WORDS = [
+  // 1단계: 알파벳을 막 뗀 저학년을 위한 기초 단어 (동물·음식·물건·색깔·숫자)
+  {w:'cat',m:'고양이',lvl:1},{w:'dog',m:'개',lvl:1},{w:'pig',m:'돼지',lvl:1},{w:'cow',m:'소',lvl:1},{w:'bird',m:'새',lvl:1},
+  {w:'fish',m:'물고기',lvl:1},{w:'lion',m:'사자',lvl:1},{w:'apple',m:'사과',lvl:1},{w:'banana',m:'바나나',lvl:1},{w:'egg',m:'달걀',lvl:1},
+  {w:'milk',m:'우유',lvl:1},{w:'water',m:'물',lvl:1},{w:'bread',m:'빵',lvl:1},{w:'book',m:'책',lvl:1},{w:'pen',m:'펜',lvl:1},
+  {w:'pencil',m:'연필',lvl:1},{w:'bag',m:'가방',lvl:1},{w:'chair',m:'의자',lvl:1},{w:'desk',m:'책상',lvl:1},{w:'door',m:'문',lvl:1},
+  {w:'window',m:'창문',lvl:1},{w:'ball',m:'공',lvl:1},{w:'hat',m:'모자',lvl:1},{w:'cup',m:'컵',lvl:1},{w:'red',m:'빨간색',lvl:1},
+  {w:'blue',m:'파란색',lvl:1},{w:'yellow',m:'노란색',lvl:1},{w:'one',m:'하나(1)',lvl:1},{w:'two',m:'둘(2)',lvl:1},{w:'mom',m:'엄마',lvl:1},
+
+  // 2단계: 학교생활·가족·몸·날씨 (3학년 수준)
+  {w:'school',m:'학교',lvl:2},{w:'teacher',m:'선생님',lvl:2},{w:'student',m:'학생',lvl:2},{w:'friend',m:'친구',lvl:2},{w:'classroom',m:'교실',lvl:2},
+  {w:'board',m:'칠판',lvl:2},{w:'name',m:'이름',lvl:2},{w:'age',m:'나이',lvl:2},{w:'family',m:'가족',lvl:2},{w:'brother',m:'형/오빠/남동생',lvl:2},
+  {w:'sister',m:'누나/언니/여동생',lvl:2},{w:'baby',m:'아기',lvl:2},{w:'house',m:'집',lvl:2},{w:'room',m:'방',lvl:2},{w:'kitchen',m:'부엌',lvl:2},
+  {w:'bathroom',m:'화장실',lvl:2},{w:'Monday',m:'월요일',lvl:2},{w:'Sunday',m:'일요일',lvl:2},{w:'morning',m:'아침',lvl:2},{w:'night',m:'밤',lvl:2},
+  {w:'eye',m:'눈(신체)',lvl:2},{w:'nose',m:'코',lvl:2},{w:'mouth',m:'입',lvl:2},{w:'ear',m:'귀',lvl:2},{w:'hand',m:'손',lvl:2},
+  {w:'foot',m:'발',lvl:2},{w:'head',m:'머리',lvl:2},{w:'rain',m:'비',lvl:2},{w:'snow',m:'눈(날씨)',lvl:2},{w:'sun',m:'해',lvl:2},
+
+  // 3단계: 동작·기분·장소·교통수단 (4학년 수준)
+  {w:'run',m:'달리다',lvl:3},{w:'jump',m:'뛰다',lvl:3},{w:'walk',m:'걷다',lvl:3},{w:'swim',m:'수영하다',lvl:3},{w:'eat',m:'먹다',lvl:3},
+  {w:'drink',m:'마시다',lvl:3},{w:'sleep',m:'자다',lvl:3},{w:'read',m:'읽다',lvl:3},{w:'write',m:'쓰다',lvl:3},{w:'sing',m:'노래하다',lvl:3},
+  {w:'dance',m:'춤추다',lvl:3},{w:'play',m:'놀다',lvl:3},{w:'big',m:'큰',lvl:3},{w:'small',m:'작은',lvl:3},{w:'happy',m:'행복한',lvl:3},
+  {w:'sad',m:'슬픈',lvl:3},{w:'angry',m:'화난',lvl:3},{w:'tired',m:'피곤한',lvl:3},{w:'hungry',m:'배고픈',lvl:3},{w:'park',m:'공원',lvl:3},
+  {w:'zoo',m:'동물원',lvl:3},{w:'hospital',m:'병원',lvl:3},{w:'market',m:'시장',lvl:3},{w:'library',m:'도서관',lvl:3},{w:'store',m:'가게',lvl:3},
+  {w:'bus',m:'버스',lvl:3},{w:'train',m:'기차',lvl:3},{w:'airplane',m:'비행기',lvl:3},{w:'bicycle',m:'자전거',lvl:3},{w:'subway',m:'지하철',lvl:3},
+
+  // 4단계: 시간 표현·계절·성격/상태 형용사 (5학년 수준)
+  {w:'yesterday',m:'어제',lvl:4},{w:'today',m:'오늘',lvl:4},{w:'tomorrow',m:'내일',lvl:4},{w:'week',m:'주(일주일)',lvl:4},{w:'month',m:'달(월)',lvl:4},
+  {w:'year',m:'년(해)',lvl:4},{w:'holiday',m:'휴일',lvl:4},{w:'festival',m:'축제',lvl:4},{w:'invite',m:'초대하다',lvl:4},{w:'borrow',m:'빌리다',lvl:4},
+  {w:'lend',m:'빌려주다',lvl:4},{w:'explain',m:'설명하다',lvl:4},{w:'decide',m:'결정하다',lvl:4},{w:'difficult',m:'어려운',lvl:4},{w:'important',m:'중요한',lvl:4},
+  {w:'popular',m:'인기있는',lvl:4},{w:'famous',m:'유명한',lvl:4},{w:'dangerous',m:'위험한',lvl:4},{w:'careful',m:'조심하는',lvl:4},{w:'exciting',m:'신나는',lvl:4},
+  {w:'boring',m:'지루한',lvl:4},{w:'weather',m:'날씨',lvl:4},{w:'season',m:'계절',lvl:4},{w:'spring',m:'봄',lvl:4},{w:'summer',m:'여름',lvl:4},
+  {w:'autumn',m:'가을',lvl:4},{w:'winter',m:'겨울',lvl:4},{w:'hobby',m:'취미',lvl:4},{w:'vacation',m:'방학',lvl:4},{w:'plan',m:'계획',lvl:4},
+
+  // 5단계: 사회·과학·추상 개념 어휘 (6학년 수준)
+  {w:'environment',m:'환경',lvl:5},{w:'pollution',m:'오염',lvl:5},{w:'recycle',m:'재활용하다',lvl:5},{w:'volunteer',m:'봉사하다',lvl:5},{w:'experience',m:'경험',lvl:5},
+  {w:'information',m:'정보',lvl:5},{w:'technology',m:'기술',lvl:5},{w:'opinion',m:'의견',lvl:5},{w:'culture',m:'문화',lvl:5},{w:'traditional',m:'전통적인',lvl:5},
+  {w:'history',m:'역사',lvl:5},{w:'science',m:'과학',lvl:5},{w:'president',m:'대통령',lvl:5},{w:'government',m:'정부',lvl:5},{w:'society',m:'사회',lvl:5},
+  {w:'communicate',m:'의사소통하다',lvl:5},{w:'discover',m:'발견하다',lvl:5},{w:'invent',m:'발명하다',lvl:5},{w:'achieve',m:'성취하다',lvl:5},{w:'challenge',m:'도전',lvl:5},
+  {w:'solve',m:'해결하다',lvl:5},{w:'protect',m:'보호하다',lvl:5},{w:'save',m:'구하다/저축하다',lvl:5},{w:'future',m:'미래',lvl:5},{w:'dream',m:'꿈',lvl:5},
+  {w:'goal',m:'목표',lvl:5},{w:'respect',m:'존중하다',lvl:5},{w:'understand',m:'이해하다',lvl:5},{w:'imagine',m:'상상하다',lvl:5},{w:'create',m:'창조하다',lvl:5},
+];
+const LEVEL_POINTS = Object.fromEntries(LEVELS.map(l => [l.n, l.points]));
+
+// ---------- 소리 (컴퓨터가 직접 연주해요) ----------
+const Sound = {
+  ctx: null, muted: false,
+  ensure() { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); else if (this.ctx.state === 'suspended') this.ctx.resume(); },
+  tone(freq, t, len, type, vol, freqEnd) {
+    if (!this.ctx || this.muted) return;
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (freqEnd) o.frequency.exponentialRampToValueAtTime(freqEnd, t + len);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + len);
+    o.connect(g).connect(this.ctx.destination);
+    o.start(t); o.stop(t + len);
+  },
+  correct() { if (!this.ctx) return; const t = this.ctx.currentTime; this.tone(660, t, 0.12, 'triangle', 0.28); this.tone(880, t + 0.08, 0.16, 'triangle', 0.26); },
+  wrong() { if (!this.ctx) return; const t = this.ctx.currentTime; this.tone(220, t, 0.3, 'sawtooth', 0.28, 90); },
+  combo(level) { if (!this.ctx) return; const t = this.ctx.currentTime; [0, 0.07, 0.14].forEach((d, i) => this.tone(520 + i * 140 + (level || 0) * 6, t + d, 0.14, 'square', 0.18)); },
+  tick() { if (!this.ctx) return; this.tone(880, this.ctx.currentTime, 0.05, 'square', 0.08); },
+  gameover() { if (!this.ctx) return; const t = this.ctx.currentTime; this.tone(300, t, 0.5, 'sawtooth', 0.25, 70); },
+};
+
+// ---------- 발음 듣기 (브라우저 내장 음성 합성) ----------
+const Speech = {
+  supported: typeof window !== 'undefined' && 'speechSynthesis' in window,
+  voice: null,
+  // 기기 기본 음성이 한국어라서 영어를 그대로 읽으면 발음이 이상해질 수 있어요.
+  // 그래서 영어(en) 음성 목록 중 하나를 직접 골라 써요.
+  pickVoice() {
+    if (!this.supported) return;
+    const voices = window.speechSynthesis.getVoices();
+    if (!voices.length) return;
+    this.voice =
+      voices.find(v => /^en-US/i.test(v.lang) && /Google|Natural|Online|Samantha/i.test(v.name)) ||
+      voices.find(v => /^en-US/i.test(v.lang)) ||
+      voices.find(v => /^en/i.test(v.lang)) ||
+      null;
+  },
+  speak(text) {
+    if (!this.supported || !text) return;
+    try {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'en-US';
+      u.rate = 0.95;
+      u.pitch = 1;
+      if (this.voice) u.voice = this.voice;
+      window.speechSynthesis.speak(u);
+    } catch (e) { /* 음성 합성을 지원하지 않는 브라우저는 조용히 넘어가요 */ }
+  },
+};
+if (Speech.supported) {
+  Speech.pickVoice();
+  window.speechSynthesis.addEventListener('voiceschanged', () => Speech.pickVoice());
+}
+
+// 기기에 영어 음성이 없으면(브라우저 합성 음성이 한국어로 대신 읽어서 발음이 어색해질 수 있어요),
+// 무료 사전 API가 제공하는 실제 원어민 녹음 파일을 먼저 재생해보고, 안 되면 브라우저 음성으로 대신 읽어줘요.
+const pronounceCache = {};
+let pronounceAudio = null;
+
+async function fetchPronunciationUrl(word) {
+  const key = word.toLowerCase();
+  if (key in pronounceCache) return pronounceCache[key];
+  try {
+    const res = await fetch('https://api.dictionaryapi.dev/api/v2/entries/en/' + encodeURIComponent(key));
+    if (!res.ok) { pronounceCache[key] = null; return null; }
+    const entries = await res.json();
+    let url = null;
+    for (const entry of entries) {
+      for (const p of entry.phonetics || []) {
+        if (p.audio) { url = p.audio.startsWith('http') ? p.audio : 'https:' + p.audio; break; }
+      }
+      if (url) break;
+    }
+    pronounceCache[key] = url;
+    return url;
+  } catch (err) {
+    pronounceCache[key] = null;
+    return null;
+  }
+}
+
+// 문제가 나올 때 미리 발음 파일 주소를 받아두고(prefetch), 버튼을 눌렀을 때는 그 캐시를 즉시 재생해요.
+// 클릭한 그 순간 곧바로 재생해야(중간에 fetch로 기다리지 않아야) 휴대폰 브라우저가 "사용자가 직접
+// 누른 재생"으로 인정해서 막지 않고, 소리도 늦게 나오지 않고 바로 나와요.
+function playPronunciation(word) {
+  const key = word.toLowerCase();
+  if (key in pronounceCache) {
+    const url = pronounceCache[key];
+    if (url) {
+      if (!pronounceAudio) pronounceAudio = new Audio();
+      pronounceAudio.src = url;
+      pronounceAudio.play().catch(() => Speech.speak(word));
+    } else {
+      Speech.speak(word);
+    }
+    return;
+  }
+  // 아직 미리 받아두지 못했으면(문제가 뜨자마자 바로 눌렀을 때) 기다리지 말고 기기 음성으로 바로 들려주고,
+  // 다음번엔 캐시를 쓸 수 있도록 뒤에서 계속 받아둬요.
+  Speech.speak(word);
+  fetchPronunciationUrl(word);
+}
+
+// ---------- 상태 ----------
+const ROUND_TIME = 60;
+let score = 0, timeLeft = ROUND_TIME, lives = 3, combo = 0, bestCombo = 0;
+let totalAnswered = 0, totalCorrect = 0;
+let bag = [], lastWord = null, currentItem = null;
+let wrongItems = [];
+let locked = false, gameOver = false, paused = false, timerHandle = null;
+let currentLevel = 1;
+const DIRECTION_KEY = 'englishWordGameDirection';
+let direction = localStorage.getItem(DIRECTION_KEY) === 'ko2en' ? 'ko2en' : 'en2ko';
+
+const el = id => document.getElementById(id);
+const scoreEl = el('score'), timerEl = el('timer'), livesEl = el('lives'), comboEl = el('combo');
+const wordEl = el('wordText'), choicesEl = el('choices'), popupsEl = el('popups'), levelBadgeEl = el('levelBadge'), dirBadgeEl = el('dirBadge');
+const playArea = el('playArea'), wrapEl = el('wrap');
+const listenBtn = el('listenBtn');
+
+const BEST_KEY = 'englishWordGameBest';
+function loadBests() { try { return JSON.parse(localStorage.getItem(BEST_KEY)) || {}; } catch (e) { return {}; } }
+function saveBest(level, value) {
+  const bests = loadBests();
+  bests[level] = Math.max(value, bests[level] || 0);
+  localStorage.setItem(BEST_KEY, JSON.stringify(bests));
+  return bests[level];
+}
+
+function shuffle(arr) { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
+function comboMultiplier(n) { if (n >= 10) return 3; if (n >= 6) return 2; if (n >= 3) return 1.5; return 1; }
+function wordsForLevel(level) { return WORDS.filter(w => w.lvl === level); }
+
+function drawItem() {
+  if (bag.length === 0) bag = shuffle(wordsForLevel(currentLevel));
+  let item = bag.pop();
+  if (item.w === lastWord && bag.length > 0) { bag.unshift(item); item = bag.pop(); }
+  lastWord = item.w;
+  return item;
+}
+
+function spawnPopup(text, kind) {
+  const span = document.createElement('span');
+  span.className = 'popup ' + kind;
+  span.textContent = text;
+  popupsEl.appendChild(span);
+  span.addEventListener('animationend', () => span.remove());
+}
+function spawnConfetti() {
+  const emojis = ['✨', '⭐', '🎉'];
+  for (let i = 0; i < 8; i++) {
+    const s = document.createElement('span');
+    s.className = 'confetti';
+    s.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+    s.style.left = (40 + Math.random() * 20) + '%';
+    s.style.top = '38%';
+    s.style.setProperty('--dx', (Math.random() * 120 - 60) + 'px');
+    s.style.setProperty('--rot', (Math.random() * 360 - 180) + 'deg');
+    popupsEl.appendChild(s);
+    s.addEventListener('animationend', () => s.remove());
+  }
+}
+function bounceWord() { wordEl.classList.remove('bounce'); void wordEl.offsetWidth; wordEl.classList.add('bounce'); }
+function shakeWrap() { wrapEl.classList.remove('shake'); void wrapEl.offsetWidth; wrapEl.classList.add('shake'); }
+function flashPlay(kind) {
+  const cls = kind === 'good' ? 'flash-good' : 'flash-bad';
+  playArea.classList.remove('flash-good', 'flash-bad');
+  void playArea.offsetWidth;
+  playArea.classList.add(cls);
+}
+
+function updateHUD() {
+  scoreEl.textContent = '🏆 ' + score + '점';
+  timerEl.textContent = '⏳ ' + Math.max(0, timeLeft);
+  timerEl.classList.toggle('lowtime', timeLeft <= 10 && timeLeft > 0);
+  livesEl.textContent = '❤️'.repeat(Math.max(0, lives)) + '🤍'.repeat(Math.max(0, 3 - lives));
+  if (combo >= 2) {
+    comboEl.textContent = '🔥 콤보 x' + combo + ' (x' + comboMultiplier(combo) + ')';
+    comboEl.classList.add('hot');
+  } else {
+    comboEl.textContent = '🔥 콤보';
+    comboEl.classList.remove('hot');
+  }
+}
+
+function renderQuestion() {
+  currentItem = drawItem();
+  const isKo2En = direction === 'ko2en';
+  wordEl.textContent = isKo2En ? currentItem.m : currentItem.w;
+  wordEl.lang = isKo2En ? 'ko' : 'en';
+  levelBadgeEl.textContent = currentLevel + '단계';
+  levelBadgeEl.className = 'badge lv' + currentLevel;
+  dirBadgeEl.textContent = isKo2En ? '🇰🇷→🔤' : '🔤→🇰🇷';
+  bounceWord();
+  fetchPronunciationUrl(currentItem.w); // 발음 버튼을 누르기 전에 미리 받아둬요
+
+  const correctText = isKo2En ? currentItem.w : currentItem.m;
+  const levelPool = wordsForLevel(currentLevel).filter(w => w.w !== currentItem.w);
+  const pool = shuffle(levelPool.length >= 3 ? levelPool : WORDS.filter(w => w.w !== currentItem.w));
+  const distractors = [];
+  for (const w of pool) {
+    const t = isKo2En ? w.w : w.m;
+    if (t !== correctText && !distractors.includes(t)) { distractors.push(t); if (distractors.length === 3) break; }
+  }
+  const options = shuffle([
+    { t: correctText, correct: true },
+    ...distractors.map(t => ({ t, correct: false })),
+  ]);
+
+  choicesEl.innerHTML = '';
+  options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.textContent = opt.t;
+    btn.lang = isKo2En ? 'en' : 'ko';
+    if (opt.correct) btn.dataset.correct = '1';
+    btn.addEventListener('click', () => selectChoice(btn, opt));
+    choicesEl.appendChild(btn);
+  });
+  locked = false;
+}
+
+function selectChoice(btn, opt) {
+  if (locked || gameOver) return;
+  locked = true;
+  totalAnswered++;
+  [...choicesEl.children].forEach(b => (b.disabled = true));
+
+  if (opt.correct) {
+    btn.classList.add('good');
+    handleCorrect();
+  } else {
+    btn.classList.add('bad');
+    const correctBtn = [...choicesEl.children].find(b => b.dataset.correct === '1');
+    if (correctBtn) correctBtn.classList.add('reveal');
+    if (!wrongItems.some(w => w.w === currentItem.w)) wrongItems.push({ w: currentItem.w, m: currentItem.m });
+    handleWrong();
+  }
+
+  setTimeout(() => { if (!gameOver) renderQuestion(); }, opt.correct ? 650 : 1100);
+}
+
+function handleCorrect() {
+  totalCorrect++;
+  combo++;
+  bestCombo = Math.max(bestCombo, combo);
+  const gained = Math.round(LEVEL_POINTS[currentLevel] * comboMultiplier(combo));
+  score += gained;
+  spawnPopup('+' + gained, 'good');
+  spawnConfetti();
+  flashPlay('good');
+  Sound.correct();
+  if (combo % 5 === 0) {
+    timeLeft = Math.min(99, timeLeft + 3);
+    spawnPopup('+3초 보너스!', 'bonus');
+    Sound.combo(combo);
+  }
+  updateHUD();
+}
+
+function handleWrong() {
+  combo = 0;
+  lives--;
+  timeLeft = Math.max(1, timeLeft - 2);
+  spawnPopup('-2초', 'bad');
+  shakeWrap();
+  flashPlay('bad');
+  Sound.wrong();
+  updateHUD();
+  if (lives <= 0) endGame();
+}
+
+function startTimer() {
+  clearInterval(timerHandle);
+  timerHandle = setInterval(() => {
+    if (paused || gameOver) return;
+    timeLeft--;
+    if (timeLeft <= 10 && timeLeft > 0) Sound.tick();
+    if (timeLeft <= 0) { timeLeft = 0; updateHUD(); endGame(); return; }
+    updateHUD();
+  }, 1000);
+}
+
+function startGame(level) {
+  currentLevel = level || currentLevel;
+  Sound.ensure();
+  score = 0; timeLeft = ROUND_TIME; lives = 3; combo = 0; bestCombo = 0;
+  totalAnswered = 0; totalCorrect = 0; bag = []; lastWord = null; gameOver = false; wrongItems = [];
+  el('startScreen').classList.add('hidden');
+  el('overScreen').classList.add('hidden');
+  playArea.classList.remove('hidden');
+  el('quitBtn').classList.remove('hidden');
+  updateHUD();
+  renderQuestion();
+  startTimer();
+}
+
+function endGame() {
+  if (gameOver) return;
+  gameOver = true;
+  clearInterval(timerHandle);
+  Sound.gameover();
+  playArea.classList.add('hidden');
+  el('quitBtn').classList.add('hidden');
+  const best = saveBest(currentLevel, score);
+  const roundScore = score, roundCorrect = totalCorrect;
+  const totalScore = addSessionScore(roundScore);
+  const acc = totalAnswered ? Math.round((totalCorrect / totalAnswered) * 100) : 0;
+  el('overTitle').textContent = lives <= 0 ? '아쉬워요! 💔' : '시간 종료! ⏰';
+  el('overStats').textContent = currentLevel + '단계 · 점수 ' + roundScore + '점 · 정답 ' + totalCorrect + '/' + totalAnswered + ' (' + acc + '%) · 최고 콤보 x' + bestCombo;
+  el('earnResult').textContent = '';
+  el('bestOver').textContent = best;
+  el('overScreen').classList.remove('hidden');
+  updateSessionPill();
+
+  runReviewGate(wrongItems.slice(), async forfeited => {
+    if (forfeited) {
+      el('earnResult').textContent = '복습을 마치지 않아서 이번 포인트는 받지 못했어요. (이번 방문 누적 점수 ' + totalScore + '점)';
+      return;
+    }
+    el('earnResult').textContent = '포인트 적립 중...';
+    el('earnResult').textContent = await reportEarnedPoints(roundCorrect, totalScore);
+  });
+}
+
+// ---------- 게임 놀이터 포인트 적립 ----------
+// 게임 놀이터 허브와 같은 주소(origin)라서 localStorage에 저장된 로그인 토큰을 그대로 읽을 수 있어요.
+// 라운드가 끝날 때마다(시간 종료·목숨 소진·중단 모두) 그 라운드의 정답 개수만큼 바로 서버에 적립을 요청해요.
+// 실제로 몇 점을 줄지(하루 한도 포함)는 서버가 정해요. sessionScore는 이번 방문에서 모은 점수를 보여주기 위한 화면 표시용 합계예요.
+const POINTS_TOKEN_KEY = 'fishing.points.token';
+const SESSION_SCORE_KEY = 'englishWordGameSessionScore';
+
+function loadSessionScore() { return Number(sessionStorage.getItem(SESSION_SCORE_KEY)) || 0; }
+function addSessionScore(value) {
+  const total = loadSessionScore() + value;
+  sessionStorage.setItem(SESSION_SCORE_KEY, String(total));
+  return total;
+}
+
+async function reportEarnedPoints(roundCorrect, totalScore) {
+  const token = localStorage.getItem(POINTS_TOKEN_KEY);
+  const totalNote = ' (이번 방문 누적 점수 ' + totalScore + '점)';
+  if (!token) return '🏠 게임 놀이터에서 이름으로 로그인하면 정답 개수만큼 포인트를 모을 수 있어요!' + totalNote;
+  if (roundCorrect <= 0) return '정답을 맞히면 포인트를 모을 수 있어요!' + totalNote;
+  try {
+    const res = await fetch('/api/points/earn', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ gameId: 'english-word-game', units: roundCorrect }),
+    });
+    const data = await res.json();
+    if (!res.ok) return (data.error || '포인트를 적립하지 못했어요.') + totalNote;
+    return (data.awarded > 0
+      ? '🎉 포인트 +' + data.awarded + '점 적립! (지금 ' + data.points + '점)' + (data.dailyCapped ? ' — 오늘은 이 게임으로 더 못 모아요' : '')
+      : '오늘은 영단어 맞추기로 모을 수 있는 포인트를 다 모았어요. (지금 ' + data.points + '점)') + totalNote;
+  } catch (err) {
+    return '포인트 적립에 실패했어요. 인터넷 연결을 확인해주세요.' + totalNote;
+  }
+}
+
+// ---------- 라운드가 끝나면 틀린 단어부터 복습하고, 다 봐야 포인트를 받아요 ----------
+let reviewQueue = [];
+let reviewIndex = 0;
+let reviewDoneCallback = null;
+
+function runReviewGate(wrongList, onDone) {
+  if (!wrongList.length) { onDone(false); return; }
+  reviewQueue = wrongList;
+  reviewIndex = 0;
+  reviewDoneCallback = onDone;
+  el('reviewIntroCount').textContent = String(wrongList.length);
+  el('reviewIntro').classList.remove('hidden');
+}
+
+function showReviewCard() {
+  const item = reviewQueue[reviewIndex];
+  el('reviewProgress').textContent = (reviewIndex + 1) + ' / ' + reviewQueue.length;
+  el('reviewWord').textContent = item.w;
+  el('reviewMeaning').textContent = '';
+  el('reviewMeaning').classList.add('hidden');
+  el('reviewRevealBtn').classList.remove('hidden');
+  el('reviewNextBtn').classList.add('hidden');
+}
+
+function finishReview(forfeited) {
+  el('reviewLeaveConfirm').classList.add('hidden');
+  el('reviewCard').classList.add('hidden');
+  el('reviewIntro').classList.add('hidden');
+  const cb = reviewDoneCallback;
+  reviewDoneCallback = null;
+  if (cb) cb(forfeited);
+}
+
+el('reviewStartBtn').addEventListener('click', () => {
+  el('reviewIntro').classList.add('hidden');
+  el('reviewCard').classList.remove('hidden');
+  showReviewCard();
+});
+
+el('reviewRevealBtn').addEventListener('click', () => {
+  const item = reviewQueue[reviewIndex];
+  el('reviewMeaning').textContent = item.m;
+  el('reviewMeaning').classList.remove('hidden');
+  el('reviewRevealBtn').classList.add('hidden');
+  el('reviewNextBtn').textContent = (reviewIndex + 1 >= reviewQueue.length) ? '복습 끝내기' : '다음 단어';
+  el('reviewNextBtn').classList.remove('hidden');
+});
+
+el('reviewNextBtn').addEventListener('click', () => {
+  reviewIndex++;
+  if (reviewIndex >= reviewQueue.length) { finishReview(false); return; }
+  showReviewCard();
+});
+
+['reviewIntroLeave', 'reviewCardLeave'].forEach(id => {
+  el(id).addEventListener('click', () => el('reviewLeaveConfirm').classList.remove('hidden'));
+});
+el('reviewLeaveStay').addEventListener('click', () => el('reviewLeaveConfirm').classList.add('hidden'));
+el('reviewLeaveForfeit').addEventListener('click', () => finishReview(true));
+
+function updateSessionPill() {
+  const pillEl = el('sessionPill');
+  const totalScore = loadSessionScore();
+  if (totalScore > 0) {
+    pillEl.textContent = '🎯 이번 방문 누적 점수: ' + totalScore + '점';
+    pillEl.classList.remove('hidden');
+  } else {
+    pillEl.classList.add('hidden');
+  }
+}
+
+// ---------- 단계 선택 화면 ----------
+function renderLevelGrid() {
+  const grid = el('levelGrid');
+  grid.innerHTML = '';
+  const bests = loadBests();
+  LEVELS.forEach(lv => {
+    const btn = document.createElement('button');
+    btn.dataset.lv = String(lv.n);
+    btn.innerHTML =
+      '<span class="lvIcon">' + lv.icon + '</span>' +
+      '<span class="lvName">' + lv.n + '단계 ' + lv.name + '</span>' +
+      '<span class="lvBest">최고 ' + (bests[lv.n] || 0) + '점</span>';
+    btn.addEventListener('click', () => startGame(lv.n));
+    grid.appendChild(btn);
+  });
+  updateSessionPill();
+}
+renderLevelGrid();
+
+function showRoundResult(message) {
+  el('roundResultText').textContent = message;
+  el('roundResult').classList.remove('hidden');
+}
+
+// ---------- 버튼 연결 ----------
+el('againBtn').addEventListener('click', () => startGame(currentLevel));
+el('pickLevelBtn').addEventListener('click', () => {
+  el('overScreen').classList.add('hidden');
+  renderLevelGrid();
+  el('startScreen').classList.remove('hidden');
+});
+
+el('muteBtn').addEventListener('click', () => {
+  Sound.muted = !Sound.muted;
+  el('muteBtn').textContent = Sound.muted ? '🔇' : '🔊';
+});
+
+el('quitBtn').addEventListener('click', () => el('quitConfirm').classList.remove('hidden'));
+el('quitYes').addEventListener('click', () => {
+  el('quitConfirm').classList.add('hidden');
+  gameOver = true;
+  clearInterval(timerHandle);
+  el('quitBtn').classList.add('hidden');
+  const roundScore = score, roundCorrect = totalCorrect;
+  const totalScore = addSessionScore(roundScore);
+  updateSessionPill();
+
+  runReviewGate(wrongItems.slice(), async forfeited => {
+    if (forfeited) {
+      showRoundResult('이번 게임에서 ' + roundScore + '점 획득했지만, 복습을 하지 않아서 포인트는 받지 못했어요.');
+      return;
+    }
+    showRoundResult('이번 게임에서 ' + roundScore + '점 획득했어요! 포인트 적립 중...');
+    const msg = await reportEarnedPoints(roundCorrect, totalScore);
+    showRoundResult('이번 게임에서 ' + roundScore + '점 획득했어요! ' + msg);
+  });
+});
+el('quitNo').addEventListener('click', () => el('quitConfirm').classList.add('hidden'));
+
+el('roundResultOk').addEventListener('click', () => {
+  el('roundResult').classList.add('hidden');
+  playArea.classList.add('hidden');
+  renderLevelGrid();
+  el('startScreen').classList.remove('hidden');
+});
+
+listenBtn.addEventListener('click', () => { if (currentItem) playPronunciation(currentItem.w); });
+
+function setDirection(dir) {
+  direction = dir;
+  localStorage.setItem(DIRECTION_KEY, dir);
+  document.querySelectorAll('#dirToggle button').forEach(b => b.classList.toggle('active', b.dataset.dir === dir));
+}
+document.querySelectorAll('#dirToggle button').forEach(b => {
+  b.addEventListener('click', () => setDirection(b.dataset.dir));
+});
+setDirection(direction);
+
+document.addEventListener('visibilitychange', () => { paused = document.hidden; });
+
+// 숫자키 1~4로도 답을 고를 수 있어요
+document.addEventListener('keydown', e => {
+  if (locked || gameOver || playArea.classList.contains('hidden')) return;
+  const idx = { '1': 0, '2': 1, '3': 2, '4': 3 }[e.key];
+  if (idx == null) return;
+  const btn = choicesEl.children[idx];
+  if (btn && !btn.disabled) btn.click();
+});
+</script>
+</body>
+</html>

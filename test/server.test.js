@@ -6,6 +6,7 @@ const path = require('node:path');
 const { io: client } = require('socket.io-client');
 const { createApp } = require('../server');
 const { createRooms } = require('../server/rooms');
+const { STARTING_POINTS } = require('../server/points');
 const { fishTypes, bossTypes, hitbox } = require('../public/fishing/game-config.json');
 const { bossWanderPosition } = require('../server/fish');
 const { regularFishCenter } = require('../public/fishing/js/shared/boss-math');
@@ -392,6 +393,183 @@ test('the home page lists the games, and the fishing game asks for versioned scr
   } finally {
     await new Promise(resolve => io.close(resolve));
     await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('points login/me: register, re-login with the right PIN, reject the wrong one, reject a bad token', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-test-'));
+  const { server, io } = createApp({ leaderboardFile: path.join(directory, 'scores.json'), pointsFile: path.join(directory, 'points.json'), pointsSecret: 'test-secret' });
+  await new Promise(resolve => server.listen(0, resolve));
+  try {
+    const base = 'http://127.0.0.1:' + server.address().port;
+    const postJson = (route, body) => fetch(base + route, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+    const first = await postJson('/api/points/login', { name: '테스터', pin: '1234' });
+    assert.equal(first.status, 200);
+    const firstBody = await first.json();
+    assert.equal(firstBody.points, STARTING_POINTS);
+    assert.ok(firstBody.token);
+
+    const me = await fetch(base + '/api/points/me', { headers: { Authorization: 'Bearer ' + firstBody.token } });
+    assert.equal(me.status, 200);
+    assert.deepEqual(await me.json(), { name: '테스터', points: STARTING_POINTS });
+
+    const wrongPin = await postJson('/api/points/login', { name: '테스터', pin: '9999' });
+    assert.equal(wrongPin.status, 401);
+
+    const badToken = await fetch(base + '/api/points/me', { headers: { Authorization: 'Bearer garbage' } });
+    assert.equal(badToken.status, 401);
+
+    const noBody = await postJson('/api/points/login', { name: '테스터' });
+    assert.equal(noBody.status, 400);
+  } finally {
+    await new Promise(resolve => io.close(resolve));
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('points spend: costs are public, spending deducts and blocks entry when short, and requires login', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-test-'));
+  const { server, io, points } = createApp({ leaderboardFile: path.join(directory, 'scores.json'), pointsFile: path.join(directory, 'points.json'), pointsSecret: 'test-secret' });
+  await new Promise(resolve => server.listen(0, resolve));
+  try {
+    const base = 'http://127.0.0.1:' + server.address().port;
+    const postJson = (route, body, headers) => fetch(base + route, { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, headers), body: JSON.stringify(body) });
+
+    const costs = await (await fetch(base + '/api/points/costs')).json();
+    assert.equal(costs.fishing, 5);
+
+    const login = await (await postJson('/api/points/login', { name: '입장테스트', pin: '1234' })).json();
+    const auth = { Authorization: 'Bearer ' + login.token };
+
+    const noLogin = await postJson('/api/points/spend', { gameId: 'fishing' });
+    assert.equal(noLogin.status, 401);
+
+    await points.grant('입장테스트', -STARTING_POINTS); // 시작 포인트를 다 쓴 상태로 만들어요
+    const shortOnPoints = await postJson('/api/points/spend', { gameId: 'fishing' }, auth);
+    assert.equal(shortOnPoints.status, 402, '가진 포인트가 부족하면 입장료를 못 내요');
+
+    await points.grant('입장테스트', 10);
+    const spent = await postJson('/api/points/spend', { gameId: 'fishing' }, auth);
+    assert.equal(spent.status, 200);
+    assert.equal((await spent.json()).points, 5);
+
+    const unknownGame = await postJson('/api/points/spend', { gameId: 'no-such-game' }, auth);
+    assert.equal(unknownGame.status, 404);
+  } finally {
+    await new Promise(resolve => io.close(resolve));
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('points earn: a learning game reports correct answers and gets points back, gated by login', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-test-'));
+  const { server, io } = createApp({ leaderboardFile: path.join(directory, 'scores.json'), pointsFile: path.join(directory, 'points.json'), pointsSecret: 'test-secret' });
+  await new Promise(resolve => server.listen(0, resolve));
+  try {
+    const base = 'http://127.0.0.1:' + server.address().port;
+    const postJson = (route, body, headers) => fetch(base + route, { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, headers), body: JSON.stringify(body) });
+
+    const noLogin = await postJson('/api/points/earn', { gameId: 'hanja-game', units: 5 });
+    assert.equal(noLogin.status, 401);
+
+    const login = await (await postJson('/api/points/login', { name: '한자테스트', pin: '1234' })).json();
+    const auth = { Authorization: 'Bearer ' + login.token };
+
+    const earned = await postJson('/api/points/earn', { gameId: 'hanja-game', units: 5 }, auth);
+    assert.equal(earned.status, 200);
+    const earnedBody = await earned.json();
+    assert.equal(earnedBody.awarded, 5);
+    assert.equal(earnedBody.points, STARTING_POINTS + 5);
+
+    const unknownGame = await postJson('/api/points/earn', { gameId: 'no-such-learning-game', units: 5 }, auth);
+    assert.equal(unknownGame.status, 404);
+
+    const badUnits = await postJson('/api/points/earn', { gameId: 'hanja-game', units: -1 }, auth);
+    assert.equal(badUnits.status, 400);
+  } finally {
+    await new Promise(resolve => io.close(resolve));
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('admin endpoints require the configured admin key and let an admin grant points and change costs', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-test-'));
+  const { server, io } = createApp({
+    leaderboardFile: path.join(directory, 'scores.json'),
+    pointsFile: path.join(directory, 'points.json'),
+    costsFile: path.join(directory, 'game-costs.json'),
+    pointsSecret: 'test-secret',
+    adminKey: 'let-me-in',
+  });
+  await new Promise(resolve => server.listen(0, resolve));
+  try {
+    const base = 'http://127.0.0.1:' + server.address().port;
+    const asAdmin = { 'X-Admin-Key': 'let-me-in' };
+    const postJson = (route, body, headers) => fetch(base + route, { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, headers), body: JSON.stringify(body) });
+
+    const wrongKey = await fetch(base + '/api/admin/players', { headers: { 'X-Admin-Key': 'nope' } });
+    assert.equal(wrongKey.status, 401);
+    const noKey = await fetch(base + '/api/admin/players');
+    assert.equal(noKey.status, 401);
+
+    await postJson('/api/points/login', { name: '관리자테스트', pin: '1234' });
+
+    const grantUnknown = await postJson('/api/admin/grant', { name: '없는사람', amount: 5 }, asAdmin);
+    assert.equal(grantUnknown.status, 404);
+
+    const grant = await postJson('/api/admin/grant', { name: '관리자테스트', amount: 8 }, asAdmin);
+    assert.equal(grant.status, 200);
+    assert.equal((await grant.json()).points, STARTING_POINTS + 8);
+
+    const players = await (await fetch(base + '/api/admin/players', { headers: asAdmin })).json();
+    assert.deepEqual(players, [{ name: '관리자테스트', points: STARTING_POINTS + 8 }]);
+
+    const deleteNoAuth = await postJson('/api/admin/delete', { name: '관리자테스트' });
+    assert.equal(deleteNoAuth.status, 401);
+
+    const deleteUnknown = await postJson('/api/admin/delete', { name: '없는사람' }, asAdmin);
+    assert.equal(deleteUnknown.status, 404);
+
+    const deleted = await postJson('/api/admin/delete', { name: '관리자테스트' }, asAdmin);
+    assert.equal(deleted.status, 200);
+    assert.deepEqual(await deleted.json(), { name: '관리자테스트', deleted: true });
+
+    const playersAfterDelete = await (await fetch(base + '/api/admin/players', { headers: asAdmin })).json();
+    assert.deepEqual(playersAfterDelete, [], '삭제한 이름은 목록에서도 사라져요');
+
+    const setCost = await postJson('/api/admin/costs', { gameId: 'fishing', cost: 12 }, asAdmin);
+    assert.equal(setCost.status, 200);
+    assert.equal((await setCost.json()).fishing, 12);
+
+    const publicCosts = await (await fetch(base + '/api/points/costs')).json();
+    assert.equal(publicCosts.fishing, 12, '관리자가 바꾼 입장료가 공개 조회에도 바로 반영돼요');
+  } finally {
+    await new Promise(resolve => io.close(resolve));
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('DATA_DIR (or the dataDir option) places leaderboard/points/costs files under it when no explicit file path is given', async () => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-datadir-'));
+  const origEnv = process.env.DATA_DIR;
+  try {
+    process.env.DATA_DIR = dataDir;
+    const { server, io, leaderboard, points, costs } = createApp({});
+    await new Promise(resolve => server.listen(0, resolve));
+    try {
+      await leaderboard.record({ a: { name: 'A', score: 3 } });
+      await points.login('디비테스트', '1234');
+      await costs.setCost('fishing', 9);
+
+      const files = await fs.readdir(dataDir);
+      assert.deepEqual(files.sort(), ['game-costs.json', 'leaderboard.json', 'points.json']);
+    } finally {
+      await new Promise(resolve => io.close(resolve));
+    }
+  } finally {
+    if (origEnv === undefined) delete process.env.DATA_DIR; else process.env.DATA_DIR = origEnv;
+    await fs.rm(dataDir, { recursive: true, force: true });
   }
 });
 

@@ -1,0 +1,915 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>탐사로봇 땅따먹기</title>
+<meta name="description" content="옛날 오락실 볼피드처럼! 탐사로봇으로 우주 바위를 잘라내 내 땅으로 만들어요">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --page: #070a16;
+    --ink: #eaf2ff;
+    --button: #4be3ff;
+    --button-dark: #1c7a91;
+    --panel: #101a34;
+    --accent: #ff8a3d;
+    --gold: #ffcf3f;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  html { height: 100%; }
+  body {
+    margin: 0; height: 100%;
+    background: var(--page);
+    font-family: 'Jua', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+    color: var(--ink);
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #wrap {
+    position: relative;
+    width: min(96vw, calc(92dvh * 0.667));
+    aspect-ratio: 0.667 / 1;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 25px 80px #000a;
+    border: 3px solid #223059;
+  }
+  @media (pointer: coarse), (max-width: 560px) {
+    #wrap { width: 100vw; height: 100dvh; aspect-ratio: auto; border-radius: 0; border: 0; }
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  #hud {
+    position: absolute; left: 0; right: 0; top: 0;
+    padding: calc(10px + env(safe-area-inset-top, 0px)) 14px 0;
+    display: flex; align-items: flex-start; justify-content: space-between;
+    pointer-events: none; text-shadow: 0 2px 4px #000c;
+  }
+  #hud .score { font-size: clamp(18px, 4.6vw, 26px); color: var(--gold); }
+  #hud .stage { font-size: clamp(13px, 3.2vw, 17px); color: #bcd4ff; text-align: center; }
+  #hud .lives { font-size: clamp(16px, 4vw, 22px); letter-spacing: 2px; text-align: right; }
+
+  #captureBar {
+    position: absolute; left: 8%; right: 8%; top: calc(46px + env(safe-area-inset-top, 0px));
+    height: 14px; border: 2px solid #fff8; border-radius: 999px; overflow: hidden;
+    background: #0006; pointer-events: none;
+  }
+  #captureFill { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--button), var(--gold)); transition: width .15s ease; }
+  #captureLabel {
+    position: absolute; left: 0; right: 0; top: calc(63px + env(safe-area-inset-top, 0px));
+    text-align: center; font-size: 12px; color: #bcd4ff; pointer-events: none; text-shadow: 0 2px 4px #000c;
+  }
+  #freezeIndicator {
+    position: absolute; left: 0; right: 0; top: calc(82px + env(safe-area-inset-top, 0px));
+    text-align: center; font-size: 13px; color: #8be0ff; pointer-events: none; text-shadow: 0 2px 4px #000c;
+  }
+  #freezeIndicator.hidden { display: none; }
+  #speedIndicator {
+    position: absolute; left: 0; right: 0; top: calc(100px + env(safe-area-inset-top, 0px));
+    text-align: center; font-size: 13px; color: #ffcf3f; pointer-events: none; text-shadow: 0 2px 4px #000c;
+  }
+  #speedIndicator.hidden { display: none; }
+
+  .overlay {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(4, 6, 16, 0.72);
+    backdrop-filter: blur(1px);
+  }
+  .overlay.hidden { display: none; }
+  .card {
+    background: var(--panel);
+    border: 4px solid #2f5fa0;
+    border-radius: 14px;
+    padding: 6% 7%;
+    text-align: center;
+    max-width: 86%;
+    box-shadow: 8px 8px 0 var(--accent);
+  }
+  .card h1 { margin: 0 0 0.25em; font-size: clamp(22px, 6.2vw, 38px); font-weight: 400; color: #fff; }
+  .card p  { margin: 0 0 0.9em; font-size: clamp(13px, 3vw, 18px); line-height: 1.5; color: #cfd7ff; }
+  .card .big { font-size: clamp(28px, 8vw, 44px); color: var(--gold); margin: 0.1em 0 0.5em; }
+  .card button {
+    font-family: inherit;
+    font-size: clamp(17px, 4vw, 26px);
+    color: #04202c;
+    background: var(--button);
+    border: 4px solid #04202c;
+    border-radius: 8px;
+    padding: 0.25em 1.3em;
+    box-shadow: 0 6px 0 var(--button-dark);
+    cursor: pointer;
+    margin: 4px;
+  }
+  .card button:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--button-dark); }
+  .card button:focus-visible { outline: 4px dashed #fff; outline-offset: 4px; }
+  .card button.ghost { background: #1c2a4d; color: #cfd7ff; box-shadow: 0 6px 0 #0f1830; }
+
+  #muteBtn, #pauseBtn {
+    position: absolute; top: calc(8px + env(safe-area-inset-top, 0px)); pointer-events: auto;
+    font-size: clamp(16px, 4vw, 22px);
+    background: rgba(255,255,255,0.12);
+    border: 2px solid #ffffff55; border-radius: 8px;
+    padding: 0.15em 0.45em; cursor: pointer; color: #fff;
+  }
+  #muteBtn { right: 1.5%; }
+  #pauseBtn { left: 1.5%; }
+  #pauseBtn.hidden { display: none; }
+
+  .home { display: inline-block; margin-top: 0.7em; font-size: clamp(12px, 3vw, 16px); color: #9fb6e6; }
+  .home.hidden { display: none; }
+
+  /* 모바일용 방향 버튼 (한 칸씩 정확하게 움직이려면 스와이프보다 버튼이 편해요) */
+  /* PC는 키보드로 조작하니 기본은 숨기고, 터치 화면에서만 보여줘요(맵과 안 겹치게) */
+  #pad { display: none; }
+  @media (pointer: coarse), (max-width: 560px) {
+    #pad {
+      position: absolute; left: 0; right: 0; bottom: calc(4% + env(safe-area-inset-bottom, 0px));
+      display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 56px);
+      gap: 4px; justify-content: center; pointer-events: none;
+    }
+  }
+  #pad button {
+    pointer-events: auto;
+    font-size: 22px; color: #fff;
+    background: rgba(255,255,255,0.16);
+    border: 2px solid #ffffff44; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0;
+  }
+  #pad button:active { background: rgba(255,255,255,0.32); }
+  #padUp { grid-column: 2; grid-row: 1; }
+  #padLeft { grid-column: 1; grid-row: 2; }
+  #padRight { grid-column: 3; grid-row: 2; }
+  #padDown { grid-column: 2; grid-row: 3; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+
+  <div id="hud">
+    <div class="score" id="scoreText">0</div>
+    <div class="stage" id="stageText">STAGE 1</div>
+    <div class="lives" id="livesText">❤️❤️❤️</div>
+  </div>
+  <div id="captureBar"><i id="captureFill"></i></div>
+  <div id="captureLabel">0% / 70%</div>
+  <div id="freezeIndicator" class="hidden">🛑 <span id="freezeSeconds">0</span>초 동안 괴물이 멈춰요!</div>
+  <div id="speedIndicator" class="hidden">⚡ <span id="speedSeconds">0</span>초 동안 빨라져요!</div>
+
+  <button id="muteBtn" aria-label="소리 켜기 끄기">🔊</button>
+  <button id="pauseBtn" class="hidden" aria-label="멈추기">⏸️</button>
+
+  <div id="pad">
+    <button id="padUp" aria-label="위로">⬆️</button>
+    <button id="padLeft" aria-label="왼쪽으로">⬅️</button>
+    <button id="padRight" aria-label="오른쪽으로">➡️</button>
+    <button id="padDown" aria-label="아래로">⬇️</button>
+  </div>
+
+  <div class="overlay hidden" id="pauseScreen">
+    <div class="card">
+      <h1>잠깐 멈춤 ⏸️</h1>
+      <p>쉬었다가 준비되면 눌러!<br>(키보드 P 나 Esc 로도 할 수 있어)</p>
+      <button id="resumeBtn">계속하기</button>
+      <button id="quitBtn" class="ghost">처음으로</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="startScreen">
+    <div class="card">
+      <h1>🤖 탐사로봇 땅따먹기</h1>
+      <p>방향키나 화면 버튼으로 로봇을 움직여요.<br>
+         안전지대(테두리)에서 바위 쪽으로 나가면 선이 그어져요.<br>
+         선을 그리는 동안 바위 괴물이 닿으면 목숨이 줄어요!<br>
+         안전지대로 무사히 돌아오면 그 땅이 내 것이 돼요.<br>
+         땅을 <b id="startTargetPct">70%</b> 차지하면 클리어! 다음 별로 이동해요.<br>
+         (스테이지가 오를수록 목표 비율도 조금씩 높아져요)<br>
+         스테이지 3부터는 땅을 차지할 때 가끔 아이템이 나와요!<br>
+         🛑 괴물 정지 · ❤️ 목숨 +1 · 🛡️ 보호막 · ⚡ 스피드 업</p>
+      <button id="startBtn">시작하기 ▶</button>
+      <p style="margin-top:0.8em; font-size:0.85em; color:#8ba0d6;">PC에서는 방향키·WASD로 움직여요</p>
+      <a id="homeLink" class="home hidden" href="/">🏠 게임 놀이터로</a>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="overScreen">
+    <div class="card">
+      <h1 id="overTitle">게임 끝! 🪨</h1>
+      <div class="big" id="overScore">0점</div>
+      <p id="overBest"></p>
+      <button id="retryBtn">다시 하기</button>
+      <button id="menuBtn2" class="ghost">처음 화면</button>
+      <a id="homeLink2" class="home hidden" href="/">🏠 게임 놀이터로</a>
+    </div>
+  </div>
+</div>
+
+<script>
+// =====================================================
+//  🤖 탐사로봇 땅따먹기 — 옛날 오락실 볼피드(Volfied)류 영역 차지하기 게임
+//  안전지대에서 바위 쪽으로 나가 선을 긋고, 다시 안전지대로 돌아오면
+//  그 선이 둘러싼 땅(바위 괴물이 없는 쪽)을 내 땅으로 만들어요.
+// =====================================================
+const CELL = 12, COLS = 40, ROWS = 60;
+const W = COLS * CELL, H = ROWS * CELL;
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const terrainCanvas = document.createElement('canvas');
+terrainCanvas.width = W; terrainCanvas.height = H;
+const tctx = terrainCanvas.getContext('2d');
+
+function fitCanvas() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = Math.round(rect.width * dpr);
+  canvas.height = Math.round(rect.height * dpr);
+  ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+}
+window.addEventListener('resize', fitCanvas);
+
+// ---------- 🔊 사운드 (소리 파일 없이 코드로 직접 연주) ----------
+const Snd = {
+  ctx: null, muted: false,
+  ensure() {
+    if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+  },
+  tone(freq, t, len, type, vol, freqEnd) {
+    if (!this.ctx) return;
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (freqEnd) o.frequency.exponentialRampToValueAtTime(freqEnd, t + len);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + len);
+    o.connect(g).connect(this.ctx.destination);
+    o.start(t); o.stop(t + len);
+  },
+  play(kind) {
+    if (this.muted || !this.ctx) return;
+    const t = this.ctx.currentTime;
+    if (kind === 'cut') { this.tone(700, t, 0.05, 'square', 0.05, 900); return; }
+    if (kind === 'claim') { [523, 659, 784].forEach((f, i) => this.tone(f, t + i * 0.06, 0.12, 'triangle', 0.13)); return; }
+    if (kind === 'hit') { this.tone(90, t, 0.09, 'square', 0.12); this.tone(60, t + 0.03, 0.12, 'square', 0.1); return; }
+    if (kind === 'stage') { [523, 659, 784, 1046].forEach((f, i) => this.tone(f, t + i * 0.07, 0.14, 'triangle', 0.15)); return; }
+    if (kind === 'gameover') { [392, 349, 294, 220].forEach((f, i) => this.tone(f, t + i * 0.16, 0.24, 'sine', 0.16)); return; }
+    if (kind === 'freeze') { this.tone(1400, t, 0.18, 'sine', 0.1, 500); this.tone(1800, t + 0.05, 0.14, 'sine', 0.08, 700); return; }
+    if (kind === 'life') { [660, 880, 1108].forEach((f, i) => this.tone(f, t + i * 0.09, 0.18, 'triangle', 0.15)); return; }
+    if (kind === 'shield') { this.tone(500, t, 0.1, 'sine', 0.1); this.tone(760, t + 0.06, 0.16, 'sine', 0.12); return; }
+    if (kind === 'shieldBreak') { this.tone(600, t, 0.1, 'square', 0.1, 300); return; }
+    if (kind === 'speed') { [700, 950, 1250].forEach((f, i) => this.tone(f, t + i * 0.045, 0.08, 'square', 0.1)); return; }
+  },
+};
+
+// ---------- 🗺️ 땅 상태 (0=아직 바위, 1=내가 차지한 안전지대) ----------
+let captured, textureNoise, capturedCount, total = COLS * ROWS;
+function initGrid() {
+  captured = new Uint8Array(total);
+  textureNoise = new Float32Array(total);
+  for (let i = 0; i < total; i++) textureNoise[i] = Math.random();
+  for (let x = 0; x < COLS; x++) { captured[x] = 1; captured[(ROWS - 1) * COLS + x] = 1; }
+  for (let y = 0; y < ROWS; y++) { captured[y * COLS] = 1; captured[y * COLS + COLS - 1] = 1; }
+  capturedCount = 0;
+  for (let i = 0; i < total; i++) if (captured[i]) capturedCount++;
+}
+
+function renderTerrain() {
+  for (let y = 0; y < ROWS; y++) {
+    for (let x = 0; x < COLS; x++) {
+      const idx = y * COLS + x;
+      const n = textureNoise[idx];
+      if (captured[idx]) {
+        const s = 0.82 + n * 0.3;
+        tctx.fillStyle = `rgb(${Math.round(50 * s)}, ${Math.round(150 * s)}, ${Math.round(190 * s)})`;
+      } else {
+        const s = 0.78 + n * 0.4;
+        tctx.fillStyle = `rgb(${Math.round(48 * s)}, ${Math.round(40 * s)}, ${Math.round(60 * s)})`;
+      }
+      tctx.fillRect(x * CELL, y * CELL, CELL + 1, CELL + 1);
+    }
+  }
+}
+
+// ---------- 🤖 플레이어 & 선 ----------
+const player = { gx: 0, gy: 0, px: 0, py: 0 };
+let playerState = 'safe'; // safe | drawing
+let trail = [], trailSet = new Set();
+
+function respawnPlayer() {
+  player.gx = Math.floor(COLS / 2);
+  player.gy = 0;
+  player.px = (player.gx + 0.5) * CELL;
+  player.py = (player.gy + 0.5) * CELL;
+  playerState = 'safe';
+  trail = []; trailSet = new Set();
+}
+
+// ---------- 🕹️ 입력 (마지막으로 누른 방향이 우선이에요) ----------
+const DIRS = { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } };
+let dirStack = [];
+function pressDir(name) { if (state === 'menu') { beginGame(); return; } if (!dirStack.includes(name)) dirStack.push(name); }
+function releaseDir(name) { dirStack = dirStack.filter(d => d !== name); }
+function currentDir() { return dirStack.length ? DIRS[dirStack[dirStack.length - 1]] : null; }
+
+const KEY_MAP = {
+  ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down',
+  ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right',
+};
+window.addEventListener('keydown', e => {
+  const name = KEY_MAP[e.code];
+  if (name) { e.preventDefault(); Snd.ensure(); pressDir(name); }
+  if (e.code === 'Escape' || e.code === 'KeyP') { if (!e.repeat) togglePause(); }
+  if (state === 'menu' && (e.code === 'Space' || e.code === 'Enter')) beginGame();
+}, true);
+window.addEventListener('keyup', e => { const name = KEY_MAP[e.code]; if (name) releaseDir(name); }, true);
+window.addEventListener('blur', () => { dirStack = []; });
+
+for (const name of ['up', 'down', 'left', 'right']) {
+  const btn = document.getElementById('pad' + name[0].toUpperCase() + name.slice(1));
+  btn.addEventListener('pointerdown', e => { e.preventDefault(); Snd.ensure(); pressDir(name); });
+  btn.addEventListener('pointerup', () => releaseDir(name));
+  btn.addEventListener('pointercancel', () => releaseDir(name));
+  btn.addEventListener('pointerleave', () => releaseDir(name));
+}
+document.querySelectorAll('.card button').forEach(b => b.addEventListener('click', () => b.blur()));
+
+// ---------- 💥 이펙트 ----------
+let particles = [], popups = [];
+function explode(x, y, color) {
+  for (let i = 0; i < 16; i++) {
+    const a = Math.random() * Math.PI * 2, spd = 50 + Math.random() * 150;
+    particles.push({ x, y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, life: 0.35 + Math.random() * 0.3, maxLife: 0.65, r: 2 + Math.random() * 3, color });
+  }
+  if (navigator.vibrate) { try { navigator.vibrate(20); } catch (e) {} }
+}
+function addPopup(x, y, text, color) { popups.push({ x, y, text, color, life: 0.8, maxLife: 0.8 }); }
+
+// ---------- 👾 바위 괴물 (Qix류 적) ----------
+let enemies = [];
+function cellCapturedAt(px, py) {
+  const gx = Math.floor(px / CELL), gy = Math.floor(py / CELL);
+  if (gx < 0 || gx >= COLS || gy < 0 || gy >= ROWS) return true;
+  return captured[gy * COLS + gx] === 1;
+}
+function spawnEnemies(count, speed) {
+  enemies = [];
+  for (let i = 0; i < count; i++) {
+    let x, y, tries = 0;
+    do {
+      x = CELL * 3 + Math.random() * (W - CELL * 6);
+      y = CELL * 3 + Math.random() * (H - CELL * 6);
+      tries++;
+    } while (cellCapturedAt(x, y) && tries < 40);
+    const ang = Math.random() * Math.PI * 2;
+    enemies.push({ x, y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, r: 9, turnT: Math.random(), spin: Math.random() * 10, hue: i });
+  }
+}
+function updateEnemy(e, dt) {
+  e.spin += dt * 2;
+  e.turnT -= dt;
+  if (e.turnT <= 0) {
+    e.turnT = 0.5 + Math.random() * 0.9;
+    const spd = Math.hypot(e.vx, e.vy);
+    const ang = Math.atan2(e.vy, e.vx) + (Math.random() - 0.5) * 1.6;
+    e.vx = Math.cos(ang) * spd; e.vy = Math.sin(ang) * spd;
+  }
+  let nx = e.x + e.vx * dt, ny = e.y + e.vy * dt;
+  if (nx - e.r < 0 || nx + e.r > W || cellCapturedAt(nx, e.y)) { e.vx *= -1; nx = e.x + e.vx * dt; }
+  if (ny - e.r < 0 || ny + e.r > H || cellCapturedAt(e.x, ny)) { e.vy *= -1; ny = e.y + e.vy * dt; }
+  e.x = Math.min(W - e.r, Math.max(e.r, nx));
+  e.y = Math.min(H - e.r, Math.max(e.r, ny));
+}
+function checkEnemyHits() {
+  if (playerState !== 'drawing') return;
+  for (const e of enemies) {
+    const gx0 = Math.max(0, Math.floor((e.x - e.r) / CELL)), gx1 = Math.min(COLS - 1, Math.floor((e.x + e.r) / CELL));
+    const gy0 = Math.max(0, Math.floor((e.y - e.r) / CELL)), gy1 = Math.min(ROWS - 1, Math.floor((e.y + e.r) / CELL));
+    for (let gy = gy0; gy <= gy1; gy++) {
+      for (let gx = gx0; gx <= gx1; gx++) {
+        const idx = gy * COLS + gx;
+        if ((gx === player.gx && gy === player.gy) || trailSet.has(idx)) { loseLife(); return; }
+      }
+    }
+  }
+}
+
+// ---------- 🎁 아이템 (스테이지 3부터 땅을 차지하면 가끔 나와요) ----------
+const ITEM_MIN_STAGE = 3;
+const ITEM_CHANCE = 0.35;
+const MAX_ITEMS_ON_FIELD = 3;
+const MAX_SHIELD_CHARGES = 2;
+const ITEM_COLOR = { freeze: '#e53935', life: '#ff2d55', shield: '#4be3ff', speed: '#ffcf3f' };
+let items = [];
+let freezeEnemiesT = 0;
+let speedBoostT = 0;
+let shieldCharges = 0;
+
+// 확률: 괴물 정지 35% · 보호막 20% · 스피드 25% · 목숨(제일 귀해요) 20%
+function pickItemKind() {
+  const r = Math.random();
+  if (r < 0.35) return 'freeze';
+  if (r < 0.55) return 'shield';
+  if (r < 0.80) return 'speed';
+  return 'life';
+}
+
+function maybeSpawnItem(newlyClaimed) {
+  if (stage < ITEM_MIN_STAGE || newlyClaimed.length === 0) return;
+  if (items.length >= MAX_ITEMS_ON_FIELD) return;
+  if (Math.random() > ITEM_CHANCE) return;
+  // 위쪽 HUD에 가려지지 않게, 화면 위쪽 몇 줄은 되도록 피해서 골라요
+  const visible = newlyClaimed.filter(idx => ((idx / COLS) | 0) >= 6);
+  const pool = visible.length ? visible : newlyClaimed;
+  const idx = pool[Math.floor(Math.random() * pool.length)];
+  const gx = idx % COLS, gy = (idx / COLS) | 0;
+  items.push({ gx, gy, x: (gx + 0.5) * CELL, y: (gy + 0.5) * CELL, kind: pickItemKind(), bob: Math.random() * 10 });
+}
+
+function collectItem(it) {
+  if (it.kind === 'freeze') {
+    freezeEnemiesT = 5;
+    updateFreezeUi();
+    Snd.play('freeze');
+    addPopup(it.x, it.y - 10, '괴물 정지! 🛑', ITEM_COLOR.freeze);
+  } else if (it.kind === 'life') {
+    lives = Math.min(5, lives + 1);
+    updateHud();
+    Snd.play('life');
+    addPopup(it.x, it.y - 10, '+1 생명', ITEM_COLOR.life);
+  } else if (it.kind === 'shield') {
+    shieldCharges = Math.min(MAX_SHIELD_CHARGES, shieldCharges + 1);
+    updateHud();
+    Snd.play('shield');
+    addPopup(it.x, it.y - 10, '보호막 획득! 🛡️', ITEM_COLOR.shield);
+  } else if (it.kind === 'speed') {
+    speedBoostT = 6;
+    updateSpeedUi();
+    Snd.play('speed');
+    addPopup(it.x, it.y - 10, '스피드 업! ⚡', ITEM_COLOR.speed);
+  }
+}
+
+function checkItemPickup() {
+  if (items.length === 0) return;
+  items = items.filter(it => {
+    if (it.gx === player.gx && it.gy === player.gy) { collectItem(it); return false; }
+    return true;
+  });
+}
+
+// ---------- ✂️ 선 긋기 / 땅 차지하기 ----------
+function attemptStep(dir) {
+  const nx = player.gx + dir.x, ny = player.gy + dir.y;
+  if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) return;
+  const idx = ny * COLS + nx;
+  if (playerState === 'safe') {
+    if (captured[idx]) { player.gx = nx; player.gy = ny; }
+    else { playerState = 'drawing'; trail = [idx]; trailSet = new Set([idx]); player.gx = nx; player.gy = ny; Snd.play('cut'); }
+  } else {
+    if (captured[idx]) { player.gx = nx; player.gy = ny; closeLoop(); }
+    else if (trailSet.has(idx)) { loseLife(); }
+    else { trail.push(idx); trailSet.add(idx); player.gx = nx; player.gy = ny; }
+  }
+}
+
+function closeLoop() {
+  const filled = captured.slice();
+  for (const idx of trailSet) filled[idx] = 1;
+  const visited = new Uint8Array(total);
+  const enemyIdx = new Set(enemies.map(e => {
+    const gx = Math.min(COLS - 1, Math.max(0, Math.floor(e.x / CELL)));
+    const gy = Math.min(ROWS - 1, Math.max(0, Math.floor(e.y / CELL)));
+    return gy * COLS + gx;
+  }));
+  const queue = new Int32Array(total);
+  let claimedCells = 0;
+  const newlyClaimed = [];
+  for (let start = 0; start < total; start++) {
+    if (filled[start] !== 0 || visited[start]) continue;
+    let head = 0, tail = 0;
+    queue[tail++] = start; visited[start] = 1;
+    const cells = []; let hasEnemy = false;
+    while (head < tail) {
+      const idx = queue[head++];
+      cells.push(idx);
+      if (enemyIdx.has(idx)) hasEnemy = true;
+      const x = idx % COLS, y = (idx / COLS) | 0;
+      if (x > 0) { const n = idx - 1; if (filled[n] === 0 && !visited[n]) { visited[n] = 1; queue[tail++] = n; } }
+      if (x < COLS - 1) { const n = idx + 1; if (filled[n] === 0 && !visited[n]) { visited[n] = 1; queue[tail++] = n; } }
+      if (y > 0) { const n = idx - COLS; if (filled[n] === 0 && !visited[n]) { visited[n] = 1; queue[tail++] = n; } }
+      if (y < ROWS - 1) { const n = idx + COLS; if (filled[n] === 0 && !visited[n]) { visited[n] = 1; queue[tail++] = n; } }
+    }
+    if (!hasEnemy) { for (const idx of cells) captured[idx] = 1; claimedCells += cells.length; newlyClaimed.push(...cells); }
+  }
+  for (const idx of trailSet) { if (captured[idx] === 0) { captured[idx] = 1; claimedCells++; newlyClaimed.push(idx); } }
+  const cx = (player.gx + 0.5) * CELL, cy = (player.gy + 0.5) * CELL;
+  trail = []; trailSet = new Set();
+  playerState = 'safe';
+  if (claimedCells > 0) {
+    score += claimedCells * 2;
+    capturedCount += claimedCells;
+    addPopup(cx, cy, '+' + (claimedCells * 2), '#8be0ff');
+    Snd.play('claim');
+    renderTerrain();
+    updateHud();
+    maybeSpawnItem(newlyClaimed);
+  }
+  updateCaptureUi();
+  if (capturedPercent() >= targetPercent) stageClear();
+}
+
+function capturedPercent() { return capturedCount / total * 100; }
+
+// ---------- 🎮 게임 상태 ----------
+let state = 'menu'; // menu | play | paused | respawn | over
+const BASE_TARGET_PERCENT = 70; // 스테이지 1에서 이기려면 차지해야 하는 땅 비율
+let score = 0, best = 0, stage = 1, lives = 3, targetPercent = BASE_TARGET_PERCENT;
+document.getElementById('startTargetPct').textContent = BASE_TARGET_PERCENT + '%';
+let moveTimer = 0, respawnTimer = 0, bannerT = 0, bannerText = '';
+try { best = parseInt(localStorage.getItem('landGrabBest') || '0', 10) || 0; } catch (e) {}
+
+const startScreen = document.getElementById('startScreen');
+const pauseScreen = document.getElementById('pauseScreen');
+const overScreen = document.getElementById('overScreen');
+const pauseBtn = document.getElementById('pauseBtn');
+
+function tickInterval() {
+  const base = Math.max(55, 95 - stage * 4);
+  return (speedBoostT > 0 ? base * 0.55 : base) / 1000;
+}
+
+function updateHud() {
+  document.getElementById('scoreText').textContent = score;
+  document.getElementById('stageText').textContent = 'STAGE ' + stage;
+  const shieldBadge = shieldCharges > 0 ? ' 🛡️×' + shieldCharges : '';
+  document.getElementById('livesText').textContent = '❤️'.repeat(Math.max(0, lives)) + shieldBadge;
+}
+function updateCaptureUi() {
+  const pct = Math.min(100, capturedPercent());
+  document.getElementById('captureFill').style.width = pct + '%';
+  document.getElementById('captureLabel').textContent = Math.floor(pct) + '% / ' + targetPercent + '%';
+}
+const freezeIndicator = document.getElementById('freezeIndicator');
+function updateFreezeUi() {
+  if (freezeEnemiesT > 0) {
+    freezeIndicator.classList.remove('hidden');
+    document.getElementById('freezeSeconds').textContent = freezeEnemiesT.toFixed(1);
+  } else {
+    freezeIndicator.classList.add('hidden');
+  }
+}
+const speedIndicator = document.getElementById('speedIndicator');
+function updateSpeedUi() {
+  if (speedBoostT > 0) {
+    speedIndicator.classList.remove('hidden');
+    document.getElementById('speedSeconds').textContent = speedBoostT.toFixed(1);
+  } else {
+    speedIndicator.classList.add('hidden');
+  }
+}
+
+function initStage(n) {
+  stage = n;
+  initGrid();
+  respawnPlayer();
+  targetPercent = Math.min(90, BASE_TARGET_PERCENT + (stage - 1) * 3);
+  const count = Math.min(4, stage);
+  const speed = Math.min(150, 55 + stage * 10);
+  spawnEnemies(count, speed);
+  items = [];
+  freezeEnemiesT = 0;
+  speedBoostT = 0;
+  shieldCharges = 0;
+  updateFreezeUi();
+  updateSpeedUi();
+  moveTimer = tickInterval();
+  renderTerrain();
+  updateHud();
+  updateCaptureUi();
+  bannerText = 'STAGE ' + stage; bannerT = 1.6;
+}
+
+function beginGame() {
+  state = 'play';
+  score = 0; lives = 3;
+  particles = []; popups = [];
+  initStage(1);
+  startScreen.classList.add('hidden');
+  overScreen.classList.add('hidden');
+  pauseBtn.classList.remove('hidden');
+  Snd.ensure();
+}
+document.getElementById('startBtn').addEventListener('click', beginGame);
+
+function stageClear() {
+  Snd.play('stage');
+  bannerText = 'STAGE CLEAR! 🎉'; bannerT = 1.6;
+  score += 300 + stage * 50;
+  updateHud();
+  state = 'respawn';
+  respawnTimer = 1.3;
+  window._nextStage = stage + 1;
+}
+
+function loseLife() {
+  if (shieldCharges > 0) {
+    shieldCharges--;
+    updateHud();
+    Snd.play('shieldBreak');
+    explode(player.px, player.py, ITEM_COLOR.shield);
+    addPopup(player.px, player.py - 14, '보호막이 막아줬어요! 🛡️', ITEM_COLOR.shield);
+    state = 'respawn';
+    respawnTimer = 0.6;
+    window._nextStage = null;
+    return;
+  }
+  Snd.play('hit');
+  explode(player.px, player.py, '#ff8a3d');
+  lives--;
+  updateHud();
+  if (lives <= 0) { gameOver(); return; }
+  state = 'respawn';
+  respawnTimer = 0.9;
+  window._nextStage = null;
+}
+
+function gameOver() {
+  state = 'over';
+  pauseBtn.classList.add('hidden');
+  Snd.play('gameover');
+  if (score > best) { best = score; try { localStorage.setItem('landGrabBest', String(best)); } catch (e) {} }
+  document.getElementById('overTitle').textContent = score >= best && score > 0 ? '최고 기록! 🏆' : '게임 끝! 🪨';
+  document.getElementById('overScore').textContent = score + '점';
+  document.getElementById('overBest').textContent = '최고 기록: ' + best + '점 · STAGE ' + stage;
+  overScreen.classList.remove('hidden');
+}
+document.getElementById('retryBtn').addEventListener('click', beginGame);
+document.getElementById('menuBtn2').addEventListener('click', showMenu);
+function showMenu() {
+  state = 'menu';
+  overScreen.classList.add('hidden');
+  pauseScreen.classList.add('hidden');
+  pauseBtn.classList.add('hidden');
+  startScreen.classList.remove('hidden');
+}
+
+let stateBeforePause = 'play';
+function pauseGame() {
+  if (state !== 'play' && state !== 'respawn') return;
+  stateBeforePause = state;
+  state = 'paused';
+  if (Snd.ctx) Snd.ctx.suspend();
+  pauseScreen.classList.remove('hidden');
+}
+function resumeGame() {
+  if (state !== 'paused') return;
+  state = stateBeforePause;
+  if (Snd.ctx) Snd.ctx.resume();
+  pauseScreen.classList.add('hidden');
+  last = performance.now();
+}
+function togglePause() {
+  if (state === 'paused') resumeGame();
+  else if (state === 'play' || state === 'respawn') pauseGame();
+}
+pauseBtn.addEventListener('click', togglePause);
+document.getElementById('resumeBtn').addEventListener('click', resumeGame);
+document.getElementById('quitBtn').addEventListener('click', () => { pauseScreen.classList.add('hidden'); showMenu(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) pauseGame(); });
+
+const muteBtn = document.getElementById('muteBtn');
+muteBtn.addEventListener('click', () => {
+  Snd.ensure();
+  Snd.muted = !Snd.muted;
+  muteBtn.textContent = Snd.muted ? '🔇' : '🔊';
+});
+
+if (location.pathname.startsWith('/land-grab')) {
+  document.getElementById('homeLink').classList.remove('hidden');
+  document.getElementById('homeLink2').classList.remove('hidden');
+}
+
+// ---------- 🔄 업데이트 ----------
+function update(dt) {
+  for (const pt of particles) { pt.life -= dt; pt.x += pt.vx * dt; pt.y += pt.vy * dt; pt.vx *= 0.94; pt.vy *= 0.94; }
+  particles = particles.filter(pt => pt.life > 0);
+  for (const up of popups) { up.life -= dt; up.y -= 22 * dt; }
+  popups = popups.filter(up => up.life > 0);
+  if (bannerT > 0) bannerT -= dt;
+
+  if (state === 'respawn') {
+    respawnTimer -= dt;
+    if (respawnTimer <= 0) {
+      if (window._nextStage) { initStage(window._nextStage); window._nextStage = null; }
+      else respawnPlayer();
+      state = 'play';
+    }
+    return;
+  }
+  if (state !== 'play') return;
+
+  if (freezeEnemiesT > 0) { freezeEnemiesT = Math.max(0, freezeEnemiesT - dt); updateFreezeUi(); }
+  else { for (const e of enemies) updateEnemy(e, dt); }
+  if (speedBoostT > 0) { speedBoostT = Math.max(0, speedBoostT - dt); updateSpeedUi(); }
+  checkEnemyHits();
+  if (state !== 'play') return; // loseLife()가 방금 respawn 상태로 바꿨을 수 있어요
+
+  moveTimer -= dt;
+  if (moveTimer <= 0) {
+    const dir = currentDir();
+    if (dir) attemptStep(dir);
+    moveTimer = tickInterval();
+  }
+  checkItemPickup();
+  const tx = (player.gx + 0.5) * CELL, ty = (player.gy + 0.5) * CELL;
+  player.px += (tx - player.px) * Math.min(1, 18 * dt);
+  player.py += (ty - player.py) * Math.min(1, 18 * dt);
+}
+
+// ---------- 🖌️ 그리기 ----------
+function drawTrail() {
+  if (trail.length === 0) return;
+  ctx.save();
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.strokeStyle = '#4be3ff'; ctx.lineWidth = CELL * 0.55;
+  ctx.shadowColor = '#4be3ff'; ctx.shadowBlur = 10;
+  ctx.beginPath();
+  const first = trail[0];
+  ctx.moveTo((first % COLS + 0.5) * CELL, (Math.floor(first / COLS) + 0.5) * CELL);
+  for (let i = 1; i < trail.length; i++) {
+    const idx = trail[i];
+    ctx.lineTo((idx % COLS + 0.5) * CELL, (Math.floor(idx / COLS) + 0.5) * CELL);
+  }
+  ctx.lineTo(player.px, player.py);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawEnemy(e) {
+  const frozen = freezeEnemiesT > 0;
+  ctx.save();
+  ctx.translate(e.x, e.y);
+  ctx.rotate(e.spin);
+  ctx.beginPath();
+  const spikes = 7;
+  for (let i = 0; i < spikes; i++) {
+    const a = (Math.PI * 2 / spikes) * i;
+    const rr = e.r * (i % 2 === 0 ? 1 : 0.65);
+    const px = Math.cos(a) * rr, py = Math.sin(a) * rr;
+    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fillStyle = frozen ? '#9fd8f2' : '#ff8a3d';
+  ctx.strokeStyle = frozen ? '#3f7c96' : '#a1441a'; ctx.lineWidth = 2;
+  ctx.fill(); ctx.stroke();
+  ctx.restore();
+  if (frozen) {
+    ctx.save();
+    ctx.translate(e.x, -e.r * 1.3 + e.y);
+    drawStopSignIcon(e.r * 0.55);
+    ctx.restore();
+  }
+}
+
+// 아이템 아이콘은 이모지 대신 직접 그려요(기기마다 이모지가 다르게 나와서 안 예뻐 보였어요)
+function drawHeartIcon(s) {
+  ctx.beginPath();
+  const top = s * 0.28;
+  ctx.moveTo(0, top);
+  ctx.bezierCurveTo(-s * 0.55, -s * 0.35, -s * 1.05, s * 0.28, 0, s * 0.95);
+  ctx.bezierCurveTo(s * 1.05, s * 0.28, s * 0.55, -s * 0.35, 0, top);
+  ctx.closePath();
+  ctx.fillStyle = '#ff2d55';
+  ctx.fill();
+  ctx.strokeStyle = '#8a0f2a'; ctx.lineWidth = 1.4; ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(-s * 0.28, s * 0.05, s * 0.16, s * 0.1, -0.6, 0, 7);
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.fill();
+}
+function drawStopSignIcon(s) {
+  ctx.beginPath();
+  const sides = 8;
+  for (let i = 0; i < sides; i++) {
+    const a = Math.PI / 8 + i * (Math.PI * 2 / sides);
+    const px = Math.cos(a) * s, py = Math.sin(a) * s;
+    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fillStyle = '#e53935';
+  ctx.fill();
+  ctx.lineWidth = s * 0.18; ctx.strokeStyle = '#fff'; ctx.stroke();
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(-s * 0.3, -s * 0.16, s * 0.6, s * 0.32);
+}
+function drawShieldIcon(s) {
+  ctx.beginPath();
+  ctx.moveTo(0, -s);
+  ctx.quadraticCurveTo(s * 0.95, -s * 0.75, s * 0.9, -s * 0.05);
+  ctx.quadraticCurveTo(s * 0.85, s * 0.75, 0, s);
+  ctx.quadraticCurveTo(-s * 0.85, s * 0.75, -s * 0.9, -s * 0.05);
+  ctx.quadraticCurveTo(-s * 0.95, -s * 0.75, 0, -s);
+  ctx.closePath();
+  ctx.fillStyle = '#4be3ff';
+  ctx.fill();
+  ctx.strokeStyle = '#0b3550'; ctx.lineWidth = 1.6; ctx.stroke();
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = s * 0.18; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.38, 0);
+  ctx.lineTo(-s * 0.08, s * 0.35);
+  ctx.lineTo(s * 0.42, -s * 0.3);
+  ctx.stroke();
+}
+function drawBoltIcon(s) {
+  ctx.beginPath();
+  ctx.moveTo(s * 0.12, -s);
+  ctx.lineTo(-s * 0.55, s * 0.12);
+  ctx.lineTo(-s * 0.05, s * 0.12);
+  ctx.lineTo(-s * 0.2, s);
+  ctx.lineTo(s * 0.55, -s * 0.08);
+  ctx.lineTo(s * 0.05, -s * 0.08);
+  ctx.closePath();
+  ctx.fillStyle = '#ffcf3f';
+  ctx.fill();
+  ctx.strokeStyle = '#b8860b'; ctx.lineWidth = 1.2; ctx.stroke();
+}
+const ITEM_DRAW = { life: drawHeartIcon, freeze: drawStopSignIcon, shield: drawShieldIcon, speed: drawBoltIcon };
+
+function drawItem(it) {
+  const bob = Math.sin(performance.now() / 300 + it.bob) * 3;
+  ctx.save();
+  ctx.translate(it.x, it.y + bob);
+  ctx.beginPath(); ctx.arc(0, 0, CELL * 0.7, 0, 7);
+  ctx.fillStyle = 'rgba(10, 16, 30, 0.55)';
+  ctx.strokeStyle = ITEM_COLOR[it.kind]; ctx.lineWidth = 2;
+  ctx.fill(); ctx.stroke();
+  ITEM_DRAW[it.kind](CELL * 0.42);
+  ctx.restore();
+}
+
+function drawPlayer() {
+  if (state === 'respawn') return;
+  ctx.save();
+  ctx.translate(player.px, player.py);
+  ctx.beginPath(); ctx.arc(0, 0, CELL * 0.55, 0, 7);
+  ctx.fillStyle = playerState === 'drawing' ? '#fff' : '#8be0ff';
+  ctx.fill();
+  ctx.strokeStyle = '#0b3550'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, 0, CELL * 0.22, 0, 7);
+  ctx.fillStyle = '#0b3550'; ctx.fill();
+  ctx.restore();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.drawImage(terrainCanvas, 0, 0);
+  drawTrail();
+  for (const it of items) drawItem(it);
+  for (const e of enemies) drawEnemy(e);
+  drawPlayer();
+
+  for (const pt of particles) {
+    ctx.globalAlpha = Math.max(0, pt.life / pt.maxLife);
+    ctx.fillStyle = pt.color;
+    ctx.beginPath(); ctx.arc(pt.x, pt.y, pt.r, 0, 7); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  for (const up of popups) {
+    ctx.globalAlpha = Math.max(0, up.life / up.maxLife);
+    ctx.fillStyle = up.color; ctx.font = '18px Jua, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(up.text, up.x, up.y);
+    ctx.globalAlpha = 1;
+  }
+  if (bannerT > 0 && (state === 'play' || state === 'respawn')) {
+    ctx.globalAlpha = Math.min(1, bannerT);
+    ctx.fillStyle = '#fff'; ctx.font = '30px Jua, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(bannerText, W / 2, H * 0.42);
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ---------- 🔁 게임 루프 ----------
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+initGrid();
+respawnPlayer();
+renderTerrain();
+fitCanvas();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

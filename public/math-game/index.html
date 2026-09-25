@@ -1,0 +1,718 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>연산 게임</title>
+<meta name="description" content="학년과 난이도를 골라 덧셈·뺄셈·곱셈·나눗셈 문제를 빠르게 푸는 타이머·콤보 퀴즈 게임">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧮</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --page-top: #e7f6ff;
+    --page-bottom: #c6e6ff;
+    --ink: #1c2b3a;
+    --panel: #ffffff;
+    --panel-alt: #eaf5ff;
+    --button: #2e86de;
+    --button-dark: #1c5c9c;
+    --gold: #2e9e52;
+    --good: #2e9e52;
+    --good-dark: #1f7a3c;
+    --bad: #d64541;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --page-top:#0f1a24; --page-bottom:#0a1119; --panel:#182430; --panel-alt:#1f2e3c; --ink:#e7f1fa; }
+  }
+  :root[data-theme="dark"] { --page-top:#0f1a24; --page-bottom:#0a1119; --panel:#182430; --panel-alt:#1f2e3c; --ink:#e7f1fa; }
+
+  html { height: 100%; }
+  body {
+    margin: 0; min-height: 100%;
+    background: linear-gradient(180deg, var(--page-top), var(--page-bottom));
+    font-family: 'Jua', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+    color: var(--ink);
+    display: flex; align-items: center; justify-content: center;
+    overflow-x: hidden;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #wrap {
+    position: relative;
+    width: min(94vw, 560px);
+    margin: 16px 0;
+    border-radius: 24px;
+    border: 4px solid var(--ink);
+    background: var(--panel);
+    box-shadow: 8px 8px 0 var(--button-dark);
+    padding: 16px 16px 20px;
+    overflow: hidden;
+  }
+  #wrap.shake { animation: shake .4s; }
+  .hidden { display: none !important; }
+
+  #hud { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin: 4px 0 10px; }
+  .pill { background: var(--panel-alt); border: 2px solid var(--ink); border-radius: 999px; padding: 6px 14px; font-size: clamp(13px, 3vw, 17px); white-space: nowrap; }
+  #timer.lowtime { color: #fff; background: var(--bad); animation: pulseRed 1s infinite; }
+  #combo { opacity: .55; transition: opacity .15s ease; }
+  #combo.hot { opacity: 1; color: var(--button-dark); }
+
+  #muteBtn, #quitBtn { position: absolute; top: 10px; font-size: clamp(15px, 2.4vw, 22px); background: var(--panel-alt); border: 2px solid var(--ink); border-radius: 8px; padding: 0.15em 0.45em; cursor: pointer; z-index: 3; }
+  #muteBtn { right: 10px; }
+  #quitBtn { left: 10px; }
+
+  #questionCard { position: relative; text-align: center; background: var(--panel-alt); border: 3px dashed var(--gold); border-radius: 18px; padding: 18px 10px 22px; margin-top: 6px; }
+  .badge { display: inline-block; font-size: clamp(12px, 2.6vw, 15px); font-weight: bold; border: 2px solid var(--ink); border-radius: 999px; padding: 2px 12px; color: #fff; }
+  .badge.easy { background: #4a9d6e; }
+  .badge.normal { background: #d68a2e; }
+  .badge.hard { background: #c0392b; }
+  #expr { display: block; font-size: clamp(40px, 11vw, 64px); line-height: 1.15; margin-top: 10px; font-weight: normal; letter-spacing: 1px; }
+  #expr.bounce { animation: charBounce .45s ease; }
+  #popups { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+  .popup { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); font-size: clamp(16px, 4vw, 24px); font-weight: bold; white-space: nowrap; animation: floatUp 1s ease forwards; }
+  .popup.good { color: var(--good-dark); }
+  .popup.bad { color: var(--button-dark); }
+  .popup.bonus { color: var(--gold); font-size: clamp(18px, 4.4vw, 27px); }
+  .confetti { position: absolute; font-size: 20px; animation: confettiRise .8s ease forwards; }
+
+  #choices { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+  #choices button {
+    font-family: inherit; font-size: clamp(18px, 4vw, 24px); color: var(--ink);
+    background: var(--panel); border: 3px solid var(--ink); border-radius: 12px;
+    padding: 0.6em 0.4em; box-shadow: 0 5px 0 var(--button-dark); cursor: pointer;
+  }
+  #choices button:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 1px 0 var(--button-dark); }
+  #choices button:disabled { cursor: default; }
+  #choices button.good { background: var(--good); color: #fff; border-color: var(--good-dark); box-shadow: 0 5px 0 var(--good-dark); }
+  #choices button.bad { background: var(--bad); color: #fff; border-color: var(--button-dark); animation: shake .4s; }
+  #choices button.reveal { background: var(--good); color: #fff; border-color: var(--good-dark); }
+
+  #playArea { position: relative; }
+  #playArea::after { content: ''; position: absolute; inset: -16px; pointer-events: none; border-radius: 18px; }
+  #playArea.flash-good::after { animation: flashGood .5s ease; }
+  #playArea.flash-bad::after { animation: flashBad .5s ease; }
+
+  .screen { display: flex; align-items: center; justify-content: center; padding: 10px 0; }
+  .modal { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; background: rgba(20,30,40,0.55); border-radius: 20px; }
+  .card { background: var(--panel); border: 4px solid var(--ink); border-radius: 18px; padding: 22px 20px; text-align: center; max-width: 94%; max-height: 92%; overflow: auto; box-shadow: 8px 8px 0 var(--button-dark); }
+  .card h1 { margin: 0 0 0.35em; font-size: clamp(24px, 5.5vw, 36px); font-weight: 400; }
+  .card p { margin: 0 0 0.7em; font-size: clamp(13px, 2.3vw, 16px); line-height: 1.6; text-align: left; }
+  .card .best, .card .stats { font-size: clamp(13px, 2.1vw, 16px); opacity: .9; margin-bottom: 0.7em; }
+  .card button { font-family: inherit; font-size: clamp(18px, 3.6vw, 26px); color: #fff; background: var(--button); border: 4px solid var(--ink); border-radius: 10px; padding: 0.25em 1.1em; box-shadow: 0 6px 0 var(--button-dark); cursor: pointer; margin: 4px; }
+  .card button:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--button-dark); }
+  .card button.small { font-size: clamp(13px, 2vw, 17px); padding: 0.25em 0.8em; border-width: 3px; box-shadow: 0 3px 0 var(--button-dark); background: var(--panel); color: var(--ink); }
+  .home { display: inline-block; margin-top: 0.7em; font-size: clamp(12px, 1.8vw, 15px); color: var(--ink); }
+
+  #gradeGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 10px 0 6px; }
+  #diffGrid { display: grid; grid-template-columns: 1fr; gap: 10px; margin: 10px 0 6px; }
+  .pickBtn {
+    font-family: inherit; color: var(--ink);
+    background: var(--panel-alt); border: 3px solid var(--ink); border-radius: 14px;
+    padding: 0.7em 0.4em; box-shadow: 0 4px 0 var(--button-dark); cursor: pointer;
+    font-size: clamp(16px, 3.4vw, 20px); text-align: center;
+  }
+  .pickBtn:active { transform: translateY(4px); box-shadow: 0 0 0 var(--button-dark); }
+  .pickBtn .sub { display: block; font-size: clamp(11px, 2vw, 13px); opacity: .75; margin-top: 2px; }
+  #diffBackRow { text-align: center; margin-top: 4px; }
+
+  @keyframes shake { 10%,90%{transform:translateX(-1px)} 20%,80%{transform:translateX(2px)} 30%,50%,70%{transform:translateX(-7px)} 40%,60%{transform:translateX(7px)} }
+  @keyframes charBounce { 0%{transform:scale(.7) rotate(-6deg);opacity:.4} 55%{transform:scale(1.15) rotate(3deg);opacity:1} 100%{transform:scale(1) rotate(0)} }
+  @keyframes floatUp { 0%{transform:translate(-50%,0) scale(.8);opacity:0} 18%{opacity:1;transform:translate(-50%,-8px) scale(1.08)} 100%{transform:translate(-50%,-58px) scale(1);opacity:0} }
+  @keyframes confettiRise { 0%{transform:translate(0,0) rotate(0);opacity:1} 100%{transform:translate(var(--dx),-100px) rotate(var(--rot));opacity:0} }
+  @keyframes flashGood { 0%{background:rgba(46,158,82,0)} 30%{background:rgba(46,158,82,.32)} 100%{background:rgba(46,158,82,0)} }
+  @keyframes flashBad { 0%{background:rgba(214,69,65,0)} 30%{background:rgba(214,69,65,.32)} 100%{background:rgba(214,69,65,0)} }
+  @keyframes pulseRed { 0%,100%{box-shadow:inset 0 0 0 rgba(214,69,65,0)} 50%{box-shadow:inset 0 0 22px rgba(214,69,65,.7)} }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <button id="muteBtn" aria-label="소리 켜기 끄기">🔊</button>
+  <button id="quitBtn" class="hidden" aria-label="그만하기">🏠</button>
+
+  <div id="playArea" class="hidden">
+    <div id="hud">
+      <span class="pill" id="score">🏆 0점</span>
+      <span class="pill" id="timer">⏳ 60</span>
+      <span class="pill" id="lives">❤️❤️❤️</span>
+      <span class="pill" id="combo">🔥 콤보</span>
+    </div>
+    <div id="questionCard">
+      <span id="gradeBadge" class="badge easy">1학년 · 쉬움</span>
+      <span id="expr">1 + 1 = ?</span>
+      <div id="popups"></div>
+    </div>
+    <div id="choices"></div>
+  </div>
+
+  <div class="screen" id="gradeScreen">
+    <div class="card">
+      <h1>🧮 연산 게임</h1>
+      <p>
+        🎓 먼저 학년을 골라주세요. 학년마다 나오는 문제 종류(덧셈·뺄셈·곱셈·나눗셈)와 숫자 크기가 달라져요.<br>
+        ⏳ 학년을 고르면 난이도(쉬움·보통·어려움)도 고를 수 있어요.
+      </p>
+      <div id="gradeGrid"></div>
+      <p class="best">최고 점수: <span id="bestStart">0</span>점</p>
+      <br><a class="home" href="/">🏠 게임 놀이터로</a>
+    </div>
+  </div>
+
+  <div class="screen hidden" id="diffScreen">
+    <div class="card">
+      <h1 id="diffTitle">🎯 난이도 선택</h1>
+      <p>
+        🌱 쉬움은 받아올림·받아내림 없이 차근차근 연습하기 좋아요.<br>
+        🔥 보통은 받아올림·받아내림이 한 번쯤 섞여 나와요.<br>
+        💎 어려움은 받아올림·받아내림이 자리마다 나오고, 곱셈·나눗셈 수도 더 커져요!
+      </p>
+      <div id="diffGrid"></div>
+      <div id="diffBackRow"><button class="small" id="diffBackBtn">◀ 학년 다시 고르기</button></div>
+    </div>
+  </div>
+
+  <div class="screen hidden" id="overScreen">
+    <div class="card">
+      <h1 id="overTitle">게임 끝! 🧮</h1>
+      <p class="stats" id="overStats"></p>
+      <p class="stats" id="earnResult"></p>
+      <p class="best">최고 점수: <span id="bestOver">0</span>점</p>
+      <button id="againBtn">다시하기</button>
+      <button class="small" id="changeBtn">학년·난이도 바꾸기</button>
+      <br><a class="home" href="/">🏠 게임 놀이터로</a>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="quitConfirm">
+    <div class="card">
+      <h1>⚠️ 잠깐!</h1>
+      <p style="text-align:center">정말 그만하고 난이도를 다시 고를까요?<br>지금까지 점수는 사라져요.</p>
+      <button id="quitYes">네, 나갈게요</button>
+      <button id="quitNo" class="small">아니요</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- 학년별 연산 설정 ----------
+// ops: 그 학년에서 나오는 연산 종류. add/subMax: 덧셈·뺄셈 피연산자의 대략적인 최댓값.
+// mulMax: 곱셈 두 수가 각각 2~mulMax 사이(구구단 느낌). divMax: 나눗셈의 몫과 나누는 수가 각각 2~divMax 사이라서
+// 항상 나누어 떨어지는 문제만 나와요.
+// types: 그 학년에서 뽑힐 수 있는 문제 종류(아래 PROBLEM_GENERATORS의 키). 매 문제마다 이 중 하나를 무작위로 골라요.
+// 덧셈·뺄셈은 "어려움"이라고 숫자 자체를 무작정 키우지 않아요 — 자릿수는 학년에 따라서만 커지고,
+// 같은 학년 안에서 난이도(쉬움/보통/어려움)는 받아올림·받아내림이 얼마나 나오는지로만 달라져요.
+// addCarry/subBorrow: 'none'(전혀 없음) | 'some'(한 자리 정도) | 'many'(자리마다 거의 다 나옴).
+const GRADES = [
+  { g: 1, label: '1학년', emoji: '1️⃣', types: ['add', 'sub'],
+    easy:   { addDigits: 1, addCarry: 'none', subMinuendDigits: 2, subSubtrahendDigits: 1, subBorrow: 'none' },
+    normal: { addDigits: 1, addCarry: 'some', subMinuendDigits: 2, subSubtrahendDigits: 1, subBorrow: 'some' },
+    hard:   { addDigits: 1, addCarry: 'many', subMinuendDigits: 2, subSubtrahendDigits: 1, subBorrow: 'many' } },
+  { g: 2, label: '2학년', emoji: '2️⃣', types: ['add', 'sub', 'mul'],
+    easy:   { addDigits: 2, addCarry: 'none', subMinuendDigits: 2, subSubtrahendDigits: 2, subBorrow: 'none', mul: 5  },
+    normal: { addDigits: 2, addCarry: 'some', subMinuendDigits: 2, subSubtrahendDigits: 2, subBorrow: 'some', mul: 7  },
+    hard:   { addDigits: 2, addCarry: 'many', subMinuendDigits: 2, subSubtrahendDigits: 2, subBorrow: 'many', mul: 9  } },
+  // 3학년: 곱셈·나눗셈에 더해, 분모가 같은 분수끼리 더하기(fracAdd)와 소수 한 자리 덧셈(decAdd)도 나와요.
+  { g: 3, label: '3학년', emoji: '3️⃣', types: ['add', 'sub', 'mul', 'div', 'fracAdd', 'decAdd'],
+    easy:   { addDigits: 3, addCarry: 'none', subMinuendDigits: 3, subSubtrahendDigits: 3, subBorrow: 'none', mul: 9,  div: 9,  fracDenMax: 5, decTenthsMax: 9  },
+    normal: { addDigits: 3, addCarry: 'some', subMinuendDigits: 3, subSubtrahendDigits: 3, subBorrow: 'some', mul: 12, div: 12, fracDenMax: 7, decTenthsMax: 50 },
+    hard:   { addDigits: 3, addCarry: 'many', subMinuendDigits: 3, subSubtrahendDigits: 3, subBorrow: 'many', mul: 12, div: 12, fracDenMax: 9, decTenthsMax: 99 } },
+  { g: 4, label: '4학년', emoji: '4️⃣', types: ['add', 'sub', 'mul', 'div'],
+    easy:   { addDigits: 4, addCarry: 'none', subMinuendDigits: 4, subSubtrahendDigits: 4, subBorrow: 'none', mul: 12, div: 12 },
+    normal: { addDigits: 4, addCarry: 'some', subMinuendDigits: 4, subSubtrahendDigits: 4, subBorrow: 'some', mul: 15, div: 15 },
+    hard:   { addDigits: 4, addCarry: 'many', subMinuendDigits: 4, subSubtrahendDigits: 4, subBorrow: 'many', mul: 20, div: 15 } },
+  // 5학년: 사칙연산에 더해, 약분(reduceFrac)·최대공약수(gcd)·최소공배수(lcm) 문제도 나와요.
+  { g: 5, label: '5학년', emoji: '5️⃣', types: ['add', 'sub', 'mul', 'div', 'reduceFrac', 'gcd', 'lcm'],
+    easy:   { addDigits: 4, addCarry: 'none', subMinuendDigits: 4, subSubtrahendDigits: 4, subBorrow: 'none', mul: 20, div: 15, reduceDenMax: 6,  reduceFactorMax: 3, coprimeMax: 5, gcdFactorMax: 4 },
+    normal: { addDigits: 4, addCarry: 'some', subMinuendDigits: 4, subSubtrahendDigits: 4, subBorrow: 'some', mul: 25, div: 20, reduceDenMax: 9,  reduceFactorMax: 5, coprimeMax: 7, gcdFactorMax: 6 },
+    hard:   { addDigits: 4, addCarry: 'many', subMinuendDigits: 4, subSubtrahendDigits: 4, subBorrow: 'many', mul: 30, div: 25, reduceDenMax: 12, reduceFactorMax: 8, coprimeMax: 9, gcdFactorMax: 9 } },
+];
+const DIFFS = [
+  { key: 'easy', label: '쉬움', emoji: '🌱' },
+  { key: 'normal', label: '보통', emoji: '🔥' },
+  { key: 'hard', label: '어려움', emoji: '💎' },
+];
+const DIFF_POINTS = { easy: 8, normal: 12, hard: 18 };
+
+let selectedGrade = null, selectedDiff = null;
+
+function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+function gcdOf(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b]; } return a; }
+
+// 자릿수 배열(낮은 자리부터)을 실제 숫자로 합쳐요.
+function digitsToNumber(digitsLSBFirst) {
+  let n = 0;
+  for (let i = digitsLSBFirst.length - 1; i >= 0; i--) n = n * 10 + digitsLSBFirst[i];
+  return n;
+}
+
+// 덧셈 문제를 낮은 자리부터 만들면서, 받아올림이 나는 자리를 pattern에 맞게 미리 정해요.
+// none이면 어느 자리에서도 받아올림이 안 나고, some이면 딱 한 자리, many면 맨 앞자리를 뺀 나머지 자리 전부에서 나게 해요.
+function genAddDigits(digitCount, pattern) {
+  const forced = new Set();
+  if (pattern === 'some') forced.add(randInt(0, digitCount - 1));
+  else if (pattern === 'many') for (let i = 0; i < digitCount - (digitCount > 1 ? 1 : 0); i++) forced.add(i);
+
+  const da = [], db = [];
+  let carryIn = 0;
+  for (let i = 0; i < digitCount; i++) {
+    const minDigit = i === digitCount - 1 ? 1 : 0; // 맨 앞자리는 0이 아니게
+    const mustCarry = forced.has(i);
+    const mustNotCarry = pattern === 'none';
+    let x, y, carryOut;
+    do {
+      x = randInt(minDigit, 9);
+      y = randInt(0, 9);
+      carryOut = (x + y + carryIn) >= 10 ? 1 : 0;
+    } while ((mustCarry && !carryOut) || (mustNotCarry && carryOut));
+    da.push(x); db.push(y);
+    carryIn = carryOut;
+  }
+  return { a: digitsToNumber(da), b: digitsToNumber(db) };
+}
+
+// 뺄셈도 같은 방식이에요. minuendDigits가 subtrahendDigits보다 크면(1학년의 "두 자리 - 한 자리"처럼)
+// 짧은 쪽 남는 자리는 0으로 채워요. 맨 앞자리에서는 더 빌려올 데가 없으니 항상 받아내림이 안 나게 해서
+// 결과가 항상 0 이상이 되게 보장해요.
+function genSubDigits(minuendDigits, subtrahendDigits, pattern) {
+  const borrowable = minuendDigits - 1; // 맨 앞자리는 절대 안 빌려요
+  const forced = new Set();
+  if (pattern === 'some' && borrowable > 0) forced.add(randInt(0, borrowable - 1));
+  else if (pattern === 'many' && borrowable > 0) for (let i = 0; i < borrowable; i++) forced.add(i);
+
+  const da = [], db = [];
+  let borrowIn = 0;
+  for (let i = 0; i < minuendDigits; i++) {
+    const isLeading = i === minuendDigits - 1;
+    const hasSubtrahendDigit = i < subtrahendDigits;
+    const minDigitA = isLeading ? 1 : 0;
+    const mustBorrow = forced.has(i);
+    const mustNotBorrow = pattern === 'none' || isLeading || !hasSubtrahendDigit;
+    let x, y, borrowOut;
+    do {
+      x = randInt(minDigitA, 9);
+      y = hasSubtrahendDigit ? randInt(0, 9) : 0;
+      borrowOut = (x - borrowIn) < y ? 1 : 0;
+    } while ((mustBorrow && !borrowOut) || (mustNotBorrow && borrowOut));
+    da.push(x); db.push(y);
+    borrowIn = borrowOut;
+  }
+  return { a: digitsToNumber(da), b: digitsToNumber(db) };
+}
+
+// ---------- 문제 생성기 ----------
+// 문제마다 kind(numeric/fraction/decimal)를 붙여서, 아래에서 보기(선택지)를 다르게 만들어요.
+const PROBLEM_GENERATORS = {
+  add(range) {
+    const { a, b } = genAddDigits(range.addDigits, range.addCarry);
+    return { kind: 'numeric', text: a + ' + ' + b + ' = ?', answer: a + b };
+  },
+  sub(range) {
+    const { a, b } = genSubDigits(range.subMinuendDigits, range.subSubtrahendDigits, range.subBorrow);
+    return { kind: 'numeric', text: a + ' - ' + b + ' = ?', answer: a - b };
+  },
+  mul(range) {
+    const a = randInt(2, range.mul), b = randInt(2, range.mul);
+    return { kind: 'numeric', text: a + ' × ' + b + ' = ?', answer: a * b };
+  },
+  div(range) {
+    const b = randInt(2, range.div), q = randInt(2, range.div);
+    return { kind: 'numeric', text: (b * q) + ' ÷ ' + b + ' = ?', answer: q };
+  },
+  // 3학년: 분모가 같은 진분수끼리 더해요. 합이 1보다 작게(진분수가 되게) 두 번째 분자를 제한해요.
+  fracAdd(range) {
+    const d = randInt(3, range.fracDenMax);
+    const n1 = randInt(1, d - 2);
+    const n2 = randInt(1, d - 1 - n1);
+    return { kind: 'fraction', text: n1 + '/' + d + ' + ' + n2 + '/' + d + ' = ?', numerator: n1 + n2, denominator: d };
+  },
+  // 3학년: 소수 한 자리(0.1 단위) 덧셈. 오차 없이 더하려고 "몇 십분의 몇"(tenths) 정수로 계산해요.
+  decAdd(range) {
+    const t1 = randInt(1, range.decTenthsMax), t2 = randInt(1, range.decTenthsMax);
+    return { kind: 'decimal', text: (t1 / 10).toFixed(1) + ' + ' + (t2 / 10).toFixed(1) + ' = ?', tenths: t1 + t2 };
+  },
+  // 5학년: 기약분수 n/d를 k배 부풀린 n*k/d*k를 보여주고 약분시켜요.
+  reduceFrac(range) {
+    let d, n;
+    do { d = randInt(2, range.reduceDenMax); n = randInt(1, d - 1); } while (gcdOf(n, d) !== 1);
+    const k = randInt(2, range.reduceFactorMax);
+    return { kind: 'fraction', text: (n * k) + '/' + (d * k) + ' 을 약분하면?', numerator: n, denominator: d };
+  },
+  // 5학년: 서로소인 x,y에 공통 인수 g를 곱해서(x*g, y*g) 최대공약수가 정확히 g가 되게 만들어요.
+  gcd(range) {
+    const x = randInt(2, range.coprimeMax);
+    let y; do { y = randInt(2, range.coprimeMax); } while (gcdOf(x, y) !== 1);
+    const g = randInt(2, range.gcdFactorMax);
+    return { kind: 'numeric', text: (x * g) + ', ' + (y * g) + '의 최대공약수는?', answer: g };
+  },
+  // 5학년: 같은 방식으로 최소공배수는 x*y*g예요. "그냥 두 수를 곱한 값"(a*b)도 흔한 오답으로 보기에 넣어요.
+  lcm(range) {
+    const x = randInt(2, range.coprimeMax);
+    let y; do { y = randInt(2, range.coprimeMax); } while (gcdOf(x, y) !== 1);
+    const g = randInt(1, range.gcdFactorMax);
+    const a = x * g, b = y * g;
+    return { kind: 'numeric', text: a + ', ' + b + '의 최소공배수는?', answer: x * y * g, product: a * b };
+  },
+};
+
+function makeProblem(gradeCfg, diffKey) {
+  const range = gradeCfg[diffKey];
+  const type = gradeCfg.types[randInt(0, gradeCfg.types.length - 1)];
+  return PROBLEM_GENERATORS[type](range);
+}
+
+function answerText(problem) {
+  if (problem.kind === 'fraction') return problem.numerator + '/' + problem.denominator;
+  if (problem.kind === 'decimal') return (problem.tenths / 10).toFixed(1);
+  return String(problem.answer);
+}
+
+function numericDeltaSet(base) {
+  const step = Math.max(1, Math.round(Math.abs(base) * 0.12) || 1);
+  const set = new Set([base]);
+  while (set.size < 4) {
+    const delta = randInt(1, step * 3 || 3) * (Math.random() < 0.5 ? -1 : 1);
+    const candidate = base + delta;
+    if (candidate >= 0 && candidate !== base) set.add(candidate);
+  }
+  return set;
+}
+
+function makeChoices(problem) {
+  if (problem.kind === 'fraction') {
+    const set = new Set([problem.numerator]);
+    while (set.size < 4) {
+      const delta = randInt(1, 3) * (Math.random() < 0.5 ? -1 : 1);
+      const candidate = problem.numerator + delta;
+      if (candidate >= 0 && candidate !== problem.numerator) set.add(candidate);
+    }
+    return shuffle([...set]).map(n => n + '/' + problem.denominator);
+  }
+  if (problem.kind === 'decimal') {
+    return shuffle([...numericDeltaSet(problem.tenths)]).map(t => (t / 10).toFixed(1));
+  }
+  if (problem.product !== undefined) {
+    const set = new Set([problem.answer]);
+    if (problem.product !== problem.answer) set.add(problem.product);
+    const step = Math.max(1, Math.round(problem.answer * 0.12) || 1);
+    while (set.size < 4) {
+      const delta = randInt(1, step * 3 || 3) * (Math.random() < 0.5 ? -1 : 1);
+      const candidate = problem.answer + delta;
+      if (candidate >= 0 && candidate !== problem.answer && candidate !== problem.product) set.add(candidate);
+    }
+    return shuffle([...set]).map(String);
+  }
+  return shuffle([...numericDeltaSet(problem.answer)]).map(String);
+}
+
+// ---------- 소리 (컴퓨터가 직접 연주해요) ----------
+const Sound = {
+  ctx: null, muted: false,
+  ensure() { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); else if (this.ctx.state === 'suspended') this.ctx.resume(); },
+  tone(freq, t, len, type, vol, freqEnd) {
+    if (!this.ctx || this.muted) return;
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (freqEnd) o.frequency.exponentialRampToValueAtTime(freqEnd, t + len);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + len);
+    o.connect(g).connect(this.ctx.destination);
+    o.start(t); o.stop(t + len);
+  },
+  correct() { if (!this.ctx) return; const t = this.ctx.currentTime; this.tone(660, t, 0.12, 'triangle', 0.28); this.tone(880, t + 0.08, 0.16, 'triangle', 0.26); },
+  wrong() { if (!this.ctx) return; const t = this.ctx.currentTime; this.tone(220, t, 0.3, 'sawtooth', 0.28, 90); },
+  combo(level) { if (!this.ctx) return; const t = this.ctx.currentTime; [0, 0.07, 0.14].forEach((d, i) => this.tone(520 + i * 140 + (level || 0) * 6, t + d, 0.14, 'square', 0.18)); },
+  tick() { if (!this.ctx) return; this.tone(880, this.ctx.currentTime, 0.05, 'square', 0.08); },
+  gameover() { if (!this.ctx) return; const t = this.ctx.currentTime; this.tone(300, t, 0.5, 'sawtooth', 0.25, 70); },
+};
+
+// ---------- 상태 ----------
+const ROUND_TIME = 60;
+let score = 0, timeLeft = ROUND_TIME, lives = 3, combo = 0, bestCombo = 0;
+let totalAnswered = 0, totalCorrect = 0;
+let currentProblem = null;
+let locked = false, gameOver = false, paused = false, timerHandle = null;
+
+const el = id => document.getElementById(id);
+const scoreEl = el('score'), timerEl = el('timer'), livesEl = el('lives'), comboEl = el('combo');
+const exprEl = el('expr'), choicesEl = el('choices'), popupsEl = el('popups'), gradeEl = el('gradeBadge');
+const playArea = el('playArea'), wrapEl = el('wrap');
+
+function shuffle(arr) { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
+function comboMultiplier(n) { if (n >= 10) return 3; if (n >= 6) return 2; if (n >= 3) return 1.5; return 1; }
+
+function spawnPopup(text, kind) {
+  const span = document.createElement('span');
+  span.className = 'popup ' + kind;
+  span.textContent = text;
+  popupsEl.appendChild(span);
+  span.addEventListener('animationend', () => span.remove());
+}
+function spawnConfetti() {
+  const emojis = ['✨', '⭐', '🎉'];
+  for (let i = 0; i < 8; i++) {
+    const s = document.createElement('span');
+    s.className = 'confetti';
+    s.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+    s.style.left = (40 + Math.random() * 20) + '%';
+    s.style.top = '38%';
+    s.style.setProperty('--dx', (Math.random() * 120 - 60) + 'px');
+    s.style.setProperty('--rot', (Math.random() * 360 - 180) + 'deg');
+    popupsEl.appendChild(s);
+    s.addEventListener('animationend', () => s.remove());
+  }
+}
+function bounceExpr() { exprEl.classList.remove('bounce'); void exprEl.offsetWidth; exprEl.classList.add('bounce'); }
+function shakeWrap() { wrapEl.classList.remove('shake'); void wrapEl.offsetWidth; wrapEl.classList.add('shake'); }
+function flashPlay(kind) {
+  const cls = kind === 'good' ? 'flash-good' : 'flash-bad';
+  playArea.classList.remove('flash-good', 'flash-bad');
+  void playArea.offsetWidth;
+  playArea.classList.add(cls);
+}
+
+function updateHUD() {
+  scoreEl.textContent = '🏆 ' + score + '점';
+  timerEl.textContent = '⏳ ' + Math.max(0, timeLeft);
+  timerEl.classList.toggle('lowtime', timeLeft <= 10 && timeLeft > 0);
+  livesEl.textContent = '❤️'.repeat(Math.max(0, lives)) + '🤍'.repeat(Math.max(0, 3 - lives));
+  if (combo >= 2) {
+    comboEl.textContent = '🔥 콤보 x' + combo + ' (x' + comboMultiplier(combo) + ')';
+    comboEl.classList.add('hot');
+  } else {
+    comboEl.textContent = '🔥 콤보';
+    comboEl.classList.remove('hot');
+  }
+}
+
+function renderQuestion() {
+  currentProblem = makeProblem(selectedGrade, selectedDiff.key);
+  exprEl.textContent = currentProblem.text;
+  gradeEl.textContent = selectedGrade.label + ' · ' + selectedDiff.label;
+  gradeEl.className = 'badge ' + selectedDiff.key;
+  bounceExpr();
+
+  const correctText = answerText(currentProblem);
+  const options = makeChoices(currentProblem).map(t => ({ t, correct: t === correctText }));
+
+  choicesEl.innerHTML = '';
+  options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.textContent = opt.t;
+    if (opt.correct) btn.dataset.correct = '1';
+    btn.addEventListener('click', () => selectChoice(btn, opt));
+    choicesEl.appendChild(btn);
+  });
+  locked = false;
+}
+
+function selectChoice(btn, opt) {
+  if (locked || gameOver) return;
+  locked = true;
+  totalAnswered++;
+  [...choicesEl.children].forEach(b => (b.disabled = true));
+
+  if (opt.correct) {
+    btn.classList.add('good');
+    handleCorrect();
+  } else {
+    btn.classList.add('bad');
+    const correctBtn = [...choicesEl.children].find(b => b.dataset.correct === '1');
+    if (correctBtn) correctBtn.classList.add('reveal');
+    handleWrong();
+  }
+
+  setTimeout(() => { if (!gameOver) renderQuestion(); }, opt.correct ? 650 : 1100);
+}
+
+function handleCorrect() {
+  totalCorrect++;
+  combo++;
+  bestCombo = Math.max(bestCombo, combo);
+  const gained = Math.round(DIFF_POINTS[selectedDiff.key] * comboMultiplier(combo));
+  score += gained;
+  spawnPopup('+' + gained, 'good');
+  spawnConfetti();
+  flashPlay('good');
+  Sound.correct();
+  if (combo % 5 === 0) {
+    timeLeft = Math.min(99, timeLeft + 3);
+    spawnPopup('+3초 보너스!', 'bonus');
+    Sound.combo(combo);
+  }
+  updateHUD();
+}
+
+function handleWrong() {
+  combo = 0;
+  lives--;
+  timeLeft = Math.max(1, timeLeft - 2);
+  spawnPopup('-2초', 'bad');
+  shakeWrap();
+  flashPlay('bad');
+  Sound.wrong();
+  updateHUD();
+  if (lives <= 0) endGame();
+}
+
+function startTimer() {
+  clearInterval(timerHandle);
+  timerHandle = setInterval(() => {
+    if (paused || gameOver) return;
+    timeLeft--;
+    if (timeLeft <= 10 && timeLeft > 0) Sound.tick();
+    if (timeLeft <= 0) { timeLeft = 0; updateHUD(); endGame(); return; }
+    updateHUD();
+  }, 1000);
+}
+
+function startGame() {
+  Sound.ensure();
+  score = 0; timeLeft = ROUND_TIME; lives = 3; combo = 0; bestCombo = 0;
+  totalAnswered = 0; totalCorrect = 0; gameOver = false;
+  el('gradeScreen').classList.add('hidden');
+  el('diffScreen').classList.add('hidden');
+  el('overScreen').classList.add('hidden');
+  playArea.classList.remove('hidden');
+  el('quitBtn').classList.remove('hidden');
+  updateHUD();
+  renderQuestion();
+  startTimer();
+}
+
+function endGame() {
+  if (gameOver) return;
+  gameOver = true;
+  clearInterval(timerHandle);
+  Sound.gameover();
+  playArea.classList.add('hidden');
+  el('quitBtn').classList.add('hidden');
+  const best = Math.max(score, Number(localStorage.getItem('mathGameBest') || 0));
+  localStorage.setItem('mathGameBest', String(best));
+  const acc = totalAnswered ? Math.round((totalCorrect / totalAnswered) * 100) : 0;
+  el('overTitle').textContent = lives <= 0 ? '아쉬워요! 💔' : '시간 종료! ⏰';
+  el('overStats').textContent = selectedGrade.label + ' · ' + selectedDiff.label + ' · 점수 ' + score + '점 · 정답 ' + totalCorrect + '/' + totalAnswered + ' (' + acc + '%) · 최고 콤보 x' + bestCombo;
+  el('bestOver').textContent = best;
+  el('overScreen').classList.remove('hidden');
+  reportEarnedPoints();
+}
+
+// ---------- 학년·난이도 선택 화면 ----------
+function renderGradeGrid() {
+  const grid = el('gradeGrid');
+  grid.innerHTML = '';
+  GRADES.forEach(gradeCfg => {
+    const btn = document.createElement('button');
+    btn.className = 'pickBtn';
+    btn.innerHTML = gradeCfg.emoji + '<span class="sub">' + gradeCfg.label + '</span>';
+    btn.addEventListener('click', () => {
+      selectedGrade = gradeCfg;
+      showDiffScreen();
+    });
+    grid.appendChild(btn);
+  });
+}
+
+function renderDiffGrid() {
+  const grid = el('diffGrid');
+  grid.innerHTML = '';
+  DIFFS.forEach(diffCfg => {
+    const btn = document.createElement('button');
+    btn.className = 'pickBtn';
+    btn.innerHTML = diffCfg.emoji + ' ' + diffCfg.label;
+    btn.addEventListener('click', () => {
+      selectedDiff = diffCfg;
+      startGame();
+    });
+    grid.appendChild(btn);
+  });
+}
+
+function showGradeScreen() {
+  el('diffScreen').classList.add('hidden');
+  el('overScreen').classList.add('hidden');
+  el('gradeScreen').classList.remove('hidden');
+}
+
+function showDiffScreen() {
+  el('diffTitle').textContent = selectedGrade.emoji + ' ' + selectedGrade.label + ' · 난이도 선택';
+  el('gradeScreen').classList.add('hidden');
+  el('overScreen').classList.add('hidden');
+  el('diffScreen').classList.remove('hidden');
+}
+
+// ---------- 게임 놀이터 포인트 적립 ----------
+// 게임 놀이터 허브와 같은 주소(origin)라서 localStorage에 저장된 로그인 토큰을 그대로 읽을 수 있어요.
+// public/math-game/earn-config.json에서 "정답 5개 묶음" 1개당 1점으로 정해뒀어요. 정답 개수를 그대로 보내면
+// 너무 후하게 쌓이니, 여기서 미리 5로 나눠 "단위 수"로 바꿔 보내고, 실제 지급액(하루 한도 포함)은 서버가 정해요.
+const POINTS_TOKEN_KEY = 'fishing.points.token';
+
+async function reportEarnedPoints() {
+  const earnEl = el('earnResult');
+  const token = localStorage.getItem(POINTS_TOKEN_KEY);
+  if (!token) {
+    earnEl.textContent = '🏠 게임 놀이터에서 이름으로 로그인하면 정답 5개마다 포인트를 모을 수 있어요!';
+    return;
+  }
+  const units = Math.floor(totalCorrect / 5);
+  if (units <= 0) {
+    earnEl.textContent = '정답을 5개 이상 맞히면 포인트를 모을 수 있어요! (이번 판 정답 ' + totalCorrect + '개)';
+    return;
+  }
+  try {
+    const res = await fetch('/api/points/earn', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ gameId: 'math-game', units }),
+    });
+    const data = await res.json();
+    if (!res.ok) { earnEl.textContent = data.error || '포인트를 적립하지 못했어요.'; return; }
+    earnEl.textContent = data.awarded > 0
+      ? '🎉 포인트 +' + data.awarded + '점 적립! (지금 ' + data.points + '점)' + (data.dailyCapped ? ' — 오늘은 이 게임으로 더 못 모아요' : '')
+      : '오늘은 연산 게임으로 모을 수 있는 포인트를 다 모았어요. (지금 ' + data.points + '점)';
+  } catch (err) {
+    earnEl.textContent = '포인트 적립에 실패했어요. 인터넷 연결을 확인해주세요.';
+  }
+}
+
+// ---------- 버튼 연결 ----------
+el('bestStart').textContent = localStorage.getItem('mathGameBest') || 0;
+renderGradeGrid();
+renderDiffGrid();
+
+el('diffBackBtn').addEventListener('click', showGradeScreen);
+el('againBtn').addEventListener('click', startGame);
+el('changeBtn').addEventListener('click', showGradeScreen);
+
+el('muteBtn').addEventListener('click', () => {
+  Sound.muted = !Sound.muted;
+  el('muteBtn').textContent = Sound.muted ? '🔇' : '🔊';
+});
+
+function quitToDiffScreen() {
+  gameOver = true;
+  clearInterval(timerHandle);
+  playArea.classList.add('hidden');
+  el('quitBtn').classList.add('hidden');
+  showDiffScreen();
+}
+
+el('quitBtn').addEventListener('click', () => el('quitConfirm').classList.remove('hidden'));
+el('quitYes').addEventListener('click', () => { el('quitConfirm').classList.add('hidden'); quitToDiffScreen(); });
+el('quitNo').addEventListener('click', () => el('quitConfirm').classList.add('hidden'));
+
+document.addEventListener('visibilitychange', () => { paused = document.hidden; });
+
+// 숫자키 1~4로도 답을 고를 수 있어요
+document.addEventListener('keydown', e => {
+  if (locked || gameOver || playArea.classList.contains('hidden')) return;
+  const idx = { '1': 0, '2': 1, '3': 2, '4': 3 }[e.key];
+  if (idx == null) return;
+  const btn = choicesEl.children[idx];
+  if (btn && !btn.disabled) btn.click();
+});
+</script>
+</body>
+</html>
