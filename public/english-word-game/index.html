@@ -344,6 +344,46 @@ if (Speech.supported) {
   window.speechSynthesis.addEventListener('voiceschanged', () => Speech.pickVoice());
 }
 
+// 기기에 영어 음성이 없으면(브라우저 합성 음성이 한국어로 대신 읽어서 발음이 어색해질 수 있어요),
+// 무료 사전 API가 제공하는 실제 원어민 녹음 파일을 먼저 재생해보고, 안 되면 브라우저 음성으로 대신 읽어줘요.
+const pronounceCache = {};
+let pronounceAudio = null;
+
+async function fetchPronunciationUrl(word) {
+  const key = word.toLowerCase();
+  if (key in pronounceCache) return pronounceCache[key];
+  try {
+    const res = await fetch('https://api.dictionaryapi.dev/api/v2/entries/en/' + encodeURIComponent(key));
+    if (!res.ok) { pronounceCache[key] = null; return null; }
+    const entries = await res.json();
+    let url = null;
+    for (const entry of entries) {
+      for (const p of entry.phonetics || []) {
+        if (p.audio) { url = p.audio.startsWith('http') ? p.audio : 'https:' + p.audio; break; }
+      }
+      if (url) break;
+    }
+    pronounceCache[key] = url;
+    return url;
+  } catch (err) {
+    pronounceCache[key] = null;
+    return null;
+  }
+}
+
+async function playPronunciation(word) {
+  const url = await fetchPronunciationUrl(word);
+  if (url) {
+    try {
+      if (!pronounceAudio) pronounceAudio = new Audio();
+      pronounceAudio.src = url;
+      await pronounceAudio.play();
+      return;
+    } catch (err) { /* 재생이 막히면 아래에서 기기 음성으로 대신 읽어줘요 */ }
+  }
+  Speech.speak(word);
+}
+
 // ---------- 상태 ----------
 const ROUND_TIME = 60;
 let score = 0, timeLeft = ROUND_TIME, lives = 3, combo = 0, bestCombo = 0;
@@ -359,7 +399,6 @@ const scoreEl = el('score'), timerEl = el('timer'), livesEl = el('lives'), combo
 const wordEl = el('wordText'), choicesEl = el('choices'), popupsEl = el('popups'), levelBadgeEl = el('levelBadge'), dirBadgeEl = el('dirBadge');
 const playArea = el('playArea'), wrapEl = el('wrap');
 const listenBtn = el('listenBtn');
-if (!Speech.supported) listenBtn.classList.add('hidden');
 
 const BEST_KEY = 'englishWordGameBest';
 function loadBests() { try { return JSON.parse(localStorage.getItem(BEST_KEY)) || {}; } catch (e) { return {}; } }
@@ -659,7 +698,7 @@ el('roundResultOk').addEventListener('click', () => {
   el('startScreen').classList.remove('hidden');
 });
 
-listenBtn.addEventListener('click', () => { if (currentItem) Speech.speak(currentItem.w); });
+listenBtn.addEventListener('click', () => { if (currentItem) playPronunciation(currentItem.w); });
 
 function setDirection(dir) {
   direction = dir;
