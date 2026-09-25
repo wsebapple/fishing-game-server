@@ -4,109 +4,100 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>지뢰찾기</title>
-<meta name="description" content="옛날 윈도우 기본 게임 지뢰찾기! 초급·중급·고급 난이도로 즐겨요">
+<meta name="description" content="숫자를 보고 지뢰를 피해 안전한 칸을 모두 열어요! 초급·중급·고급 난이도로 즐겨요">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💣</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
 <style>
   :root {
-    --face: #c0c0c0;
-    --hi: #ffffff;
-    --lo: #808080;
-    --lo2: #404040;
+    --page-top: #eafcf7;
+    --page-bottom: #c7f0e3;
+    --ink: #123c39;
+    --panel: #ffffff;
+    --panel-alt: #e6f7f1;
+    --button: #20b8a3;
+    --button-dark: #128577;
+    --gold: #ffb703;
+    --bad: #ff5d5d;
+    box-sizing: border-box;
     padding-top: env(safe-area-inset-top, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --page-top:#08211f; --page-bottom:#04120f; --panel:#0f2e2a; --panel-alt:#123a34; --ink:#d8fff2; }
+  }
+  :root[data-theme="dark"] { --page-top:#08211f; --page-bottom:#04120f; --panel:#0f2e2a; --panel-alt:#123a34; --ink:#d8fff2; }
+
   * { box-sizing: border-box; }
-  html, body {
+  html { height: 100%; }
+  body {
     margin: 0; min-height: 100%;
-    background: #008080;
-    font-family: 'Segoe UI', Tahoma, 'Malgun Gothic', system-ui, sans-serif;
-    color: #000;
+    background: linear-gradient(180deg, var(--page-top), var(--page-bottom));
+    font-family: 'Jua', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+    color: var(--ink);
+    display: flex; flex-direction: column; align-items: center;
+    overflow-x: hidden;
     -webkit-user-select: none; user-select: none;
     -webkit-tap-highlight-color: transparent;
-  }
-  body {
-    display: flex; flex-direction: column; align-items: center;
     padding: 14px 10px 24px;
   }
   a.home {
     align-self: flex-start;
-    color: #fff; text-decoration: none; font-weight: 700;
-    background: #00000033; padding: 6px 12px; border-radius: 999px;
-    margin-bottom: 10px; font-size: 14px;
-  }
-  a.home:active { background: #00000055; }
-
-  .window {
-    background: var(--face);
-    border-top: 2px solid var(--hi); border-left: 2px solid var(--hi);
-    border-right: 2px solid var(--lo2); border-bottom: 2px solid var(--lo2);
-    box-shadow: inset -1px -1px 0 var(--lo), inset 1px 1px 0 #dfdfdf, 0 10px 30px #0006;
-    padding: 3px;
-    max-width: 96vw;
-  }
-  .titlebar {
-    background: linear-gradient(90deg, #000080, #1084d0);
-    color: #fff; font-weight: 700; font-size: 14px;
-    padding: 4px 6px; display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 4px;
-  }
-  .titlebar .t { display: flex; align-items: center; gap: 6px; }
-  .titlebar .x {
-    width: 18px; height: 16px; background: var(--face); color: #000;
-    border-top: 1px solid var(--hi); border-left: 1px solid var(--hi);
-    border-right: 1px solid var(--lo2); border-bottom: 1px solid var(--lo2);
-    font-size: 11px; line-height: 14px; text-align: center; font-weight: 900;
-    text-decoration: none; cursor: pointer;
-  }
-  .x:active { border-top: 1px solid var(--lo2); border-left: 1px solid var(--lo2); border-right: 1px solid var(--hi); border-bottom: 1px solid var(--hi); }
-
-  .panel {
-    border-top: 2px solid var(--lo); border-left: 2px solid var(--lo);
-    border-right: 2px solid var(--hi); border-bottom: 2px solid var(--hi);
-    padding: 8px;
+    color: var(--ink); text-decoration: none; font-weight: 700;
+    font-size: clamp(13px, 3vw, 15px);
+    margin: 2px 4px 10px;
   }
 
-  .diffs { display: flex; gap: 6px; justify-content: center; margin-bottom: 8px; flex-wrap: wrap; }
+  #wrap {
+    width: fit-content; max-width: 96vw;
+    background: var(--panel);
+    border: 4px solid var(--ink);
+    border-radius: 24px;
+    box-shadow: 8px 8px 0 var(--button-dark);
+    padding: 14px 16px 18px;
+  }
+  h1 {
+    margin: 0 0 10px; text-align: center; font-weight: 400;
+    font-size: clamp(22px, 5.5vw, 30px);
+  }
+
+  .diffs { display: flex; gap: 8px; justify-content: center; margin-bottom: 10px; flex-wrap: wrap; }
   .diffs button {
-    font-family: inherit; font-size: 13px; font-weight: 700; padding: 5px 10px;
-    background: var(--face); cursor: pointer;
-    border-top: 2px solid var(--hi); border-left: 2px solid var(--hi);
-    border-right: 2px solid var(--lo2); border-bottom: 2px solid var(--lo2);
+    font-family: inherit; font-weight: 400; font-size: clamp(14px, 3vw, 16px);
+    color: var(--ink);
+    background: var(--panel-alt); border: 3px solid var(--ink); border-radius: 999px;
+    padding: 0.4em 1em; box-shadow: 0 4px 0 var(--button-dark); cursor: pointer;
   }
-  .diffs button:active, .diffs button.active {
-    border-top: 2px solid var(--lo2); border-left: 2px solid var(--lo2);
-    border-right: 2px solid var(--hi); border-bottom: 2px solid var(--hi);
+  .diffs button.active {
+    background: var(--button); color: #fff;
+    transform: translateY(2px); box-shadow: 0 2px 0 var(--button-dark);
   }
-  .diffs button.active { background: #b6b6b6; }
+  .diffs button:active { transform: translateY(4px); box-shadow: 0 0 0 var(--button-dark); }
 
   .hud {
-    display: flex; align-items: center; justify-content: space-between;
-    border-top: 2px solid var(--lo); border-left: 2px solid var(--lo);
-    border-right: 2px solid var(--hi); border-bottom: 2px solid var(--hi);
-    padding: 4px 6px; margin-bottom: 6px;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    margin-bottom: 10px;
   }
-  .lcd {
-    background: #000; color: #ff2222; font-family: 'Consolas', 'Courier New', monospace;
-    font-weight: 700; font-size: 26px; letter-spacing: 2px; padding: 2px 6px;
-    border-top: 2px solid var(--lo2); border-left: 2px solid var(--lo2);
-    border-right: 2px solid var(--hi); border-bottom: 2px solid var(--hi);
-    min-width: 56px; text-align: center;
+  .pill {
+    background: var(--panel-alt); border: 2px solid var(--ink); border-radius: 999px;
+    padding: 6px 14px; font-size: clamp(15px, 3.4vw, 18px); white-space: nowrap;
+    display: flex; align-items: center; gap: 4px;
   }
   #face {
-    width: 36px; height: 36px; font-size: 20px; cursor: pointer;
-    background: var(--face);
-    border-top: 2px solid var(--hi); border-left: 2px solid var(--hi);
-    border-right: 2px solid var(--lo2); border-bottom: 2px solid var(--lo2);
+    width: 42px; height: 42px; font-size: 20px; cursor: pointer; font-family: inherit;
+    background: var(--panel-alt); color: var(--ink);
+    border: 2px solid var(--ink); border-radius: 50%;
+    box-shadow: 0 4px 0 var(--button-dark);
     display: flex; align-items: center; justify-content: center;
   }
-  #face:active {
-    border-top: 2px solid var(--lo2); border-left: 2px solid var(--lo2);
-    border-right: 2px solid var(--hi); border-bottom: 2px solid var(--hi);
-  }
+  #face:active { transform: translateY(4px); box-shadow: 0 0 0 var(--button-dark); }
 
   .boardWrap {
-    border-top: 2px solid var(--lo2); border-left: 2px solid var(--lo2);
-    border-right: 2px solid var(--hi); border-bottom: 2px solid var(--hi);
-    overflow: auto; max-width: 96vw; max-height: 74vh;
+    background: var(--panel-alt);
+    border: 2px solid var(--ink); border-radius: 14px;
+    padding: 8px;
+    overflow: auto; max-width: 96vw; max-height: 70vh;
   }
   #board {
     display: grid;
@@ -115,51 +106,48 @@
   .cell {
     display: flex; align-items: center; justify-content: center;
     font-weight: 800;
-    background: var(--face);
-    border-top: 2px solid var(--hi); border-left: 2px solid var(--hi);
-    border-right: 2px solid var(--lo2); border-bottom: 2px solid var(--lo2);
+    background: var(--button);
+    border: 2px solid var(--ink); border-radius: 6px;
+    box-shadow: 2px 2px 0 var(--button-dark);
     cursor: pointer;
   }
   .cell.revealed {
-    border: 1px solid var(--lo);
+    background: var(--panel);
+    border: 1px solid var(--panel-alt);
+    box-shadow: none;
     cursor: default;
   }
-  .cell.mine.revealed { background: #d0d0d0; }
-  .cell.boom { background: #ff3b30; }
-  .cell.wrongflag { background: #d0d0d0; }
-  .cell.pressed { border: 1px solid var(--lo); background: var(--face); }
-  .cell[data-n="1"] { color: #0000ff; }
-  .cell[data-n="2"] { color: #008000; }
-  .cell[data-n="3"] { color: #ff0000; }
-  .cell[data-n="4"] { color: #000080; }
-  .cell[data-n="5"] { color: #800000; }
-  .cell[data-n="6"] { color: #008080; }
-  .cell[data-n="7"] { color: #000000; }
-  .cell[data-n="8"] { color: #808080; }
+  .cell.mine.revealed { background: var(--panel); }
+  .cell.mine.revealed.boom { background: var(--bad); }
+  .cell.revealed.wrongflag { background: var(--panel); text-decoration: line-through; }
+  .cell.pressed { background: var(--panel); border: 1px solid var(--panel-alt); box-shadow: none; }
+  .cell[data-n="1"] { color: #2e86de; }
+  .cell[data-n="2"] { color: #2e9e52; }
+  .cell[data-n="3"] { color: #e6484f; }
+  .cell[data-n="4"] { color: #5b4fcf; }
+  .cell[data-n="5"] { color: #a13d4c; }
+  .cell[data-n="6"] { color: #1f9e96; }
+  .cell[data-n="7"] { color: #2b2b2b; }
+  .cell[data-n="8"] { color: #8a8a8a; }
 
-  .status { text-align: center; font-weight: 700; color: #fff; min-height: 22px; margin-top: 8px; font-size: 14px; }
-  .help { text-align: center; color: #dfffff; font-size: 12px; margin-top: 4px; opacity: .85; line-height: 1.6; max-width: 480px; }
-  .best { color: #fff; font-size: 12px; margin-top: 10px; text-align: center; line-height: 1.8; }
-  .best b { color: #ffe066; }
+  .status { text-align: center; font-weight: 700; min-height: 22px; margin-top: 10px; font-size: clamp(14px, 3.2vw, 16px); }
+  .help { text-align: center; font-size: clamp(11px, 2.6vw, 13px); margin-top: 6px; opacity: .8; line-height: 1.6; max-width: 480px; }
+  .best { font-size: clamp(11px, 2.6vw, 13px); margin-top: 12px; text-align: center; line-height: 1.9; opacity: .9; }
+  .best b { color: var(--gold); }
 </style>
 </head>
 <body>
   <a class="home" href="/">🏠 게임 놀이터로</a>
 
-  <div class="window">
-    <div class="titlebar">
-      <span class="t">🚩 지뢰찾기</span>
-      <a class="x" href="/" title="게임 목록으로">×</a>
+  <div id="wrap">
+    <h1>🚩 지뢰찾기 💣</h1>
+    <div class="diffs" id="diffs"></div>
+    <div class="hud">
+      <div class="pill">💣 <span id="mineCount">010</span></div>
+      <button id="face" title="새 게임">🙂</button>
+      <div class="pill">⏱️ <span id="timer">000</span></div>
     </div>
-    <div class="panel">
-      <div class="diffs" id="diffs"></div>
-      <div class="hud">
-        <div class="lcd" id="mineCount">010</div>
-        <button id="face" title="새 게임">🙂</button>
-        <div class="lcd" id="timer">000</div>
-      </div>
-      <div class="boardWrap"><div id="board"></div></div>
-    </div>
+    <div class="boardWrap"><div id="board"></div></div>
   </div>
 
   <div class="status" id="status"></div>
