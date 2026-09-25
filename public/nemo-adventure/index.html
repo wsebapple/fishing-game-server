@@ -85,6 +85,9 @@
   #pauseBtn { right: auto; left: 1.5%; }
   .tests { margin-top: 0.8em; font-size: clamp(12px, 1.8vw, 17px); }
   #sectionList { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 0.4em; }
+  .levelPicker { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 0.6em 0; }
+  .levelPicker button { font-size: clamp(12px, 1.8vw, 16px); padding: 0.25em 0.7em; }
+  .levelPicker button.level.active { background: #ff5fa2; color: #fff; box-shadow: 0 3px 0 #c93f7d; }
   .card button.small {
     font-size: clamp(12px, 1.8vw, 17px);
     padding: 0.2em 0.6em; border-width: 3px; box-shadow: 0 3px 0 var(--button-dark);
@@ -94,6 +97,7 @@
   .home { display: inline-block; margin-top: 0.8em; font-size: clamp(12px, 1.8vw, 17px); color: var(--ink); }
   .home.hidden { display: none; }
   #pauseBtn.hidden { display: none; }
+  #nextLevelBtn.hidden { display: none; }
 
   /* 모바일 전용 점프 버튼: 화면 오른쪽에 두면 손가락이 앞길을 안 가려요 (PC에서는 안 보여요) */
   #jumpBtn {
@@ -171,8 +175,9 @@
       <h1>호야의 네모 모험</h1>
       <p>누르면 점프! 꾹 누르고 있으면 계속 점프!<br>
          주황 문을 지나면 비행기로 변신 ✈️ 꾹 누르면 위로 날아!<br>
-         끝까지 가서 깃발을 잡아봐 🏁</p>
-      <button id="startBtn">처음부터 시작</button>
+         끝까지 가서 깃발을 잡아봐 🏁 깨면 다음 레벨로 넘어가요!</p>
+      <div class="levelPicker" id="levelPicker"></div>
+      <button id="startBtn">시작</button>
       <div class="tests">
         <span>🧪 테스트 구간 고르기</span>
         <div id="sectionList"></div>
@@ -183,9 +188,10 @@
 
   <div class="overlay hidden" id="winScreen">
     <div class="card">
-      <h1>성공! 🎉</h1>
+      <h1 id="winTitle">성공! 🎉</h1>
       <p id="winText"></p>
-      <button id="againBtn">처음 화면으로</button>
+      <button id="nextLevelBtn">다음 레벨로 ▶</button>
+      <button id="againBtn" class="small">🏠 메인 화면</button>
     </div>
   </div>
 </div>
@@ -230,58 +236,548 @@ const SETTINGS = {
 //     '~' 물웅덩이 (빠지면 풍덩!)   'S' 상어가 사는 물
 //     '!' 도착 깃발
 //  맨 아랫줄이 땅에 붙어 있는 줄이에요.
+//  레벨이 5개예요(LEVEL1_PARTS ~ LEVEL5_PARTS). 하나를 깨면 다음 레벨로 넘어가요.
 // =====================================================
-const LEVEL_PARTS = [
-  { name: null,           map: ["            "] },   // 출발 준비
+const LEVEL1_PARTS = [
+  { name: null, map: ["            "] },
 
-  { name: '가시',          map: ["        ^       ^       ^       "] },
+  { name: '가시', map: ["        ^       ^       ^       "] },
 
-  { name: '가시 + 별',     map: ["                 *                      *                 ",
-                                 "    ^                      ^                      ^       "] },
+  { name: '가시 + 별', map: [
+      "                 *                      *                 ",
+      "    ^                      ^                      ^       ",
+  ] },
 
-  { name: '블록',          map: ["                   *            ",
-                                 "    ###     ##  ####            "] },
+  { name: '블록', map: [
+      "                   *            ",
+      "    ###     ##  ####            ",
+  ] },
 
-  { name: '블록 점프',     map: ["       *              ",
-                                 "                      ",
-                                 "   ###      ###  ^^   "] },
+  { name: '블록 점프', map: [
+      "       *              ",
+      "                      ",
+      "   ###      ###  ^^   ",
+  ] },
 
-  { name: '🟡 트램폴린',   map: ["           *              ",
-                                 "                          ",
-                                 "                          ",
-                                 "             ######       ",
-                                 "                          ",
-                                 "                          ",
-                                 "        o    ^^^^^^^      "] },
+  { name: '🟡 트램폴린', map: [
+      "           *              ",
+      "                          ",
+      "                          ",
+      "             ######       ",
+      "                          ",
+      "                          ",
+      "        o    ^^^^^^^      ",
+  ] },
 
-  { name: '🩷 분홍 동그라미', map: ["          O          ",
-                                    "     O               ",
-                                    "                     ",
-                                    "   ^^^^^^^^          "] },
+  { name: '🩷 분홍 동그라미', map: [
+      "          O          ",
+      "     O               ",
+      "                     ",
+      "   ^^^^^^^^          ",
+  ] },
 
-  // 웅덩이 바로 앞에서 점프하면 상어를 넘어갈 수 있어
-  { name: '🦈 상어',       map: ["          *           ",
-                                 "                      ",
-                                 "                      ",
-                                 "    ~S~  ~S~  ~S~     "] },
+  { name: '🦈 상어', map: [
+      "          *           ",
+      "                      ",
+      "                      ",
+      "    ~S~  ~S~  ~S~     ",
+  ] },
 
-  { name: '✈️ 비행기',     map: ["   >    "] },
+  { name: '✈️ 비행기', map: ["   >    "] },
 
-  { name: null,           map: ["         *                    *   ",   // 하늘 날기 (천장 없이 널찍하게)
-                                 "                                  ",
-                                 "                                  ",
-                                 "                                  ",
-                                 "   ^^^        ^^^        ^^^      "] },
+  { name: null, map: [
+      "         *          *          *                   ",
+      "                                                   ",
+      "                                                   ",
+      "                                                   ",
+      "   ^^^        ^^^        ^^^        ^^^            ",
+  ] },
 
-  { name: null,           map: ["  <           "] },   // 다시 네모로
+  { name: null, map: ["  <           "] },
 
-  { name: '🪜 큰 계단',    map: ["              ##            ",
-                                 "            ####            ",
-                                 "   ^^^    ######     ^^^    "] },
+  { name: '🪜 큰 계단', map: [
+      "              ##            ",
+      "            ####            ",
+      "   ^^^    ######     ^^^    ",
+  ] },
 
-  { name: '🏁 마지막',     map: ["     *                    ",
-                                 "  ^     ^^      !         "] },
+  { name: '🏁 마지막', map: [
+      "     *                    ",
+      "  ^     ^^      !         ",
+  ] },
 ];
+
+const LEVEL2_PARTS = [
+  { name: null, map: ["            "] },
+
+  { name: '가시', map: ["        ^       ^       ^       "] },
+
+  { name: null, map: ["          "] },
+
+  { name: '가시', map: ["        ^       ^       ^       "] },
+
+  { name: '가시 + 별', map: [
+      "                 *                      *                 ",
+      "    ^                      ^                      ^       ",
+  ] },
+
+  { name: '블록', map: [
+      "                   *            ",
+      "    ###     ##  ####            ",
+  ] },
+
+  { name: '블록 점프', map: [
+      "       *              ",
+      "                      ",
+      "   ###      ###  ^^   ",
+  ] },
+
+  { name: '🟡 트램폴린', map: [
+      "           *              ",
+      "                          ",
+      "                          ",
+      "             ######       ",
+      "                          ",
+      "                          ",
+      "        o    ^^^^^^^      ",
+  ] },
+
+  { name: '🩷 분홍 동그라미', map: [
+      "          O          ",
+      "     O               ",
+      "                     ",
+      "   ^^^^^^^^          ",
+  ] },
+
+  { name: '🦈 상어', map: [
+      "          *           ",
+      "                      ",
+      "                      ",
+      "    ~S~  ~S~  ~S~     ",
+  ] },
+
+  { name: null, map: ["          "] },
+
+  { name: '🦈 상어', map: [
+      "          *           ",
+      "                      ",
+      "                      ",
+      "    ~S~  ~S~  ~S~     ",
+  ] },
+
+  { name: '✈️ 비행기', map: ["   >    "] },
+
+  { name: null, map: [
+      "         *          *          *                   ",
+      "                                                   ",
+      "                                                   ",
+      "                                                   ",
+      "   ^^^        ^^^        ^^^        ^^^            ",
+  ] },
+
+  { name: null, map: ["  <           "] },
+
+  { name: '🪜 큰 계단', map: [
+      "              ##            ",
+      "            ####            ",
+      "   ^^^    ######     ^^^    ",
+  ] },
+
+  { name: '🏁 마지막', map: [
+      "     *                    ",
+      "  ^     ^^      !         ",
+  ] },
+];
+
+const LEVEL3_PARTS = [
+  { name: null, map: ["            "] },
+
+  { name: '가시', map: ["        ^       ^       ^       "] },
+
+  { name: null, map: ["          "] },
+
+  { name: '가시', map: ["        ^       ^       ^       "] },
+
+  { name: '가시 + 별', map: [
+      "                 *                      *                 ",
+      "    ^                      ^                      ^       ",
+  ] },
+
+  { name: null, map: ["          "] },
+
+  { name: '가시 + 별', map: [
+      "                 *                      *                 ",
+      "    ^                      ^                      ^       ",
+  ] },
+
+  { name: '블록', map: [
+      "                   *            ",
+      "    ###     ##  ####            ",
+  ] },
+
+  { name: null, map: ["          "] },
+
+  { name: '블록', map: [
+      "                   *            ",
+      "    ###     ##  ####            ",
+  ] },
+
+  { name: '블록 점프', map: [
+      "       *              ",
+      "                      ",
+      "   ###      ###  ^^   ",
+  ] },
+
+  { name: '🟡 트램폴린', map: [
+      "           *              ",
+      "                          ",
+      "                          ",
+      "             ######       ",
+      "                          ",
+      "                          ",
+      "        o    ^^^^^^^      ",
+  ] },
+
+  { name: '🩷 분홍 동그라미', map: [
+      "          O          ",
+      "     O               ",
+      "                     ",
+      "   ^^^^^^^^          ",
+  ] },
+
+  { name: null, map: ["          "] },
+
+  { name: '🩷 분홍 동그라미', map: [
+      "          O          ",
+      "     O               ",
+      "                     ",
+      "   ^^^^^^^^          ",
+  ] },
+
+  { name: '🦈 상어', map: [
+      "          *           ",
+      "                      ",
+      "                      ",
+      "    ~S~  ~S~  ~S~     ",
+  ] },
+
+  { name: null, map: ["          "] },
+
+  { name: '🦈 상어', map: [
+      "          *           ",
+      "                      ",
+      "                      ",
+      "    ~S~  ~S~  ~S~     ",
+  ] },
+
+  { name: '✈️ 비행기', map: ["   >    "] },
+
+  { name: null, map: [
+      "         *          *          *                   ",
+      "                                                   ",
+      "                                                   ",
+      "                                                   ",
+      "   ^^^        ^^^        ^^^        ^^^            ",
+  ] },
+
+  { name: null, map: ["  <           "] },
+
+  { name: '🪜 큰 계단', map: [
+      "              ##            ",
+      "            ####            ",
+      "   ^^^    ######     ^^^    ",
+  ] },
+
+  { name: '🏁 마지막', map: [
+      "     *                    ",
+      "  ^     ^^      !         ",
+  ] },
+];
+
+const LEVEL4_PARTS = [
+  { name: null, map: ["            "] },
+
+  { name: '가시', map: ["        ^       ^       ^       "] },
+
+  { name: null, map: ["          "] },
+
+  { name: '가시', map: ["        ^       ^       ^       "] },
+
+  { name: null, map: ["          "] },
+
+  { name: '가시', map: ["        ^       ^       ^       "] },
+
+  { name: '가시 + 별', map: [
+      "                 *                      *                 ",
+      "    ^                      ^                      ^       ",
+  ] },
+
+  { name: null, map: ["          "] },
+
+  { name: '가시 + 별', map: [
+      "                 *                      *                 ",
+      "    ^                      ^                      ^       ",
+  ] },
+
+  { name: '블록', map: [
+      "                   *            ",
+      "    ###     ##  ####            ",
+  ] },
+
+  { name: null, map: ["          "] },
+
+  { name: '블록', map: [
+      "                   *            ",
+      "    ###     ##  ####            ",
+  ] },
+
+  { name: '블록 점프', map: [
+      "       *              ",
+      "                      ",
+      "   ###      ###  ^^   ",
+  ] },
+
+  { name: null, map: ["          "] },
+
+  { name: '블록 점프', map: [
+      "       *              ",
+      "                      ",
+      "   ###      ###  ^^   ",
+  ] },
+
+  { name: '🟡 트램폴린', map: [
+      "           *              ",
+      "                          ",
+      "                          ",
+      "             ######       ",
+      "                          ",
+      "                          ",
+      "        o    ^^^^^^^      ",
+  ] },
+
+  { name: null, map: ["          "] },
+
+  { name: '🟡 트램폴린', map: [
+      "           *              ",
+      "                          ",
+      "                          ",
+      "             ######       ",
+      "                          ",
+      "                          ",
+      "        o    ^^^^^^^      ",
+  ] },
+
+  { name: '🩷 분홍 동그라미', map: [
+      "          O          ",
+      "     O               ",
+      "                     ",
+      "   ^^^^^^^^          ",
+  ] },
+
+  { name: null, map: ["          "] },
+
+  { name: '🩷 분홍 동그라미', map: [
+      "          O          ",
+      "     O               ",
+      "                     ",
+      "   ^^^^^^^^          ",
+  ] },
+
+  { name: '🦈 상어', map: [
+      "          *           ",
+      "                      ",
+      "                      ",
+      "    ~S~  ~S~  ~S~     ",
+  ] },
+
+  { name: null, map: ["          "] },
+
+  { name: '🦈 상어', map: [
+      "          *           ",
+      "                      ",
+      "                      ",
+      "    ~S~  ~S~  ~S~     ",
+  ] },
+
+  { name: '✈️ 비행기', map: ["   >    "] },
+
+  { name: null, map: [
+      "         *          *          *                   ",
+      "                                                   ",
+      "                                                   ",
+      "                                                   ",
+      "   ^^^        ^^^        ^^^        ^^^            ",
+  ] },
+
+  { name: null, map: ["  <           "] },
+
+  { name: '🪜 큰 계단', map: [
+      "              ##            ",
+      "            ####            ",
+      "   ^^^    ######     ^^^    ",
+  ] },
+
+  { name: null, map: ["          "] },
+
+  { name: '🪜 큰 계단', map: [
+      "              ##            ",
+      "            ####            ",
+      "   ^^^    ######     ^^^    ",
+  ] },
+
+  { name: '🏁 마지막', map: [
+      "     *                    ",
+      "  ^     ^^      !         ",
+  ] },
+];
+
+const LEVEL5_PARTS = [
+  { name: null, map: ["            "] },
+
+  { name: '가시', map: ["        ^       ^       ^       "] },
+
+  { name: null, map: ["          "] },
+
+  { name: '가시', map: ["        ^       ^       ^       "] },
+
+  { name: null, map: ["          "] },
+
+  { name: '가시', map: ["        ^       ^       ^       "] },
+
+  { name: '가시 + 별', map: [
+      "                 *                      *                 ",
+      "    ^                      ^                      ^       ",
+  ] },
+
+  { name: null, map: ["          "] },
+
+  { name: '가시 + 별', map: [
+      "                 *                      *                 ",
+      "    ^                      ^                      ^       ",
+  ] },
+
+  { name: '블록', map: [
+      "                   *            ",
+      "    ###     ##  ####            ",
+  ] },
+
+  { name: null, map: ["          "] },
+
+  { name: '블록', map: [
+      "                   *            ",
+      "    ###     ##  ####            ",
+  ] },
+
+  { name: '블록 점프', map: [
+      "       *              ",
+      "                      ",
+      "   ###      ###  ^^   ",
+  ] },
+
+  { name: null, map: ["          "] },
+
+  { name: '블록 점프', map: [
+      "       *              ",
+      "                      ",
+      "   ###      ###  ^^   ",
+  ] },
+
+  { name: '🟡 트램폴린', map: [
+      "           *              ",
+      "                          ",
+      "                          ",
+      "             ######       ",
+      "                          ",
+      "                          ",
+      "        o    ^^^^^^^      ",
+  ] },
+
+  { name: null, map: ["          "] },
+
+  { name: '🟡 트램폴린', map: [
+      "           *              ",
+      "                          ",
+      "                          ",
+      "             ######       ",
+      "                          ",
+      "                          ",
+      "        o    ^^^^^^^      ",
+  ] },
+
+  { name: '🩷 분홍 동그라미', map: [
+      "          O          ",
+      "     O               ",
+      "                     ",
+      "   ^^^^^^^^          ",
+  ] },
+
+  { name: null, map: ["          "] },
+
+  { name: '🩷 분홍 동그라미', map: [
+      "          O          ",
+      "     O               ",
+      "                     ",
+      "   ^^^^^^^^          ",
+  ] },
+
+  { name: '🦈 상어', map: [
+      "          *           ",
+      "                      ",
+      "                      ",
+      "    ~S~  ~S~  ~S~     ",
+  ] },
+
+  { name: null, map: ["          "] },
+
+  { name: '🦈 상어', map: [
+      "          *           ",
+      "                      ",
+      "                      ",
+      "    ~S~  ~S~  ~S~     ",
+  ] },
+
+  { name: null, map: ["          "] },
+
+  { name: '🦈 상어', map: [
+      "          *           ",
+      "                      ",
+      "                      ",
+      "    ~S~  ~S~  ~S~     ",
+  ] },
+
+  { name: '✈️ 비행기', map: ["   >    "] },
+
+  { name: null, map: [
+      "         *          *          *                   ",
+      "                                                   ",
+      "                                                   ",
+      "                                                   ",
+      "   ^^^        ^^^        ^^^        ^^^            ",
+  ] },
+
+  { name: null, map: ["  <           "] },
+
+  { name: '🪜 큰 계단', map: [
+      "              ##            ",
+      "            ####            ",
+      "   ^^^    ######     ^^^    ",
+  ] },
+
+  { name: null, map: ["          "] },
+
+  { name: '🪜 큰 계단', map: [
+      "              ##            ",
+      "            ####            ",
+      "   ^^^    ######     ^^^    ",
+  ] },
+
+  { name: '🏁 마지막', map: [
+      "     *                    ",
+      "  ^     ^^      !         ",
+  ] },
+];
+const LEVELS_PARTS = [LEVEL1_PARTS, LEVEL2_PARTS, LEVEL3_PARTS, LEVEL4_PARTS, LEVEL5_PARTS];
+const LEVEL_TITLES = ['첫 모험', '두 배로 힘내!', '겹겹이 도전', '험난한 여정', '마지막 대모험'];
 
 // ---------- 화면 준비 ----------
 const W = 800, H = 400, T = 40, ROWS = 9, GROUND = ROWS * T;
@@ -297,35 +793,47 @@ function fitCanvas() {
 window.addEventListener('resize', fitCanvas);
 
 // ---------- 맵 글자를 게임 물건으로 바꾸기 ----------
-const SECTIONS = [];   // 테스트 구간 목록 (이름이 있는 부분)
-function buildRows(parts) {
+// 레벨을 바꿀 때마다 다시 불러요: 구간 목록(sections)과 물건 목록(LEVEL)을 새로 만들어요.
+function buildLevelFromParts(parts) {
+  const sections = [];
   const rows = Array(ROWS).fill('');
   for (const part of parts) {
-    if (part.name) SECTIONS.push({ name: part.name, col: rows[0].length });
+    if (part.name) sections.push({ name: part.name, col: rows[0].length });
     const p = part.map.slice(-ROWS);
     const width = Math.max(...p.map(r => r.length));
     const full = Array(ROWS - p.length).fill('').concat(p);
     for (let r = 0; r < ROWS; r++) rows[r] += full[r].padEnd(width, ' ');
   }
-  return rows;
-}
-const LEVEL = { blocks: [], spikes: [], stars: [], portals: [], pads: [], orbs: [], water: [], sharks: [], finishX: 0 };
-buildRows(LEVEL_PARTS).forEach((row, r) => {
-  [...row].forEach((ch, c) => {
-    const x = c * T, y = r * T;
-    if (ch === '#') LEVEL.blocks.push({ x, y });
-    if (ch === '^') LEVEL.spikes.push({ x, y, down: false });
-    if (ch === 'v') LEVEL.spikes.push({ x, y, down: true });
-    if (ch === '*') LEVEL.stars.push({ x, y, got: false });
-    if (ch === '>') LEVEL.portals.push({ x, mode: 'fly', used: false });
-    if (ch === '<') LEVEL.portals.push({ x, mode: 'cube', used: false });
-    if (ch === 'o') LEVEL.pads.push({ x, y, used: false });
-    if (ch === 'O') LEVEL.orbs.push({ x, y, used: false });
-    if (ch === '~' || ch === 'S') LEVEL.water.push({ x });
-    if (ch === 'S') LEVEL.sharks.push({ x, offset: (c % 4) * 0.25 });
-    if (ch === '!') LEVEL.finishX = x;
+  const lvl = { blocks: [], spikes: [], stars: [], portals: [], pads: [], orbs: [], water: [], sharks: [], finishX: 0 };
+  rows.forEach((row, r) => {
+    [...row].forEach((ch, c) => {
+      const x = c * T, y = r * T;
+      if (ch === '#') lvl.blocks.push({ x, y });
+      if (ch === '^') lvl.spikes.push({ x, y, down: false });
+      if (ch === 'v') lvl.spikes.push({ x, y, down: true });
+      if (ch === '*') lvl.stars.push({ x, y, got: false });
+      if (ch === '>') lvl.portals.push({ x, mode: 'fly', used: false });
+      if (ch === '<') lvl.portals.push({ x, mode: 'cube', used: false });
+      if (ch === 'o') lvl.pads.push({ x, y, used: false });
+      if (ch === 'O') lvl.orbs.push({ x, y, used: false });
+      if (ch === '~' || ch === 'S') lvl.water.push({ x });
+      if (ch === 'S') lvl.sharks.push({ x, offset: (c % 4) * 0.25 });
+      if (ch === '!') lvl.finishX = x;
+    });
   });
-});
+  return { level: lvl, sections };
+}
+let LEVEL, SECTIONS, currentLevelIndex = 0;
+// 레벨을 불러와요: 물건 목록을 새로 만들고, 시작 화면의 구간 고르기·레벨 버튼도 새로 그려요.
+function loadLevel(idx) {
+  currentLevelIndex = idx;
+  const built = buildLevelFromParts(LEVELS_PARTS[idx]);
+  LEVEL = built.level;
+  SECTIONS = built.sections;
+  renderSectionButtons();
+  renderLevelPicker();
+  updateStartBtnLabel();
+}
 
 // ---------- 음악 (컴퓨터가 직접 연주해요) ----------
 const Music = {
@@ -464,9 +972,18 @@ function win() {
   jumpBtn.classList.add('hidden');
   bestPercent = 100;
   const got = LEVEL.stars.filter(s => s.got).length;
+  const isLastLevel = currentLevelIndex >= LEVELS_PARTS.length - 1;
+  document.getElementById('winTitle').textContent = isLastLevel ? '게임 완주! 🏆' : `레벨 ${currentLevelIndex + 1} 클리어! 🎉`;
   document.getElementById('winText').textContent =
     `도전 ${attempts}번 만에 깼어! 별 ${got}개 / ${LEVEL.stars.length}개 모았어 ⭐`;
+  document.getElementById('nextLevelBtn').classList.toggle('hidden', isLastLevel);
   document.getElementById('winScreen').classList.remove('hidden');
+}
+function goNextLevel() {
+  if (currentLevelIndex >= LEVELS_PARTS.length - 1) return;
+  winScreen.classList.add('hidden');
+  loadLevel(currentLevelIndex + 1);
+  beginFromMenu(0);
 }
 
 function showDeadChoice() {
@@ -842,7 +1359,7 @@ function drawHud() {
   ctx.font = '22px Jua, sans-serif';
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'left';
-  ctx.fillText('도전 ' + Math.max(1, attempts), 16, 32);
+  ctx.fillText('레벨 ' + (currentLevelIndex + 1) + ' · 도전 ' + Math.max(1, attempts), 16, 32);
   const got = LEVEL.stars.filter(s => s.got).length;
   ctx.textAlign = 'right';
   ctx.fillText('⭐ ' + got + '/' + LEVEL.stars.length, W - 16, 32);
@@ -872,19 +1389,40 @@ function beginFromMenu(col = 0) {
   startAttempt();
 }
 document.getElementById('startBtn').addEventListener('click', () => beginFromMenu(0));
+document.getElementById('nextLevelBtn').addEventListener('click', goNextLevel);
 
 // 게임 놀이터 사이트에서 열었을 때만 "놀이터로 돌아가기" 링크 보여주기
 if (location.pathname.startsWith('/nemo-adventure')) document.getElementById('homeLink').classList.remove('hidden');
 
-// 🧪 테스트 구간 버튼 만들기
+// 🧪 테스트 구간 버튼 만들기 (레벨을 바꾸면 다시 그려요)
 const sectionList = document.getElementById('sectionList');
-SECTIONS.forEach(sec => {
-  const b = document.createElement('button');
-  b.className = 'small';
-  b.textContent = sec.name;
-  b.addEventListener('click', () => { b.blur(); beginFromMenu(sec.col); });
-  sectionList.appendChild(b);
-});
+function renderSectionButtons() {
+  sectionList.innerHTML = '';
+  SECTIONS.forEach(sec => {
+    const b = document.createElement('button');
+    b.className = 'small';
+    b.textContent = sec.name;
+    b.addEventListener('click', () => { b.blur(); beginFromMenu(sec.col); });
+    sectionList.appendChild(b);
+  });
+}
+
+// 🔢 레벨 고르기 버튼
+const levelPicker = document.getElementById('levelPicker');
+function renderLevelPicker() {
+  levelPicker.innerHTML = '';
+  LEVELS_PARTS.forEach((_, i) => {
+    const b = document.createElement('button');
+    b.className = 'small level' + (i === currentLevelIndex ? ' active' : '');
+    b.textContent = '레벨 ' + (i + 1);
+    b.addEventListener('click', () => { b.blur(); loadLevel(i); });
+    levelPicker.appendChild(b);
+  });
+}
+function updateStartBtnLabel() {
+  document.getElementById('startBtn').textContent =
+    `레벨 ${currentLevelIndex + 1} · ${LEVEL_TITLES[currentLevelIndex]} 시작`;
+}
 
 function showMenu() {
   state = 'menu';
@@ -966,7 +1504,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
     e.preventDefault();
     if (state === 'menu') { if (!e.repeat) beginFromMenu(0); return; }
-    if (state === 'win') { if (!e.repeat) showMenu(); return; }
+    if (state === 'win') { if (!e.repeat) (currentLevelIndex < LEVELS_PARTS.length - 1 ? goNextLevel() : showMenu()); return; }
     if (state === 'deadChoice') { if (!e.repeat) retryAttempt(); return; }
     if (!e.repeat) press(); else holding = true;
   }
@@ -989,6 +1527,7 @@ function loop(now) {
   draw(now);
   requestAnimationFrame(loop);
 }
+loadLevel(0);
 fitCanvas();
 requestAnimationFrame(loop);
 </script>
