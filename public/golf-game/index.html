@@ -386,7 +386,7 @@ const LIE_LABEL = { tee: '티', fairway: '페어웨이', rough: '러프', sand: 
 let state = 'menu'; // menu | play | paused | over(전환용 아님, holeScreen/roundScreen DOM으로 표시)
 let holeIndex = 0, totalStrokes = 0, holeResults = []; // {strokes, par}
 let ballY = 0, ballX = 0, wind = { strength: 0, dir: 1 };
-let lie = 'tee', manualAimDeg = 0, aimHeld = null;
+let lie = 'tee', aimOffsetDeg = 0, aimHeld = null;
 let phase = 'idle'; // idle | power | accuracy | flying
 let powerLoopT = 0, accLoopT = 0, lockedPower = 0, lockedAccuracy = 0;
 let flight = null;
@@ -420,6 +420,15 @@ function distanceToHole() {
   return Math.hypot(h.length - ballY, h.holeX - ballX);
 }
 
+// 공에서 홀을 정면으로 바라보는 방향(도). 매 샷은 기본적으로 이 방향을 겨냥한 채 시작하고,
+// 조준 버튼은 여기서부터 좌우로 살짝 휘게 만드는 정도(aimOffsetDeg)만 조절해요.
+// 이렇게 해야 홀 근처에서 공이 옆으로 치우쳐 있어도 항상 홀 쪽을 겨냥할 수 있어요.
+function headingToHoleDeg() {
+  const h = COURSE[holeIndex];
+  return Math.atan2(h.holeX - ballX, h.length - ballY) * 180 / Math.PI;
+}
+function totalAimDeg() { return headingToHoleDeg() + aimOffsetDeg; }
+
 function clubTierFor(lieName, dist) {
   if (lieName === 'green') return 'putt';
   if (dist > 60) return 'drive';
@@ -442,7 +451,8 @@ function updateHoleUi() {
   distanceBadge.textContent = '남은 거리 ' + dist + 'm · ' + LIE_LABEL[lie];
   if (wind.strength <= 0) windBadge.textContent = '무풍';
   else windBadge.textContent = (wind.dir < 0 ? '◀ ' : '') + '바람 ' + wind.strength + (wind.dir > 0 ? ' ▶' : '');
-  aimDegText.textContent = Math.round(manualAimDeg) + '°';
+  const offset = Math.round(aimOffsetDeg);
+  aimDegText.textContent = offset === 0 ? '홀 방향' : (offset > 0 ? '+' + offset + '°' : offset + '°');
 }
 let strokesThisHole = 0;
 
@@ -452,7 +462,7 @@ function startHole(idx) {
   ballY = 0; ballX = centerlineX(h, 0);
   strokesThisHole = 0;
   wind = { strength: randInt(h.windMin, h.windMax), dir: Math.random() < 0.5 ? -1 : 1 };
-  manualAimDeg = 0; aimHeld = null;
+  aimOffsetDeg = 0; aimHeld = null;
   lie = 'tee';
   phase = 'idle';
   gaugeWrap.classList.add('hidden');
@@ -557,7 +567,7 @@ function launchShot() {
   const windAngleDeg = tier === 'putt' ? 0 : wind.dir * wind.strength * (maxPower / 90);
 
   const travel = (lockedPower / 100) * maxPower * powerMult;
-  const totalAngleDeg = manualAimDeg + missAngleDeg + windAngleDeg;
+  const totalAngleDeg = totalAimDeg() + missAngleDeg + windAngleDeg;
   const rad = degToRad(totalAngleDeg);
   const forward = travel * Math.cos(rad);
   const lateralDelta = travel * Math.sin(rad);
@@ -601,6 +611,7 @@ function resolveLanding() {
     if (newLie === 'sand') Snd.play('sand'); else Snd.play('great');
     ballY = newY; ballX = newX; lie = newLie;
   }
+  aimOffsetDeg = 0;
   phase = 'idle'; flight = null;
   updateHoleUi();
 }
@@ -708,7 +719,7 @@ function update(dt) {
   if (state !== 'play') return;
 
   if (phase === 'idle' && aimHeld) {
-    manualAimDeg = clamp(manualAimDeg + (aimHeld === 'left' ? -1 : 1) * AIM_SPEED * dt, -35, 35);
+    aimOffsetDeg = clamp(aimOffsetDeg + (aimHeld === 'left' ? -1 : 1) * AIM_SPEED * dt, -30, 30);
     updateHoleUi();
   }
   if (phase === 'power') { powerLoopT += dt; powerMarker.style.left = powerValueNow() + '%'; }
@@ -725,6 +736,7 @@ function update(dt) {
 // 항상 같은 축척으로 그려서 홀 모양·해저드·깃발 위치가 매 샷마다 갑자기 안 바뀌어요.)
 const CENTER_X = W / 2, MAP_TOP = 132, MAP_BOTTOM = H * 0.78, MAP_HALF_WIDTH_M = 95;
 const GREEN_VIEW_RADIUS = 22;
+const MIN_WIDTH_SCALE = 0.5; // 홀(맨 위쪽)에서는 폭을 이만큼만 그려서 원근감을 줘요
 
 function currentProjector() {
   const h = COURSE[holeIndex];
@@ -733,15 +745,19 @@ function currentProjector() {
     const scale = clamp(Math.min((MAP_BOTTOM - MAP_TOP) / (GREEN_VIEW_RADIUS * 2), (W * 0.8) / (GREEN_VIEW_RADIUS * 2)), 4, 40);
     const midY = MAP_TOP + (MAP_BOTTOM - MAP_TOP) / 2;
     return {
-      mode: 'green', scale,
+      mode: 'green', scale, widthScaleAt: () => 1,
       yStart: Math.max(0, h.length - GREEN_VIEW_RADIUS * 1.3), yEnd: h.length,
       map: (y, x) => ({ x: CENTER_X + (x - h.holeX) * scale, y: midY - (y - h.length) * scale }),
     };
   }
+  // 코스 전체 보기: 폭 계산에 쓰는 안전한 축척은 그대로 두고(넘치지 않게),
+  // 홀에 가까워질수록(t→1) 좌우 폭만 좁혀서 "저 멀리 보이는 그린" 같은 원근감을 줘요.
+  // 세로(거리) 방향은 눈금이 일정하게 보이도록 그대로 선형으로 둬요.
   const scale = clamp(Math.min((MAP_BOTTOM - MAP_TOP) / h.length, (W * 0.44) / MAP_HALF_WIDTH_M), 0.5, 6);
+  const widthScaleAt = y => lerp(1, MIN_WIDTH_SCALE, clamp(y / h.length, 0, 1));
   return {
-    mode: 'course', scale, yStart: 0, yEnd: h.length,
-    map: (y, x) => ({ x: CENTER_X + x * scale, y: MAP_BOTTOM - y * scale }),
+    mode: 'course', scale, widthScaleAt, yStart: 0, yEnd: h.length,
+    map: (y, x) => ({ x: CENTER_X + x * scale * widthScaleAt(y), y: MAP_BOTTOM - y * scale }),
   };
 }
 
@@ -757,8 +773,20 @@ function drawCourse() {
   const proj = currentProjector();
   const map = proj.map, scale = proj.scale;
   const steps = 26;
-  // 숲(코스 밖) 배경
-  ctx.fillStyle = '#0f3d1c'; ctx.fillRect(0, 0, W, H);
+  // 하늘 + 지평선 (코스 지도 위쪽에 살짝 원근감을 더해줘요)
+  if (proj.mode === 'course') {
+    const sky = ctx.createLinearGradient(0, 0, 0, MAP_TOP);
+    sky.addColorStop(0, '#bdeeff'); sky.addColorStop(1, '#eaffee');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, W, MAP_TOP);
+    ctx.fillStyle = '#0f3d1c'; ctx.fillRect(0, MAP_TOP - 14, W, H - MAP_TOP + 14);
+    ctx.fillStyle = '#164a24';
+    for (let i = 0; i < 14; i++) {
+      const tx = (i + 0.5) * (W / 14);
+      ctx.beginPath(); ctx.arc(tx, MAP_TOP - 8, 12 + (i % 3) * 3, 0, Math.PI * 2); ctx.fill();
+    }
+  } else {
+    ctx.fillStyle = '#0f3d1c'; ctx.fillRect(0, 0, W, H);
+  }
 
   function edgePoly(offsetFn) {
     const left = [], right = [];
@@ -779,10 +807,11 @@ function drawCourse() {
   ctx.fillStyle = '#4fae5c';
   polyFromPts(edgePoly(y => fairwayHalfWidthAt(h, y)));
   ctx.fill();
-  // 그린 (완전한 원으로 그릴 수 있어요 — 축척이 가로세로 동일하니까요)
+  // 그린 (가로 폭만 원근감으로 좁아지니 타원으로 그려요)
   const holeMapped = map(h.length, h.holeX);
+  const holeWs = proj.widthScaleAt(h.length);
   ctx.fillStyle = '#8fe39c';
-  ctx.beginPath(); ctx.arc(holeMapped.x, holeMapped.y, GREEN_RADIUS * scale, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(holeMapped.x, holeMapped.y, GREEN_RADIUS * scale * holeWs, GREEN_RADIUS * scale, 0, 0, Math.PI * 2); ctx.fill();
   ctx.strokeStyle = '#5fb86f'; ctx.lineWidth = 1.5; ctx.stroke();
   // 해저드
   for (const hz of h.hazards) {
@@ -814,7 +843,7 @@ function drawCourse() {
     ctx.setLineDash([6, 8]);
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5;
     ctx.beginPath();
-    const rad = degToRad(manualAimDeg);
+    const rad = degToRad(totalAimDeg());
     const aimLen = Math.min(distanceToHole() * 1.1, proj.mode === 'green' ? GREEN_VIEW_RADIUS * 1.4 : h.length - ballY + 20);
     for (let i = 0; i <= steps; i++) {
       const ahead = aimLen * i / steps;
@@ -825,18 +854,18 @@ function drawCourse() {
     ctx.stroke();
     ctx.restore();
   }
-  // 깃발 (항상 같은 크기라 알아보기 쉬워요)
-  const poleH = 22;
+  // 깃발 (원근감에 맞춰 멀리 있는 홀에서는 살짝 작게 그려요)
+  const poleH = clamp(22 * holeWs, 11, 22), flagW = clamp(13 * holeWs, 6.5, 13), cupR = clamp(4 * holeWs, 2, 4);
   ctx.strokeStyle = '#e8e8e8'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(holeMapped.x, holeMapped.y); ctx.lineTo(holeMapped.x, holeMapped.y - poleH); ctx.stroke();
   ctx.fillStyle = '#ff4d4d';
   ctx.beginPath();
   ctx.moveTo(holeMapped.x, holeMapped.y - poleH);
-  ctx.lineTo(holeMapped.x + 13, holeMapped.y - poleH + 4);
-  ctx.lineTo(holeMapped.x, holeMapped.y - poleH + 8);
+  ctx.lineTo(holeMapped.x + flagW, holeMapped.y - poleH + poleH * 0.18);
+  ctx.lineTo(holeMapped.x, holeMapped.y - poleH + poleH * 0.36);
   ctx.closePath(); ctx.fill();
   ctx.fillStyle = '#1a1a1a';
-  ctx.beginPath(); ctx.ellipse(holeMapped.x, holeMapped.y, 4, 4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(holeMapped.x, holeMapped.y, cupR, cupR, 0, 0, Math.PI * 2); ctx.fill();
 }
 
 function drawBall() {
@@ -848,19 +877,23 @@ function drawBall() {
     const ahead = flight.forward * eased;
     const worldY = flight.startY + ahead, worldX = flight.startX + flight.lateralDelta * eased;
     pt = proj.map(worldY, worldX);
-    const hop = Math.sin(t * Math.PI) * 10;
+    const ws = clamp(proj.widthScaleAt(worldY), 0.5, 1);
+    const r = clamp(5 * ws, 2.5, 5);
+    const hop = Math.sin(t * Math.PI) * 10 * ws;
     // 그림자(땅에 붙어있는 위치)와 공(살짝 위로 뜬 위치)을 따로 그려서 날아가는 느낌을 줘요
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    ctx.beginPath(); ctx.ellipse(pt.x, pt.y, 5, 2.4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(pt.x, pt.y, r, r * 0.48, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#fff'; ctx.strokeStyle = '#0003'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(pt.x, pt.y - hop, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(pt.x, pt.y - hop, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     return;
   }
   pt = proj.map(ballY, ballX);
+  const ws = clamp(proj.widthScaleAt(ballY), 0.5, 1);
+  const r = clamp(6 * ws, 3, 6);
   ctx.fillStyle = '#fff'; ctx.strokeStyle = '#0003'; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.arc(pt.x, pt.y, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   ctx.strokeStyle = '#ffd23faa'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(pt.x, pt.y, 9, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(pt.x, pt.y, r * 1.5, 0, Math.PI * 2); ctx.stroke();
 }
 
 function draw() {
