@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>원소 맞히기</title>
+<meta name="description" content="원소 기호·이름·원자번호·양성자 수를 보고 알맞은 답을 고르는 주기율표 퀴즈 게임">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚛️</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --page-top: #eaf3ff;
+    --page-bottom: #c9dcff;
+    --ink: #17264a;
+    --panel: #ffffff;
+    --panel-alt: #eef2ff;
+    --button: #4a63d6;
+    --button-dark: #2f3f9e;
+    --gold: #2f8fd8;
+    --good: #2e9e52;
+    --good-dark: #1f7a3c;
+    --bad: #d64541;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --page-top:#0d1330; --page-bottom:#070a1c; --panel:#161f3d; --panel-alt:#1c2850; --ink:#e6ecff; }
+  }
+  :root[data-theme="dark"] { --page-top:#0d1330; --page-bottom:#070a1c; --panel:#161f3d; --panel-alt:#1c2850; --ink:#e6ecff; }
+
+  html { height: 100%; }
+  body {
+    margin: 0; min-height: 100%;
+    background: linear-gradient(180deg, var(--page-top), var(--page-bottom));
+    font-family: 'Jua', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+    color: var(--ink);
+    display: flex; align-items: center; justify-content: center;
+    overflow-x: hidden;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #wrap {
+    position: relative;
+    width: min(94vw, 560px);
+    margin: 16px 0;
+    border-radius: 24px;
+    border: 4px solid var(--ink);
+    background: var(--panel);
+    box-shadow: 8px 8px 0 var(--button-dark);
+    padding: 16px 16px 20px;
+    overflow: hidden;
+  }
+  #wrap.shake { animation: shake .4s; }
+  .hidden { display: none !important; }
+
+  #hud { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin: 4px 0 10px; }
+  .pill { background: var(--panel-alt); border: 2px solid var(--ink); border-radius: 999px; padding: 6px 14px; font-size: clamp(13px, 3vw, 17px); white-space: nowrap; }
+  #timer.lowtime { color: #fff; background: var(--bad); animation: pulseRed 1s infinite; }
+  #combo { opacity: .55; transition: opacity .15s ease; }
+  #combo.hot { opacity: 1; color: var(--button-dark); }
+
+  #muteBtn, #quitBtn { position: absolute; top: 10px; font-size: clamp(15px, 2.4vw, 22px); background: var(--panel-alt); border: 2px solid var(--ink); border-radius: 8px; padding: 0.15em 0.45em; cursor: pointer; z-index: 3; }
+  #muteBtn { right: 10px; }
+  #quitBtn { left: 10px; }
+
+  #questionCard { position: relative; text-align: center; background: var(--panel-alt); border: 3px dashed var(--gold); border-radius: 18px; padding: 18px 10px 22px; margin-top: 6px; }
+  .badge { display: inline-block; font-size: clamp(12px, 2.6vw, 15px); font-weight: bold; border: 2px solid var(--ink); border-radius: 999px; padding: 2px 12px; color: #fff; margin: 2px; }
+  .badge.d1 { background: #4a9d6e; }
+  .badge.d2 { background: #3f8fd6; }
+  .badge.d3 { background: #d68a2e; }
+  .badge.d4 { background: #a03bd6; }
+  .badge.qtype { background: #6b5b95; }
+  #promptText { display: block; font-size: clamp(14px, 3vw, 18px); margin-top: 10px; opacity: .9; }
+  #bigText { display: block; font-size: clamp(38px, 10.5vw, 60px); line-height: 1.15; margin-top: 6px; font-weight: bold; word-break: break-word; }
+  #bigText.bounce { animation: charBounce .45s ease; }
+  #popups { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+  .popup { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); font-size: clamp(16px, 4vw, 24px); font-weight: bold; white-space: nowrap; animation: floatUp 1s ease forwards; }
+  .popup.good { color: var(--good-dark); }
+  .popup.bad { color: var(--button-dark); }
+  .popup.bonus { color: var(--gold); font-size: clamp(18px, 4.4vw, 27px); }
+  .confetti { position: absolute; font-size: 20px; animation: confettiRise .8s ease forwards; }
+
+  #choices { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+  #choices button {
+    font-family: inherit; font-size: clamp(15px, 3.4vw, 20px); color: var(--ink);
+    background: var(--panel); border: 3px solid var(--ink); border-radius: 12px;
+    padding: 0.6em 0.4em; box-shadow: 0 5px 0 var(--button-dark); cursor: pointer;
+  }
+  #choices button:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 1px 0 var(--button-dark); }
+  #choices button:disabled { cursor: default; }
+  #choices button.good { background: var(--good); color: #fff; border-color: var(--good-dark); box-shadow: 0 5px 0 var(--good-dark); }
+  #choices button.bad { background: var(--bad); color: #fff; border-color: var(--button-dark); animation: shake .4s; }
+  #choices button.reveal { background: var(--good); color: #fff; border-color: var(--good-dark); }
+
+  #playArea { position: relative; }
+  #playArea::after { content: ''; position: absolute; inset: -16px; pointer-events: none; border-radius: 18px; }
+  #playArea.flash-good::after { animation: flashGood .5s ease; }
+  #playArea.flash-bad::after { animation: flashBad .5s ease; }
+
+  .screen { display: flex; align-items: center; justify-content: center; padding: 10px 0; }
+  .modal { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; background: rgba(8,20,60,0.55); border-radius: 20px; }
+  .card { background: var(--panel); border: 4px solid var(--ink); border-radius: 18px; padding: 22px 20px; text-align: center; max-width: 94%; max-height: 92%; overflow: auto; box-shadow: 8px 8px 0 var(--button-dark); }
+  .card h1 { margin: 0 0 0.35em; font-size: clamp(24px, 5.5vw, 36px); font-weight: 400; }
+  .card p { margin: 0 0 0.7em; font-size: clamp(13px, 2.3vw, 16px); line-height: 1.6; text-align: left; }
+  .card .stats { font-size: clamp(13px, 2.1vw, 16px); opacity: .9; margin-bottom: 0.7em; }
+  .card button { font-family: inherit; font-size: clamp(18px, 3.6vw, 26px); color: #fff; background: var(--button); border: 4px solid var(--ink); border-radius: 10px; padding: 0.25em 1.1em; box-shadow: 0 6px 0 var(--button-dark); cursor: pointer; margin: 4px; }
+  .card button:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--button-dark); }
+  .card button.small { font-size: clamp(13px, 2vw, 17px); padding: 0.25em 0.8em; border-width: 3px; box-shadow: 0 3px 0 var(--button-dark); background: var(--panel); color: var(--ink); }
+  .home { display: inline-block; margin-top: 0.7em; font-size: clamp(12px, 1.8vw, 15px); color: var(--ink); }
+
+  #levelGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 10px 0 4px; }
+  #levelGrid button {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    font-family: inherit; color: #fff; border: 4px solid var(--ink); border-radius: 14px;
+    padding: 10px 6px; cursor: pointer; box-shadow: 0 6px 0 var(--button-dark);
+  }
+  #levelGrid button:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--button-dark); }
+  #levelGrid .lvIcon { font-size: 30px; }
+  #levelGrid .lvName { font-size: clamp(15px, 3vw, 19px); }
+  #levelGrid .lvRange { font-size: clamp(11px, 2vw, 13px); opacity: .9; }
+  #levelGrid .lvBest { font-size: clamp(11px, 2vw, 13px); opacity: .9; }
+  #levelGrid button[data-lv="1"] { background: #4a9d6e; box-shadow: 0 6px 0 #2f6b48; }
+  #levelGrid button[data-lv="2"] { background: #3f8fd6; box-shadow: 0 6px 0 #2a5f9c; }
+  #levelGrid button[data-lv="3"] { background: #d68a2e; box-shadow: 0 6px 0 #a3651c; }
+  #levelGrid button[data-lv="4"] { background: #a03bd6; box-shadow: 0 6px 0 #722699; }
+
+  .sessionPill {
+    display: inline-block; margin: 0 0 10px; background: var(--panel-alt);
+    border: 2px solid var(--ink); border-radius: 999px; padding: 6px 16px;
+    font-size: clamp(13px, 2.4vw, 16px);
+  }
+
+  @keyframes shake { 10%,90%{transform:translateX(-1px)} 20%,80%{transform:translateX(2px)} 30%,50%,70%{transform:translateX(-7px)} 40%,60%{transform:translateX(7px)} }
+  @keyframes charBounce { 0%{transform:scale(.7) rotate(-6deg);opacity:.4} 55%{transform:scale(1.15) rotate(3deg);opacity:1} 100%{transform:scale(1) rotate(0)} }
+  @keyframes floatUp { 0%{transform:translate(-50%,0) scale(.8);opacity:0} 18%{opacity:1;transform:translate(-50%,-8px) scale(1.08)} 100%{transform:translate(-50%,-58px) scale(1);opacity:0} }
+  @keyframes confettiRise { 0%{transform:translate(0,0) rotate(0);opacity:1} 100%{transform:translate(var(--dx),-100px) rotate(var(--rot));opacity:0} }
+  @keyframes flashGood { 0%{background:rgba(46,158,82,0)} 30%{background:rgba(46,158,82,.32)} 100%{background:rgba(46,158,82,0)} }
+  @keyframes flashBad { 0%{background:rgba(214,69,65,0)} 30%{background:rgba(214,69,65,.32)} 100%{background:rgba(214,69,65,0)} }
+  @keyframes pulseRed { 0%,100%{box-shadow:inset 0 0 0 rgba(214,69,65,0)} 50%{box-shadow:inset 0 0 22px rgba(214,69,65,.7)} }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <button id="muteBtn" aria-label="소리 켜기 끄기">🔊</button>
+  <button id="quitBtn" class="hidden" aria-label="그만하기">🏠</button>
+
+  <div id="playArea" class="hidden">
+    <div id="hud">
+      <span class="pill" id="score">🏆 0점</span>
+      <span class="pill" id="timer">⏳ 60</span>
+      <span class="pill" id="lives">❤️❤️❤️</span>
+      <span class="pill" id="combo">🔥 콤보</span>
+    </div>
+    <div id="questionCard">
+      <span id="levelBadge" class="badge d1">난이도 하</span>
+      <span id="qtypeBadge" class="badge qtype">기호→이름</span>
+      <span id="promptText">이 원소 기호의 이름은 무엇일까요?</span>
+      <span id="bigText">Na</span>
+      <div id="popups"></div>
+    </div>
+    <div id="choices"></div>
+  </div>
+
+  <div class="screen" id="startScreen">
+    <div class="card">
+      <h1>⚛️ 원소 맞히기</h1>
+      <p>
+        ⚛️ 원소 기호·이름·원자번호·양성자 수 중 하나가 문제로 나와요. 알맞은 답을 4개 중에서 골라보세요!<br>
+        예) "Na"가 나오면 <b>소듐</b>을, "철"이 나오면 <b>Fe</b>를, "26번 원소"나 "양성자 26개"가 나오면 <b>Fe(철)</b>을 고르면 돼요.<br>
+        🥉🥈🥇💎 난이도를 고르면 그 안의 원소들만 나와요. 어려운 난이도일수록 더 다양한 원소가 나와요.<br>
+        ⏳ 시간은 60초! 정답을 많이 맞힐수록 시간이 늘어나요.<br>
+        🔥 연속으로 맞히면 콤보가 쌓이고 점수 배율도 쭉쭉 올라가요. 5콤보마다 시간이 3초 늘어나요!<br>
+        ❤️ 틀리면 목숨이 하나 줄고 시간도 2초 줄어요. 목숨 3개를 모두 잃으면 끝이에요.<br>
+        🎯 정답을 맞히면 그 자리에서 바로 게임 놀이터 포인트로 적립돼요. 여러 난이도를 이어서 풀면 이번 방문 점수도 계속 쌓여요!
+      </p>
+      <div class="sessionPill hidden" id="sessionPill"></div>
+      <p style="text-align:center;font-size:clamp(13px,2.1vw,16px);margin:10px 0 4px;">원하는 난이도를 골라 시작해요!</p>
+      <div id="levelGrid"></div>
+      <br><a class="home" href="/" id="homeFromStart">🏠 게임 놀이터로</a>
+    </div>
+  </div>
+
+  <div class="screen hidden" id="overScreen">
+    <div class="card">
+      <h1 id="overTitle">게임 끝! ⚛️</h1>
+      <p class="stats" id="overStats"></p>
+      <p class="stats" id="earnResult"></p>
+      <p class="stats">이 난이도 최고 점수: <span id="bestOver">0</span>점</p>
+      <button id="againBtn">다시하기</button>
+      <button id="pickLevelBtn" class="small">다른 난이도 고르기</button>
+      <br><a class="home" href="/" id="homeFromOver">🏠 게임 놀이터로</a>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="quitConfirm">
+    <div class="card">
+      <h1>⚠️ 잠깐!</h1>
+      <p style="text-align:center">정말 그만하고 난이도 선택 화면으로 돌아갈까요?<br>지금까지 맞힌 정답은 포인트로 적립돼요.</p>
+      <button id="quitYes">네, 나갈게요</button>
+      <button id="quitNo" class="small">아니요</button>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="roundResult">
+    <div class="card">
+      <h1>🎉 잘했어요!</h1>
+      <p class="stats" id="roundResultText" style="text-align:center"></p>
+      <button id="roundResultOk">확인</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- 난이도 정보 ----------
+// maxNum: 이 난이도에서 나올 수 있는 가장 큰 원자번호(1번부터 그 번호까지의 원소가 출제 대상이에요)
+const DIFFICULTIES = [
+  { n: 1, icon: '🥉', name: '하', range: '1~20번 원소', maxNum: 20, points: 10 },
+  { n: 2, icon: '🥈', name: '중', range: '1~50번 원소', maxNum: 50, points: 14 },
+  { n: 3, icon: '🥇', name: '상', range: '1~70번 원소', maxNum: 70, points: 18 },
+  { n: 4, icon: '💎', name: '최상', range: '1~118번(전체)', maxNum: 118, points: 24 },
+];
+
+// ---------- 원소 데이터 (원자번호 1~118, 대한화학회 표기 기준 원소 이름) ----------
+const ELEMENTS = [
+  {num:1,sym:'H',name:'수소'},{num:2,sym:'He',name:'헬륨'},{num:3,sym:'Li',name:'리튬'},{num:4,sym:'Be',name:'베릴륨'},{num:5,sym:'B',name:'붕소'},
+  {num:6,sym:'C',name:'탄소'},{num:7,sym:'N',name:'질소'},{num:8,sym:'O',name:'산소'},{num:9,sym:'F',name:'플루오린'},{num:10,sym:'Ne',name:'네온'},
+  {num:11,sym:'Na',name:'소듐'},{num:12,sym:'Mg',name:'마그네슘'},{num:13,sym:'Al',name:'알루미늄'},{num:14,sym:'Si',name:'규소'},{num:15,sym:'P',name:'인'},
+  {num:16,sym:'S',name:'황'},{num:17,sym:'Cl',name:'염소'},{num:18,sym:'Ar',name:'아르곤'},{num:19,sym:'K',name:'포타슘'},{num:20,sym:'Ca',name:'칼슘'},
+  {num:21,sym:'Sc',name:'스칸듐'},{num:22,sym:'Ti',name:'타이타늄'},{num:23,sym:'V',name:'바나듐'},{num:24,sym:'Cr',name:'크로뮴'},{num:25,sym:'Mn',name:'망가니즈'},
+  {num:26,sym:'Fe',name:'철'},{num:27,sym:'Co',name:'코발트'},{num:28,sym:'Ni',name:'니켈'},{num:29,sym:'Cu',name:'구리'},{num:30,sym:'Zn',name:'아연'},
+  {num:31,sym:'Ga',name:'갈륨'},{num:32,sym:'Ge',name:'저마늄'},{num:33,sym:'As',name:'비소'},{num:34,sym:'Se',name:'셀레늄'},{num:35,sym:'Br',name:'브로민'},
+  {num:36,sym:'Kr',name:'크립톤'},{num:37,sym:'Rb',name:'루비듐'},{num:38,sym:'Sr',name:'스트론튬'},{num:39,sym:'Y',name:'이트륨'},{num:40,sym:'Zr',name:'지르코늄'},
+  {num:41,sym:'Nb',name:'나이오븀'},{num:42,sym:'Mo',name:'몰리브데넘'},{num:43,sym:'Tc',name:'테크네튬'},{num:44,sym:'Ru',name:'루테늄'},{num:45,sym:'Rh',name:'로듐'},
+  {num:46,sym:'Pd',name:'팔라듐'},{num:47,sym:'Ag',name:'은'},{num:48,sym:'Cd',name:'카드뮴'},{num:49,sym:'In',name:'인듐'},{num:50,sym:'Sn',name:'주석'},
+  {num:51,sym:'Sb',name:'안티모니'},{num:52,sym:'Te',name:'텔루륨'},{num:53,sym:'I',name:'아이오딘'},{num:54,sym:'Xe',name:'제논'},{num:55,sym:'Cs',name:'세슘'},
+  {num:56,sym:'Ba',name:'바륨'},{num:57,sym:'La',name:'란타넘'},{num:58,sym:'Ce',name:'세륨'},{num:59,sym:'Pr',name:'프라세오디뮴'},{num:60,sym:'Nd',name:'네오디뮴'},
+  {num:61,sym:'Pm',name:'프로메튬'},{num:62,sym:'Sm',name:'사마륨'},{num:63,sym:'Eu',name:'유로퓸'},{num:64,sym:'Gd',name:'가돌리늄'},{num:65,sym:'Tb',name:'터븀'},
+  {num:66,sym:'Dy',name:'디스프로슘'},{num:67,sym:'Ho',name:'홀뮴'},{num:68,sym:'Er',name:'어븀'},{num:69,sym:'Tm',name:'툴륨'},{num:70,sym:'Yb',name:'이터븀'},
+  {num:71,sym:'Lu',name:'루테튬'},{num:72,sym:'Hf',name:'하프늄'},{num:73,sym:'Ta',name:'탄탈럼'},{num:74,sym:'W',name:'텅스텐'},{num:75,sym:'Re',name:'레늄'},
+  {num:76,sym:'Os',name:'오스뮴'},{num:77,sym:'Ir',name:'이리듐'},{num:78,sym:'Pt',name:'백금'},{num:79,sym:'Au',name:'금'},{num:80,sym:'Hg',name:'수은'},
+  {num:81,sym:'Tl',name:'탈륨'},{num:82,sym:'Pb',name:'납'},{num:83,sym:'Bi',name:'비스무트'},{num:84,sym:'Po',name:'폴로늄'},{num:85,sym:'At',name:'아스타틴'},
+  {num:86,sym:'Rn',name:'라돈'},{num:87,sym:'Fr',name:'프랑슘'},{num:88,sym:'Ra',name:'라듐'},{num:89,sym:'Ac',name:'악티늄'},{num:90,sym:'Th',name:'토륨'},
+  {num:91,sym:'Pa',name:'프로트악티늄'},{num:92,sym:'U',name:'우라늄'},{num:93,sym:'Np',name:'넵투늄'},{num:94,sym:'Pu',name:'플루토늄'},{num:95,sym:'Am',name:'아메리슘'},
+  {num:96,sym:'Cm',name:'큐륨'},{num:97,sym:'Bk',name:'버클륨'},{num:98,sym:'Cf',name:'캘리포늄'},{num:99,sym:'Es',name:'아인슈타이늄'},{num:100,sym:'Fm',name:'페르뮴'},
+  {num:101,sym:'Md',name:'멘델레븀'},{num:102,sym:'No',name:'노벨륨'},{num:103,sym:'Lr',name:'로렌슘'},{num:104,sym:'Rf',name:'러더포듐'},{num:105,sym:'Db',name:'더브늄'},
+  {num:106,sym:'Sg',name:'시보귬'},{num:107,sym:'Bh',name:'보륨'},{num:108,sym:'Hs',name:'하슘'},{num:109,sym:'Mt',name:'마이트너륨'},{num:110,sym:'Ds',name:'다름스타튬'},
+  {num:111,sym:'Rg',name:'뢴트게늄'},{num:112,sym:'Cn',name:'코페르니슘'},{num:113,sym:'Nh',name:'니호늄'},{num:114,sym:'Fl',name:'플레로븀'},{num:115,sym:'Mc',name:'모스코븀'},
+  {num:116,sym:'Lv',name:'리버모륨'},{num:117,sym:'Ts',name:'테네신'},{num:118,sym:'Og',name:'오가네손'},
+];
+const DIFF_POINTS = Object.fromEntries(DIFFICULTIES.map(d => [d.n, d.points]));
+
+// 문제 유형: 기호→이름 / 이름→기호 / 숫자(원자번호 또는 양성자 수)→원소
+const QTYPES = ['sym2name', 'name2sym', 'number'];
+const QTYPE_LABEL = { sym2name: '기호→이름', name2sym: '이름→기호' };
+const NUMBER_PROMPTS = [
+  { sub: 'atomic', label: '원자번호', prompt: n => '원자번호가 ' + n + '번인 원소는 무엇일까요?' },
+  { sub: 'proton', label: '양성자 수', prompt: n => '양성자를 ' + n + '개 가진 원소는 무엇일까요?' },
+];
+
+// ---------- 소리 (컴퓨터가 직접 연주해요) ----------
+const Sound = {
+  ctx: null, muted: false,
+  ensure() { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); else if (this.ctx.state === 'suspended') this.ctx.resume(); },
+  tone(freq, t, len, type, vol, freqEnd) {
+    if (!this.ctx || this.muted) return;
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (freqEnd) o.frequency.exponentialRampToValueAtTime(freqEnd, t + len);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + len);
+    o.connect(g).connect(this.ctx.destination);
+    o.start(t); o.stop(t + len);
+  },
+  correct() { if (!this.ctx) return; const t = this.ctx.currentTime; this.tone(660, t, 0.12, 'triangle', 0.28); this.tone(880, t + 0.08, 0.16, 'triangle', 0.26); },
+  wrong() { if (!this.ctx) return; const t = this.ctx.currentTime; this.tone(220, t, 0.3, 'sawtooth', 0.28, 90); },
+  combo(level) { if (!this.ctx) return; const t = this.ctx.currentTime; [0, 0.07, 0.14].forEach((d, i) => this.tone(520 + i * 140 + (level || 0) * 6, t + d, 0.14, 'square', 0.18)); },
+  tick() { if (!this.ctx) return; this.tone(880, this.ctx.currentTime, 0.05, 'square', 0.08); },
+  gameover() { if (!this.ctx) return; const t = this.ctx.currentTime; this.tone(300, t, 0.5, 'sawtooth', 0.25, 70); },
+};
+
+// ---------- 상태 ----------
+const ROUND_TIME = 60;
+let score = 0, timeLeft = ROUND_TIME, lives = 3, combo = 0, bestCombo = 0;
+let totalAnswered = 0, totalCorrect = 0;
+let bag = [], lastNum = null, currentItem = null, currentQType = null, currentQSub = null;
+let locked = false, gameOver = false, paused = false, timerHandle = null;
+let currentDifficulty = 1;
+
+const el = id => document.getElementById(id);
+const scoreEl = el('score'), timerEl = el('timer'), livesEl = el('lives'), comboEl = el('combo');
+const bigTextEl = el('bigText'), promptEl = el('promptText'), choicesEl = el('choices'), popupsEl = el('popups');
+const levelBadgeEl = el('levelBadge'), qtypeBadgeEl = el('qtypeBadge');
+const playArea = el('playArea'), wrapEl = el('wrap');
+
+const BEST_KEY = 'elementGameBest';
+function loadBests() { try { return JSON.parse(localStorage.getItem(BEST_KEY)) || {}; } catch (e) { return {}; } }
+function saveBest(diff, value) {
+  const bests = loadBests();
+  bests[diff] = Math.max(value, bests[diff] || 0);
+  localStorage.setItem(BEST_KEY, JSON.stringify(bests));
+  return bests[diff];
+}
+
+function getDifficulty(n) { return DIFFICULTIES.find(d => d.n === n) || DIFFICULTIES[0]; }
+function poolForDifficulty(n) { const maxNum = getDifficulty(n).maxNum; return ELEMENTS.filter(e => e.num <= maxNum); }
+function shuffle(arr) { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
+function comboMultiplier(n) { if (n >= 10) return 3; if (n >= 6) return 2; if (n >= 3) return 1.5; return 1; }
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+function drawItem() {
+  if (bag.length === 0) bag = shuffle(poolForDifficulty(currentDifficulty));
+  let item = bag.pop();
+  if (item.num === lastNum && bag.length > 0) { bag.unshift(item); item = bag.pop(); }
+  lastNum = item.num;
+  return item;
+}
+
+function spawnPopup(text, kind) {
+  const span = document.createElement('span');
+  span.className = 'popup ' + kind;
+  span.textContent = text;
+  popupsEl.appendChild(span);
+  span.addEventListener('animationend', () => span.remove());
+}
+function spawnConfetti() {
+  const emojis = ['✨', '⭐', '🎉'];
+  for (let i = 0; i < 8; i++) {
+    const s = document.createElement('span');
+    s.className = 'confetti';
+    s.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+    s.style.left = (40 + Math.random() * 20) + '%';
+    s.style.top = '38%';
+    s.style.setProperty('--dx', (Math.random() * 120 - 60) + 'px');
+    s.style.setProperty('--rot', (Math.random() * 360 - 180) + 'deg');
+    popupsEl.appendChild(s);
+    s.addEventListener('animationend', () => s.remove());
+  }
+}
+function bounceWord() { bigTextEl.classList.remove('bounce'); void bigTextEl.offsetWidth; bigTextEl.classList.add('bounce'); }
+function shakeWrap() { wrapEl.classList.remove('shake'); void wrapEl.offsetWidth; wrapEl.classList.add('shake'); }
+function flashPlay(kind) {
+  const cls = kind === 'good' ? 'flash-good' : 'flash-bad';
+  playArea.classList.remove('flash-good', 'flash-bad');
+  void playArea.offsetWidth;
+  playArea.classList.add(cls);
+}
+
+function updateHUD() {
+  scoreEl.textContent = '🏆 ' + score + '점';
+  timerEl.textContent = '⏳ ' + Math.max(0, timeLeft);
+  timerEl.classList.toggle('lowtime', timeLeft <= 10 && timeLeft > 0);
+  livesEl.textContent = '❤️'.repeat(Math.max(0, lives)) + '🤍'.repeat(Math.max(0, 3 - lives));
+  if (combo >= 2) {
+    comboEl.textContent = '🔥 콤보 x' + combo + ' (x' + comboMultiplier(combo) + ')';
+    comboEl.classList.add('hot');
+  } else {
+    comboEl.textContent = '🔥 콤보';
+    comboEl.classList.remove('hot');
+  }
+}
+
+function elementLabel(e) { return e.sym + ' (' + e.name + ')'; }
+
+function renderQuestion() {
+  currentItem = drawItem();
+  currentQType = pick(QTYPES);
+
+  const diff = getDifficulty(currentDifficulty);
+  levelBadgeEl.textContent = '난이도 ' + diff.name;
+  levelBadgeEl.className = 'badge d' + currentDifficulty;
+
+  let correctText, bigValue;
+  const pool = poolForDifficulty(currentDifficulty).filter(e => e.num !== currentItem.num);
+
+  if (currentQType === 'sym2name') {
+    qtypeBadgeEl.textContent = QTYPE_LABEL.sym2name;
+    promptEl.textContent = '이 원소 기호의 이름은 무엇일까요?';
+    bigValue = currentItem.sym;
+    correctText = currentItem.name;
+  } else if (currentQType === 'name2sym') {
+    qtypeBadgeEl.textContent = QTYPE_LABEL.name2sym;
+    promptEl.textContent = '이 원소의 기호는 무엇일까요?';
+    bigValue = currentItem.name;
+    correctText = currentItem.sym;
+  } else {
+    const numQ = pick(NUMBER_PROMPTS);
+    currentQSub = numQ.sub;
+    qtypeBadgeEl.textContent = numQ.label;
+    promptEl.textContent = numQ.prompt(currentItem.num);
+    bigValue = String(currentItem.num);
+    correctText = elementLabel(currentItem);
+  }
+
+  bigTextEl.textContent = bigValue;
+  bigTextEl.lang = 'ko';
+  bounceWord();
+
+  const distractors = [];
+  for (const e of shuffle(pool)) {
+    const t = currentQType === 'sym2name' ? e.name : currentQType === 'name2sym' ? e.sym : elementLabel(e);
+    if (t !== correctText && !distractors.includes(t)) { distractors.push(t); if (distractors.length === 3) break; }
+  }
+  const options = shuffle([
+    { t: correctText, correct: true },
+    ...distractors.map(t => ({ t, correct: false })),
+  ]);
+
+  choicesEl.innerHTML = '';
+  options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.textContent = opt.t;
+    if (opt.correct) btn.dataset.correct = '1';
+    btn.addEventListener('click', () => selectChoice(btn, opt));
+    choicesEl.appendChild(btn);
+  });
+  locked = false;
+}
+
+function selectChoice(btn, opt) {
+  if (locked || gameOver) return;
+  locked = true;
+  totalAnswered++;
+  [...choicesEl.children].forEach(b => (b.disabled = true));
+
+  if (opt.correct) {
+    btn.classList.add('good');
+    handleCorrect();
+  } else {
+    btn.classList.add('bad');
+    const correctBtn = [...choicesEl.children].find(b => b.dataset.correct === '1');
+    if (correctBtn) correctBtn.classList.add('reveal');
+    handleWrong();
+  }
+
+  setTimeout(() => { if (!gameOver) renderQuestion(); }, opt.correct ? 650 : 1100);
+}
+
+function handleCorrect() {
+  totalCorrect++;
+  combo++;
+  bestCombo = Math.max(bestCombo, combo);
+  const gained = Math.round(DIFF_POINTS[currentDifficulty] * comboMultiplier(combo));
+  score += gained;
+  spawnPopup('+' + gained, 'good');
+  spawnConfetti();
+  flashPlay('good');
+  Sound.correct();
+  if (combo % 5 === 0) {
+    timeLeft = Math.min(99, timeLeft + 3);
+    spawnPopup('+3초 보너스!', 'bonus');
+    Sound.combo(combo);
+  }
+  updateHUD();
+}
+
+function handleWrong() {
+  combo = 0;
+  lives--;
+  timeLeft = Math.max(1, timeLeft - 2);
+  spawnPopup('-2초', 'bad');
+  shakeWrap();
+  flashPlay('bad');
+  Sound.wrong();
+  updateHUD();
+  if (lives <= 0) endGame();
+}
+
+function startTimer() {
+  clearInterval(timerHandle);
+  timerHandle = setInterval(() => {
+    if (paused || gameOver) return;
+    timeLeft--;
+    if (timeLeft <= 10 && timeLeft > 0) Sound.tick();
+    if (timeLeft <= 0) { timeLeft = 0; updateHUD(); endGame(); return; }
+    updateHUD();
+  }, 1000);
+}
+
+function startGame(diff) {
+  currentDifficulty = diff || currentDifficulty;
+  Sound.ensure();
+  score = 0; timeLeft = ROUND_TIME; lives = 3; combo = 0; bestCombo = 0;
+  totalAnswered = 0; totalCorrect = 0; bag = []; lastNum = null; gameOver = false;
+  el('startScreen').classList.add('hidden');
+  el('overScreen').classList.add('hidden');
+  playArea.classList.remove('hidden');
+  el('quitBtn').classList.remove('hidden');
+  updateHUD();
+  renderQuestion();
+  startTimer();
+}
+
+async function endGame() {
+  if (gameOver) return;
+  gameOver = true;
+  clearInterval(timerHandle);
+  Sound.gameover();
+  playArea.classList.add('hidden');
+  el('quitBtn').classList.add('hidden');
+  const best = saveBest(currentDifficulty, score);
+  const totalScore = addSessionScore(score);
+  const acc = totalAnswered ? Math.round((totalCorrect / totalAnswered) * 100) : 0;
+  el('overTitle').textContent = lives <= 0 ? '아쉬워요! 💔' : '시간 종료! ⏰';
+  el('overStats').textContent = '난이도 ' + getDifficulty(currentDifficulty).name + ' · 점수 ' + score + '점 · 정답 ' + totalCorrect + '/' + totalAnswered + ' (' + acc + '%) · 최고 콤보 x' + bestCombo;
+  el('earnResult').textContent = '포인트 적립 중...';
+  el('bestOver').textContent = best;
+  el('overScreen').classList.remove('hidden');
+  updateSessionPill();
+  el('earnResult').textContent = await reportEarnedPoints(totalCorrect, totalScore);
+}
+
+// ---------- 게임 놀이터 포인트 적립 ----------
+// 게임 놀이터 허브와 같은 주소(origin)라서 localStorage에 저장된 로그인 토큰을 그대로 읽을 수 있어요.
+// 라운드가 끝날 때마다(시간 종료·목숨 소진·중단 모두) 그 라운드의 정답 개수만큼 바로 서버에 적립을 요청해요.
+// 실제로 몇 점을 줄지(하루 한도 포함)는 서버가 정해요. sessionScore는 이번 방문에서 모은 점수를 보여주기 위한 화면 표시용 합계예요.
+const POINTS_TOKEN_KEY = 'fishing.points.token';
+const SESSION_SCORE_KEY = 'elementGameSessionScore';
+
+function loadSessionScore() { return Number(sessionStorage.getItem(SESSION_SCORE_KEY)) || 0; }
+function addSessionScore(value) {
+  const total = loadSessionScore() + value;
+  sessionStorage.setItem(SESSION_SCORE_KEY, String(total));
+  return total;
+}
+
+async function reportEarnedPoints(roundCorrect, totalScore) {
+  const token = localStorage.getItem(POINTS_TOKEN_KEY);
+  const totalNote = ' (이번 방문 누적 점수 ' + totalScore + '점)';
+  if (!token) return '🏠 게임 놀이터에서 이름으로 로그인하면 정답 개수만큼 포인트를 모을 수 있어요!' + totalNote;
+  if (roundCorrect <= 0) return '정답을 맞히면 포인트를 모을 수 있어요!' + totalNote;
+  try {
+    const res = await fetch('/api/points/earn', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ gameId: 'element-game', units: roundCorrect }),
+    });
+    const data = await res.json();
+    if (!res.ok) return (data.error || '포인트를 적립하지 못했어요.') + totalNote;
+    return (data.awarded > 0
+      ? '🎉 포인트 +' + data.awarded + '점 적립! (지금 ' + data.points + '점)' + (data.dailyCapped ? ' — 오늘은 이 게임으로 더 못 모아요' : '')
+      : '오늘은 원소 맞히기로 모을 수 있는 포인트를 다 모았어요. (지금 ' + data.points + '점)') + totalNote;
+  } catch (err) {
+    return '포인트 적립에 실패했어요. 인터넷 연결을 확인해주세요.' + totalNote;
+  }
+}
+
+function updateSessionPill() {
+  const pillEl = el('sessionPill');
+  const totalScore = loadSessionScore();
+  if (totalScore > 0) {
+    pillEl.textContent = '🎯 이번 방문 누적 점수: ' + totalScore + '점';
+    pillEl.classList.remove('hidden');
+  } else {
+    pillEl.classList.add('hidden');
+  }
+}
+
+// ---------- 난이도 선택 화면 ----------
+function renderLevelGrid() {
+  const grid = el('levelGrid');
+  grid.innerHTML = '';
+  const bests = loadBests();
+  DIFFICULTIES.forEach(d => {
+    const btn = document.createElement('button');
+    btn.dataset.lv = String(d.n);
+    btn.innerHTML =
+      '<span class="lvIcon">' + d.icon + '</span>' +
+      '<span class="lvName">난이도 ' + d.name + '</span>' +
+      '<span class="lvRange">' + d.range + '</span>' +
+      '<span class="lvBest">최고 ' + (bests[d.n] || 0) + '점</span>';
+    btn.addEventListener('click', () => startGame(d.n));
+    grid.appendChild(btn);
+  });
+  updateSessionPill();
+}
+renderLevelGrid();
+
+function showRoundResult(message) {
+  el('roundResultText').textContent = message;
+  el('roundResult').classList.remove('hidden');
+}
+
+// ---------- 버튼 연결 ----------
+el('againBtn').addEventListener('click', () => startGame(currentDifficulty));
+el('pickLevelBtn').addEventListener('click', () => {
+  el('overScreen').classList.add('hidden');
+  renderLevelGrid();
+  el('startScreen').classList.remove('hidden');
+});
+
+el('muteBtn').addEventListener('click', () => {
+  Sound.muted = !Sound.muted;
+  el('muteBtn').textContent = Sound.muted ? '🔇' : '🔊';
+});
+
+el('quitBtn').addEventListener('click', () => el('quitConfirm').classList.remove('hidden'));
+el('quitYes').addEventListener('click', async () => {
+  el('quitConfirm').classList.add('hidden');
+  gameOver = true;
+  clearInterval(timerHandle);
+  el('quitBtn').classList.add('hidden');
+  const roundScore = score, roundCorrect = totalCorrect;
+  const totalScore = addSessionScore(roundScore);
+  updateSessionPill();
+  showRoundResult('이번 게임에서 ' + roundScore + '점 획득했어요! 포인트 적립 중...');
+  const msg = await reportEarnedPoints(roundCorrect, totalScore);
+  showRoundResult('이번 게임에서 ' + roundScore + '점 획득했어요! ' + msg);
+});
+el('quitNo').addEventListener('click', () => el('quitConfirm').classList.add('hidden'));
+
+el('roundResultOk').addEventListener('click', () => {
+  el('roundResult').classList.add('hidden');
+  playArea.classList.add('hidden');
+  renderLevelGrid();
+  el('startScreen').classList.remove('hidden');
+});
+
+document.addEventListener('visibilitychange', () => { paused = document.hidden; });
+
+// 숫자키 1~4로도 답을 고를 수 있어요
+document.addEventListener('keydown', e => {
+  if (locked || gameOver || playArea.classList.contains('hidden')) return;
+  const idx = { '1': 0, '2': 1, '3': 2, '4': 3 }[e.key];
+  if (idx == null) return;
+  const btn = choicesEl.children[idx];
+  if (btn && !btn.disabled) btn.click();
+});
+</script>
+</body>
+</html>
