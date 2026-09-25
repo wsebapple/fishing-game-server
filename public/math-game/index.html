@@ -166,9 +166,9 @@
     <div class="card">
       <h1 id="diffTitle">🎯 난이도 선택</h1>
       <p>
-        🌱 쉬움은 작은 숫자로 천천히 연습하기 좋아요.<br>
-        🔥 보통은 딱 그 학년 수준이에요.<br>
-        💎 어려움은 숫자가 더 크고 빨라요!
+        🌱 쉬움은 받아올림·받아내림 없이 차근차근 연습하기 좋아요.<br>
+        🔥 보통은 받아올림·받아내림이 한 번쯤 섞여 나와요.<br>
+        💎 어려움은 받아올림·받아내림이 자리마다 나오고, 곱셈·나눗셈 수도 더 커져요!
       </p>
       <div id="diffGrid"></div>
       <div id="diffBackRow"><button class="small" id="diffBackBtn">◀ 학년 다시 고르기</button></div>
@@ -203,29 +203,32 @@
 // mulMax: 곱셈 두 수가 각각 2~mulMax 사이(구구단 느낌). divMax: 나눗셈의 몫과 나누는 수가 각각 2~divMax 사이라서
 // 항상 나누어 떨어지는 문제만 나와요.
 // types: 그 학년에서 뽑힐 수 있는 문제 종류(아래 PROBLEM_GENERATORS의 키). 매 문제마다 이 중 하나를 무작위로 골라요.
+// 덧셈·뺄셈은 "어려움"이라고 숫자 자체를 무작정 키우지 않아요 — 자릿수는 학년에 따라서만 커지고,
+// 같은 학년 안에서 난이도(쉬움/보통/어려움)는 받아올림·받아내림이 얼마나 나오는지로만 달라져요.
+// addCarry/subBorrow: 'none'(전혀 없음) | 'some'(한 자리 정도) | 'many'(자리마다 거의 다 나옴).
 const GRADES = [
   { g: 1, label: '1학년', emoji: '1️⃣', types: ['add', 'sub'],
-    easy:   { add: 5,    sub: 9    },
-    normal: { add: 9,    sub: 15   },
-    hard:   { add: 20,   sub: 30   } },
+    easy:   { addDigits: 1, addCarry: 'none', subMinuendDigits: 2, subSubtrahendDigits: 1, subBorrow: 'none' },
+    normal: { addDigits: 1, addCarry: 'some', subMinuendDigits: 2, subSubtrahendDigits: 1, subBorrow: 'some' },
+    hard:   { addDigits: 1, addCarry: 'many', subMinuendDigits: 2, subSubtrahendDigits: 1, subBorrow: 'many' } },
   { g: 2, label: '2학년', emoji: '2️⃣', types: ['add', 'sub', 'mul'],
-    easy:   { add: 20,   sub: 30,   mul: 5  },
-    normal: { add: 50,   sub: 60,   mul: 7  },
-    hard:   { add: 99,   sub: 99,   mul: 9  } },
+    easy:   { addDigits: 2, addCarry: 'none', subMinuendDigits: 2, subSubtrahendDigits: 2, subBorrow: 'none', mul: 5  },
+    normal: { addDigits: 2, addCarry: 'some', subMinuendDigits: 2, subSubtrahendDigits: 2, subBorrow: 'some', mul: 7  },
+    hard:   { addDigits: 2, addCarry: 'many', subMinuendDigits: 2, subSubtrahendDigits: 2, subBorrow: 'many', mul: 9  } },
   // 3학년: 곱셈·나눗셈에 더해, 분모가 같은 분수끼리 더하기(fracAdd)와 소수 한 자리 덧셈(decAdd)도 나와요.
   { g: 3, label: '3학년', emoji: '3️⃣', types: ['add', 'sub', 'mul', 'div', 'fracAdd', 'decAdd'],
-    easy:   { add: 99,   sub: 99,   mul: 9,  div: 9,  fracDenMax: 5, decTenthsMax: 9  },
-    normal: { add: 200,  sub: 200,  mul: 12, div: 12, fracDenMax: 7, decTenthsMax: 50 },
-    hard:   { add: 500,  sub: 500,  mul: 12, div: 12, fracDenMax: 9, decTenthsMax: 99 } },
+    easy:   { addDigits: 3, addCarry: 'none', subMinuendDigits: 3, subSubtrahendDigits: 3, subBorrow: 'none', mul: 9,  div: 9,  fracDenMax: 5, decTenthsMax: 9  },
+    normal: { addDigits: 3, addCarry: 'some', subMinuendDigits: 3, subSubtrahendDigits: 3, subBorrow: 'some', mul: 12, div: 12, fracDenMax: 7, decTenthsMax: 50 },
+    hard:   { addDigits: 3, addCarry: 'many', subMinuendDigits: 3, subSubtrahendDigits: 3, subBorrow: 'many', mul: 12, div: 12, fracDenMax: 9, decTenthsMax: 99 } },
   { g: 4, label: '4학년', emoji: '4️⃣', types: ['add', 'sub', 'mul', 'div'],
-    easy:   { add: 500,  sub: 500,  mul: 12, div: 12 },
-    normal: { add: 1000, sub: 1000, mul: 15, div: 15 },
-    hard:   { add: 3000, sub: 3000, mul: 20, div: 15 } },
+    easy:   { addDigits: 4, addCarry: 'none', subMinuendDigits: 4, subSubtrahendDigits: 4, subBorrow: 'none', mul: 12, div: 12 },
+    normal: { addDigits: 4, addCarry: 'some', subMinuendDigits: 4, subSubtrahendDigits: 4, subBorrow: 'some', mul: 15, div: 15 },
+    hard:   { addDigits: 4, addCarry: 'many', subMinuendDigits: 4, subSubtrahendDigits: 4, subBorrow: 'many', mul: 20, div: 15 } },
   // 5학년: 사칙연산에 더해, 약분(reduceFrac)·최대공약수(gcd)·최소공배수(lcm) 문제도 나와요.
   { g: 5, label: '5학년', emoji: '5️⃣', types: ['add', 'sub', 'mul', 'div', 'reduceFrac', 'gcd', 'lcm'],
-    easy:   { add: 1000, sub: 1000, mul: 20, div: 15, reduceDenMax: 6,  reduceFactorMax: 3, coprimeMax: 5, gcdFactorMax: 4 },
-    normal: { add: 5000, sub: 5000, mul: 25, div: 20, reduceDenMax: 9,  reduceFactorMax: 5, coprimeMax: 7, gcdFactorMax: 6 },
-    hard:   { add: 9999, sub: 9999, mul: 30, div: 25, reduceDenMax: 12, reduceFactorMax: 8, coprimeMax: 9, gcdFactorMax: 9 } },
+    easy:   { addDigits: 4, addCarry: 'none', subMinuendDigits: 4, subSubtrahendDigits: 4, subBorrow: 'none', mul: 20, div: 15, reduceDenMax: 6,  reduceFactorMax: 3, coprimeMax: 5, gcdFactorMax: 4 },
+    normal: { addDigits: 4, addCarry: 'some', subMinuendDigits: 4, subSubtrahendDigits: 4, subBorrow: 'some', mul: 25, div: 20, reduceDenMax: 9,  reduceFactorMax: 5, coprimeMax: 7, gcdFactorMax: 6 },
+    hard:   { addDigits: 4, addCarry: 'many', subMinuendDigits: 4, subSubtrahendDigits: 4, subBorrow: 'many', mul: 30, div: 25, reduceDenMax: 12, reduceFactorMax: 8, coprimeMax: 9, gcdFactorMax: 9 } },
 ];
 const DIFFS = [
   { key: 'easy', label: '쉬움', emoji: '🌱' },
@@ -239,16 +242,76 @@ let selectedGrade = null, selectedDiff = null;
 function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 function gcdOf(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b]; } return a; }
 
+// 자릿수 배열(낮은 자리부터)을 실제 숫자로 합쳐요.
+function digitsToNumber(digitsLSBFirst) {
+  let n = 0;
+  for (let i = digitsLSBFirst.length - 1; i >= 0; i--) n = n * 10 + digitsLSBFirst[i];
+  return n;
+}
+
+// 덧셈 문제를 낮은 자리부터 만들면서, 받아올림이 나는 자리를 pattern에 맞게 미리 정해요.
+// none이면 어느 자리에서도 받아올림이 안 나고, some이면 딱 한 자리, many면 맨 앞자리를 뺀 나머지 자리 전부에서 나게 해요.
+function genAddDigits(digitCount, pattern) {
+  const forced = new Set();
+  if (pattern === 'some') forced.add(randInt(0, digitCount - 1));
+  else if (pattern === 'many') for (let i = 0; i < digitCount - (digitCount > 1 ? 1 : 0); i++) forced.add(i);
+
+  const da = [], db = [];
+  let carryIn = 0;
+  for (let i = 0; i < digitCount; i++) {
+    const minDigit = i === digitCount - 1 ? 1 : 0; // 맨 앞자리는 0이 아니게
+    const mustCarry = forced.has(i);
+    const mustNotCarry = pattern === 'none';
+    let x, y, carryOut;
+    do {
+      x = randInt(minDigit, 9);
+      y = randInt(0, 9);
+      carryOut = (x + y + carryIn) >= 10 ? 1 : 0;
+    } while ((mustCarry && !carryOut) || (mustNotCarry && carryOut));
+    da.push(x); db.push(y);
+    carryIn = carryOut;
+  }
+  return { a: digitsToNumber(da), b: digitsToNumber(db) };
+}
+
+// 뺄셈도 같은 방식이에요. minuendDigits가 subtrahendDigits보다 크면(1학년의 "두 자리 - 한 자리"처럼)
+// 짧은 쪽 남는 자리는 0으로 채워요. 맨 앞자리에서는 더 빌려올 데가 없으니 항상 받아내림이 안 나게 해서
+// 결과가 항상 0 이상이 되게 보장해요.
+function genSubDigits(minuendDigits, subtrahendDigits, pattern) {
+  const borrowable = minuendDigits - 1; // 맨 앞자리는 절대 안 빌려요
+  const forced = new Set();
+  if (pattern === 'some' && borrowable > 0) forced.add(randInt(0, borrowable - 1));
+  else if (pattern === 'many' && borrowable > 0) for (let i = 0; i < borrowable; i++) forced.add(i);
+
+  const da = [], db = [];
+  let borrowIn = 0;
+  for (let i = 0; i < minuendDigits; i++) {
+    const isLeading = i === minuendDigits - 1;
+    const hasSubtrahendDigit = i < subtrahendDigits;
+    const minDigitA = isLeading ? 1 : 0;
+    const mustBorrow = forced.has(i);
+    const mustNotBorrow = pattern === 'none' || isLeading || !hasSubtrahendDigit;
+    let x, y, borrowOut;
+    do {
+      x = randInt(minDigitA, 9);
+      y = hasSubtrahendDigit ? randInt(0, 9) : 0;
+      borrowOut = (x - borrowIn) < y ? 1 : 0;
+    } while ((mustBorrow && !borrowOut) || (mustNotBorrow && borrowOut));
+    da.push(x); db.push(y);
+    borrowIn = borrowOut;
+  }
+  return { a: digitsToNumber(da), b: digitsToNumber(db) };
+}
+
 // ---------- 문제 생성기 ----------
 // 문제마다 kind(numeric/fraction/decimal)를 붙여서, 아래에서 보기(선택지)를 다르게 만들어요.
 const PROBLEM_GENERATORS = {
   add(range) {
-    const a = randInt(1, range.add), b = randInt(1, range.add);
+    const { a, b } = genAddDigits(range.addDigits, range.addCarry);
     return { kind: 'numeric', text: a + ' + ' + b + ' = ?', answer: a + b };
   },
   sub(range) {
-    const a = randInt(Math.max(1, Math.floor(range.sub / 2)), range.sub);
-    const b = randInt(0, a);
+    const { a, b } = genSubDigits(range.subMinuendDigits, range.subSubtrahendDigits, range.subBorrow);
     return { kind: 'numeric', text: a + ' - ' + b + ' = ?', answer: a - b };
   },
   mul(range) {
