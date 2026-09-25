@@ -118,10 +118,14 @@
   .home.hidden { display: none; }
 
   /* 모바일용 방향 버튼 (한 칸씩 정확하게 움직이려면 스와이프보다 버튼이 편해요) */
-  #pad {
-    position: absolute; left: 0; right: 0; bottom: calc(4% + env(safe-area-inset-bottom, 0px));
-    display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 56px);
-    gap: 4px; justify-content: center; pointer-events: none;
+  /* PC는 키보드로 조작하니 기본은 숨기고, 터치 화면에서만 보여줘요(맵과 안 겹치게) */
+  #pad { display: none; }
+  @media (pointer: coarse), (max-width: 560px) {
+    #pad {
+      position: absolute; left: 0; right: 0; bottom: calc(4% + env(safe-area-inset-bottom, 0px));
+      display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 56px);
+      gap: 4px; justify-content: center; pointer-events: none;
+    }
   }
   #pad button {
     pointer-events: auto;
