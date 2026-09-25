@@ -403,17 +403,26 @@ async function fetchPronunciationUrl(word) {
   }
 }
 
-async function playPronunciation(word) {
-  const url = await fetchPronunciationUrl(word);
-  if (url) {
-    try {
+// 문제가 나올 때 미리 발음 파일 주소를 받아두고(prefetch), 버튼을 눌렀을 때는 그 캐시를 즉시 재생해요.
+// 클릭한 그 순간 곧바로 재생해야(중간에 fetch로 기다리지 않아야) 휴대폰 브라우저가 "사용자가 직접
+// 누른 재생"으로 인정해서 막지 않고, 소리도 늦게 나오지 않고 바로 나와요.
+function playPronunciation(word) {
+  const key = word.toLowerCase();
+  if (key in pronounceCache) {
+    const url = pronounceCache[key];
+    if (url) {
       if (!pronounceAudio) pronounceAudio = new Audio();
       pronounceAudio.src = url;
-      await pronounceAudio.play();
-      return;
-    } catch (err) { /* 재생이 막히면 아래에서 기기 음성으로 대신 읽어줘요 */ }
+      pronounceAudio.play().catch(() => Speech.speak(word));
+    } else {
+      Speech.speak(word);
+    }
+    return;
   }
+  // 아직 미리 받아두지 못했으면(문제가 뜨자마자 바로 눌렀을 때) 기다리지 말고 기기 음성으로 바로 들려주고,
+  // 다음번엔 캐시를 쓸 수 있도록 뒤에서 계속 받아둬요.
   Speech.speak(word);
+  fetchPronunciationUrl(word);
 }
 
 // ---------- 상태 ----------
@@ -507,6 +516,7 @@ function renderQuestion() {
   levelBadgeEl.className = 'badge lv' + currentLevel;
   dirBadgeEl.textContent = isKo2En ? '🇰🇷→🔤' : '🔤→🇰🇷';
   bounceWord();
+  fetchPronunciationUrl(currentItem.w); // 발음 버튼을 누르기 전에 미리 받아둬요
 
   const correctText = isKo2En ? currentItem.w : currentItem.m;
   const levelPool = wordsForLevel(currentLevel).filter(w => w.w !== currentItem.w);
