@@ -425,11 +425,13 @@ function shakeScreen(mag, time) { shakeMag = Math.max(shakeMag, mag); shakeTime 
 function burstParticles(x, y, count, colors, spread) {
   for (let i = 0; i < count; i++) {
     const a = Math.random() * Math.PI * 2;
-    const spd = (20 + Math.random() * 90) * spread;
+    const spd = (35 + Math.random() * 130) * spread;
+    const spark = Math.random() < 0.22;
     particles.push({
-      x, y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd - spd * 0.4,
-      life: 0.35 + Math.random() * 0.35, maxLife: 0.7,
-      r: 1.5 + Math.random() * 2.5, color: colors[(Math.random() * colors.length) | 0],
+      x, y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd - spd * 0.5,
+      life: 0.4 + Math.random() * 0.45, maxLife: 0.85,
+      r: spark ? 1.5 + Math.random() * 1.5 : 3 + Math.random() * 4,
+      color: spark ? '#fff9e0' : colors[(Math.random() * colors.length) | 0],
     });
   }
 }
@@ -618,7 +620,7 @@ function launchShot() {
   const hitPt = currentProjector().map(ballY, ballX);
   shakeScreen(clamp(powerFrac * 9, 2, 9), 0.2);
   const divotColors = lie === 'sand' ? ['#dcb567', '#c99f4d', '#fff'] : ['#4fae5c', '#2f7a3d', '#c9a35a'];
-  burstParticles(hitPt.x, hitPt.y, Math.round(8 + powerFrac * 10), divotColors, 0.5 + powerFrac * 0.6);
+  burstParticles(hitPt.x, hitPt.y, Math.round(14 + powerFrac * 16), divotColors, 0.6 + powerFrac * 0.7);
   ballTrail = [];
 
   strokesThisHole++; totalStrokes++;
@@ -840,6 +842,62 @@ function polyFromPts(pts) {
   for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
   ctx.closePath();
 }
+// 점들을 부드러운 곡선으로 이어서 각진 다각형 대신 뭉글뭉글한 윤곽을 그려요
+function smoothPolyPath(pts) {
+  ctx.beginPath();
+  const n = pts.length;
+  const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+  const m0 = mid(pts[n - 1], pts[0]);
+  ctx.moveTo(m0.x, m0.y);
+  for (let i = 0; i < n; i++) {
+    const cur = pts[i], next = pts[(i + 1) % n], m = mid(cur, next);
+    ctx.quadraticCurveTo(cur.x, cur.y, m.x, m.y);
+  }
+  ctx.closePath();
+}
+// 해저드를 각진 사각형 대신 자연스러운 연못/벙커 모양(울퉁불퉁한 얼룩)으로 그리기 위한
+// 월드 좌표 윤곽점. 판정용 사각형(hz.xMin 등)은 그대로 두고 "그림만" 이 모양을 써요.
+function hazardBlobWorldPts(hz) {
+  if (!hz._blob) {
+    const n = 14;
+    hz._blob = [];
+    for (let i = 0; i < n; i++) hz._blob.push(0.62 + Math.random() * 0.66);
+  }
+  const rx = (hz.xMax - hz.xMin) / 2, ry = (hz.y1 - hz.y0) / 2;
+  const cx = (hz.xMin + hz.xMax) / 2, cy = (hz.y0 + hz.y1) / 2;
+  return hz._blob.map((f, i) => {
+    const a = (i / hz._blob.length) * Math.PI * 2;
+    return { y: cy + Math.sin(a) * ry * f, x: cx + Math.cos(a) * rx * f };
+  });
+}
+
+// 매번 같은 배치가 나오도록 인덱스 기반 결정적 난수(0~1)를 만들어요
+function pineNoise(i, salt) { const v = Math.sin(i * 12.9898 + salt * 78.233) * 43758.5453; return v - Math.floor(v); }
+function drawPine(x, y, w, h, dark) {
+  ctx.fillStyle = dark ? '#0d2f17' : '#1c552b';
+  ctx.beginPath();
+  ctx.moveTo(x, y - h);
+  ctx.lineTo(x + w * 0.42, y - h * 0.42);
+  ctx.lineTo(x + w * 0.2, y - h * 0.42);
+  ctx.lineTo(x + w * 0.5, y);
+  ctx.lineTo(x - w * 0.5, y);
+  ctx.lineTo(x - w * 0.2, y - h * 0.42);
+  ctx.lineTo(x - w * 0.42, y - h * 0.42);
+  ctx.closePath();
+  ctx.fill();
+}
+// 지평선 나무: 똑같은 원을 반복하는 대신, 침엽수 실루엣을 높이·간격·짙기를 흩어서 배치해요
+function drawTreeline(baseY) {
+  const count = 17;
+  for (let i = 0; i < count; i++) {
+    const jitterX = (pineNoise(i, 1) - 0.5) * (W / count) * 0.9;
+    const x = (i + 0.5) * (W / count) + jitterX;
+    const hgt = 20 + pineNoise(i, 2) * 20;
+    const wid = hgt * 0.6;
+    const y = baseY + pineNoise(i, 3) * 5;
+    drawPine(x, y, wid, hgt, pineNoise(i, 4) > 0.5);
+  }
+}
 
 function drawCourse() {
   const h = COURSE[holeIndex];
@@ -851,17 +909,18 @@ function drawCourse() {
     const sky = ctx.createLinearGradient(0, 0, 0, MAP_TOP);
     sky.addColorStop(0, '#bdeeff'); sky.addColorStop(1, '#eaffee');
     ctx.fillStyle = sky; ctx.fillRect(0, 0, W, MAP_TOP);
-    ctx.beginPath(); ctx.arc(W * 0.78, MAP_TOP * 0.35, 26, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,250,210,0.8)'; ctx.fill();
-    ctx.fillStyle = '#0f3d1c'; ctx.fillRect(0, MAP_TOP - 14, W, H - MAP_TOP + 14);
-    for (let i = 0; i < 14; i++) {
-      const tx = (i + 0.5) * (W / 14);
-      const r = 12 + (i % 3) * 3;
-      ctx.fillStyle = '#123f1f';
-      ctx.beginPath(); ctx.arc(tx, MAP_TOP - 8, r, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#1f5c30';
-      ctx.beginPath(); ctx.arc(tx - r * 0.3, MAP_TOP - 8 - r * 0.3, r * 0.55, 0, Math.PI * 2); ctx.fill();
-    }
+    // 해: HUD 글자가 없는 맨 위 빈 띠에, 은은하게 퍼지는 방사형 그러데이션으로
+    const sunX = W * 0.83, sunY = 18, sunR = 20;
+    const sunGrad = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunR * 2.2);
+    sunGrad.addColorStop(0, 'rgba(255,252,225,0.95)');
+    sunGrad.addColorStop(0.35, 'rgba(255,248,210,0.55)');
+    sunGrad.addColorStop(1, 'rgba(255,248,210,0)');
+    ctx.fillStyle = sunGrad;
+    ctx.beginPath(); ctx.arc(sunX, sunY, sunR * 2.2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fffdf2';
+    ctx.beginPath(); ctx.arc(sunX, sunY, sunR * 0.55, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#0f3d1c'; ctx.fillRect(0, MAP_TOP - 16, W, H - MAP_TOP + 16);
+    drawTreeline(MAP_TOP - 2);
   } else {
     ctx.fillStyle = '#0f3d1c'; ctx.fillRect(0, 0, W, H);
   }
@@ -893,28 +952,35 @@ function drawCourse() {
   const stripeStep = 16;
   const stripeFrom = Math.floor(proj.yStart / stripeStep) * stripeStep;
   for (let y = stripeFrom, band = Math.round(stripeFrom / stripeStep); y < proj.yEnd + stripeStep; y += stripeStep, band++) {
-    if (band % 2 !== 0) continue;
     const sy0 = map(y, 0).y, sy1 = map(y + stripeStep, 0).y;
-    ctx.fillStyle = 'rgba(255,255,255,0.07)';
+    ctx.fillStyle = band % 2 === 0 ? 'rgba(255,255,255,0.16)' : 'rgba(6,40,14,0.14)';
     ctx.fillRect(0, Math.min(sy0, sy1), W, Math.abs(sy0 - sy1) + 1);
   }
   ctx.restore();
-  // 그린 (가로 폭만 원근감으로 좁아지니 타원으로 그려요)
+  // 그린: 딱딱한 테두리 대신 페어웨이 색으로 서서히 번지는 그러데이션 경계로
+  // (가로 폭만 원근감으로 좁아지니 타원 모양이라, 그 비율만큼 좌표를 눌러서 원 그러데이션을 타원처럼 써요)
   const holeMapped = map(h.length, h.holeX);
   const holeWs = proj.widthScaleAt(h.length);
-  ctx.fillStyle = '#8fe39c';
-  ctx.beginPath(); ctx.ellipse(holeMapped.x, holeMapped.y, GREEN_RADIUS * scale * holeWs, GREEN_RADIUS * scale, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = '#5fb86f'; ctx.lineWidth = 1.5; ctx.stroke();
-  // 해저드 (물은 그러데이션+잔물결, 벙커는 점박이 모래알 느낌으로)
+  const gx = GREEN_RADIUS * scale * holeWs, gy = GREEN_RADIUS * scale;
+  ctx.save();
+  ctx.translate(holeMapped.x, holeMapped.y);
+  ctx.scale(Math.max(0.01, gx / gy), 1);
+  const greenGrad = ctx.createRadialGradient(0, 0, gy * 0.5, 0, 0, gy * 1.08);
+  greenGrad.addColorStop(0, '#9df0a8');
+  greenGrad.addColorStop(0.72, '#8fe39c');
+  greenGrad.addColorStop(1, 'rgba(143,227,156,0)');
+  ctx.fillStyle = greenGrad;
+  ctx.beginPath(); ctx.arc(0, 0, gy * 1.08, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  // 해저드 (물은 그러데이션+잔물결, 벙커는 점박이 모래알 느낌으로 — 각진 사각형 대신 자연스러운 얼룩 모양으로)
   for (const hz of h.hazards) {
     if (hz.y1 < proj.yStart || hz.y0 > proj.yEnd) continue;
-    const y0 = clamp(hz.y0, proj.yStart, proj.yEnd), y1 = clamp(hz.y1, proj.yStart, proj.yEnd);
-    const pts = [map(y0, hz.xMin), map(y1, hz.xMin), map(y1, hz.xMax), map(y0, hz.xMax)];
+    const pts = hazardBlobWorldPts(hz).map(p => map(p.y, p.x));
     ctx.save();
-    polyFromPts(pts);
+    smoothPolyPath(pts);
     ctx.clip();
-    const top = Math.min(pts[0].y, pts[1].y, pts[2].y, pts[3].y), bot = Math.max(pts[0].y, pts[1].y, pts[2].y, pts[3].y);
-    const left = Math.min(pts[0].x, pts[1].x, pts[2].x, pts[3].x), right = Math.max(pts[0].x, pts[1].x, pts[2].x, pts[3].x);
+    const top = Math.min(...pts.map(p => p.y)), bot = Math.max(...pts.map(p => p.y));
+    const left = Math.min(...pts.map(p => p.x)), right = Math.max(...pts.map(p => p.x));
     if (hz.type === 'water') {
       const grad = ctx.createLinearGradient(0, top, 0, bot);
       grad.addColorStop(0, '#5fc3f0'); grad.addColorStop(1, '#1f6fae');
@@ -953,12 +1019,20 @@ function drawCourse() {
     ctx.save();
     ctx.setLineDash([4, 6]);
     ctx.strokeStyle = '#ffffff55'; ctx.lineWidth = 1;
-    ctx.fillStyle = '#eaffee'; ctx.font = '11px Jua, sans-serif'; ctx.textAlign = 'right';
+    ctx.font = '11px Jua, sans-serif'; ctx.textAlign = 'right';
     for (let y = yFrom; y < yTo; y += step) {
       const cx = centerlineX(h, y), halfW = fairwayHalfWidthAt(h, y) + ROUGH_BUFFER;
       const pL = map(y, cx - halfW - 4), pR = map(y, cx + halfW + 4);
       ctx.beginPath(); ctx.moveTo(pL.x, pL.y); ctx.lineTo(pR.x, pR.y); ctx.stroke();
-      ctx.fillText(Math.round(h.length - y) + 'm', pL.x - 4, pL.y + 4);
+      // 어떤 색 배경 위에서도 읽히게 글자 뒤에 반투명 라벨을 깔아요
+      const label = Math.round(h.length - y) + 'm';
+      const labelW = ctx.measureText(label).width;
+      ctx.fillStyle = 'rgba(10,25,12,0.55)';
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(pL.x - labelW - 9, pL.y - 8, labelW + 8, 15, 4) : ctx.rect(pL.x - labelW - 9, pL.y - 8, labelW + 8, 15);
+      ctx.fill();
+      ctx.fillStyle = '#eaffee';
+      ctx.fillText(label, pL.x - 5, pL.y + 4);
     }
     ctx.restore();
   }
@@ -979,22 +1053,26 @@ function drawCourse() {
     ctx.stroke();
     ctx.restore();
   }
-  // 깃발 (원근감에 맞춰 멀리 있는 홀에서는 살짝 작게, 바람 방향으로 펄럭이게 그려요)
-  const poleH = clamp(22 * holeWs, 11, 22), flagW = clamp(13 * holeWs, 6.5, 13), cupR = clamp(4 * holeWs, 2, 4);
+  // 깃발 (원근감에 맞춰 멀리 있는 홀에서는 살짝 작게, 바람 방향으로 펄럭이게 그려요 —
+  // 그래도 너무 작아져서 뭉개지지 않게 최소 크기를 넉넉히 잡아요)
+  const poleH = clamp(22 * holeWs, 16, 22), flagW = clamp(13 * holeWs, 9.5, 13), cupR = clamp(4 * holeWs, 2.6, 4);
   const flutter = Math.sin(waveT * 3) * 2.5 * (wind.strength > 0 ? 1 : 0.3);
   const windLean = wind.strength > 0 ? wind.dir * clamp(wind.strength * 1.2, 0, 4) : 0;
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath(); ctx.ellipse(holeMapped.x + 1.5, holeMapped.y + 1.5, cupR, cupR * 0.5, 0, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#1a1a1a';
   ctx.beginPath(); ctx.ellipse(holeMapped.x, holeMapped.y, cupR, cupR * 0.5, 0, 0, Math.PI * 2); ctx.fill();
   ctx.strokeStyle = '#e8e8e8'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(holeMapped.x, holeMapped.y); ctx.lineTo(holeMapped.x, holeMapped.y - poleH); ctx.stroke();
-  ctx.fillStyle = '#ff4d4d';
   ctx.beginPath();
   ctx.moveTo(holeMapped.x, holeMapped.y - poleH);
   ctx.quadraticCurveTo(holeMapped.x + flagW * 0.7 + windLean, holeMapped.y - poleH + poleH * 0.1 + flutter * 0.4,
     holeMapped.x + flagW + windLean, holeMapped.y - poleH + poleH * 0.18 + flutter);
   ctx.quadraticCurveTo(holeMapped.x + flagW * 0.7 + windLean, holeMapped.y - poleH + poleH * 0.27 + flutter * 0.4,
     holeMapped.x, holeMapped.y - poleH + poleH * 0.36);
-  ctx.closePath(); ctx.fill();
+  ctx.closePath();
+  ctx.fillStyle = '#ff4d4d'; ctx.fill();
+  ctx.strokeStyle = '#a02020'; ctx.lineWidth = 1; ctx.stroke();
 }
 
 // 공을 살짝 입체감 있게(그러데이션+딤플) 그려요
@@ -1044,8 +1122,6 @@ function drawBall() {
   ctx.fillStyle = 'rgba(0,0,0,0.2)';
   ctx.beginPath(); ctx.ellipse(pt.x, pt.y + r * 0.15, r * 0.9, r * 0.4, 0, 0, Math.PI * 2); ctx.fill();
   drawBallSphere(pt.x, pt.y, r);
-  ctx.strokeStyle = '#ffd23faa'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(pt.x, pt.y, r * 1.5, 0, Math.PI * 2); ctx.stroke();
 }
 
 function draw() {
