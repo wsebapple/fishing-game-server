@@ -94,6 +94,51 @@
   .home { display: inline-block; margin-top: 0.8em; font-size: clamp(12px, 1.8vw, 17px); color: var(--ink); }
   .home.hidden { display: none; }
   #pauseBtn.hidden { display: none; }
+
+  /* 모바일 전용 점프 버튼: 화면 오른쪽에 두면 손가락이 앞길을 안 가려요 (PC에서는 안 보여요) */
+  #jumpBtn {
+    display: none;
+    position: absolute; right: 2.5%; top: 50%; transform: translateY(-50%);
+    width: 18vmin; height: 18vmin; min-width: 64px; min-height: 64px; max-width: 110px; max-height: 110px;
+    align-items: center; justify-content: center;
+    border-radius: 50%; border: 4px solid var(--ink);
+    background: rgba(255, 207, 63, 0.6);
+    color: var(--ink);
+    font-size: clamp(24px, 6vmin, 40px);
+    box-shadow: 0 6px 0 rgba(201, 154, 18, 0.6);
+    touch-action: none; cursor: pointer;
+  }
+  #jumpBtn:active { transform: translateY(calc(-50% + 4px)); box-shadow: 0 2px 0 rgba(201, 154, 18, 0.6); }
+  #jumpBtn.hidden { display: none !important; }
+  @media (pointer: coarse) {
+    #jumpBtn:not(.hidden) { display: flex; }
+  }
+
+  /* 폰을 세로로 들고 있을 때만(가로로 돌리면 사라져요) 가로 모드를 추천하는 안내 */
+  #rotateHint {
+    display: none;
+    position: fixed; inset: 0; z-index: 50;
+    flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    background: rgba(29, 19, 64, 0.94);
+    color: #fff8e6;
+    text-align: center;
+    padding: 24px;
+  }
+  #rotateHint .icon { font-size: 56px; animation: rotateHintSpin 1.6s ease-in-out infinite; }
+  #rotateHint p { margin: 0; font-size: clamp(15px, 4.4vw, 22px); line-height: 1.5; }
+  #rotateHint button {
+    margin-top: 8px; font-family: inherit; font-size: clamp(14px, 3.6vw, 18px);
+    color: var(--ink); background: var(--button); border: 3px solid #fff8e6; border-radius: 8px;
+    padding: 0.3em 1.1em; box-shadow: 0 4px 0 var(--button-dark); cursor: pointer;
+  }
+  #rotateHint.dismissed { display: none !important; }
+  @keyframes rotateHintSpin {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(-90deg); }
+  }
+  @media (orientation: portrait) and (pointer: coarse) {
+    #rotateHint:not(.dismissed) { display: flex; }
+  }
 </style>
 </head>
 <body>
@@ -101,13 +146,23 @@
   <canvas id="game"></canvas>
   <button id="muteBtn" aria-label="소리 켜기 끄기">🔊</button>
   <button id="pauseBtn" class="hidden" aria-label="멈추기">⏸️</button>
+  <button id="jumpBtn" class="hidden" aria-label="점프">⬆️</button>
 
   <div class="overlay hidden" id="pauseScreen">
     <div class="card">
       <h1>잠깐 멈춤 ⏸️</h1>
       <p>쉬었다가 준비되면 눌러!<br>(키보드 P 나 Esc 로도 할 수 있어)</p>
       <button id="resumeBtn">계속하기</button>
-      <button id="menuBtn" class="small">구간 고르기</button>
+      <button id="menuBtn" class="small">🏠 메인 화면</button>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="deadScreen">
+    <div class="card">
+      <h1>앗! 😵</h1>
+      <p id="deadText"></p>
+      <button id="retryBtn">다시 시작</button>
+      <button id="deadMenuBtn" class="small">🏠 메인 화면</button>
     </div>
   </div>
 
@@ -133,6 +188,12 @@
       <button id="againBtn">처음 화면으로</button>
     </div>
   </div>
+</div>
+
+<div id="rotateHint">
+  <div class="icon" aria-hidden="true">📱</div>
+  <p><strong>가로 모드</strong>로 돌리면 화면이 더 커져서 하기 편해요!<br>기기를 옆으로 돌려주세요.</p>
+  <button id="rotateHintClose">이대로 계속하기</button>
 </div>
 
 <script>
@@ -400,11 +461,27 @@ function win() {
   state = 'win';
   Music.stop();
   pauseBtn.classList.add('hidden');
+  jumpBtn.classList.add('hidden');
   bestPercent = 100;
   const got = LEVEL.stars.filter(s => s.got).length;
   document.getElementById('winText').textContent =
     `도전 ${attempts}번 만에 깼어! 별 ${got}개 / ${LEVEL.stars.length}개 모았어 ⭐`;
   document.getElementById('winScreen').classList.remove('hidden');
+}
+
+function showDeadChoice() {
+  state = 'deadChoice';
+  pauseBtn.classList.add('hidden');
+  jumpBtn.classList.add('hidden');
+  document.getElementById('deadText').textContent =
+    `${Math.max(1, attempts)}번째 도전이었어! 여기까지 ${bestPercent}% 왔어. 다시 해볼까?`;
+  document.getElementById('deadScreen').classList.remove('hidden');
+}
+function retryAttempt() {
+  document.getElementById('deadScreen').classList.add('hidden');
+  pauseBtn.classList.remove('hidden');
+  jumpBtn.classList.remove('hidden');
+  startAttempt();
 }
 
 function splash(x, y) {
@@ -442,7 +519,7 @@ function update(dt) {
 
   if (state === 'dead') {
     deadTimer -= dt;
-    if (deadTimer <= 0) startAttempt();
+    if (deadTimer <= 0) showDeadChoice();
     return;
   }
   if (state !== 'play') return;
@@ -699,7 +776,7 @@ function draw(now) {
   });
   ctx.globalAlpha = 1;
 
-  if (p && state !== 'dead') drawPlayer();
+  if (p && state !== 'dead' && state !== 'deadChoice') drawPlayer();
   ctx.restore();
 
   drawHud();
@@ -790,6 +867,7 @@ function beginFromMenu(col = 0) {
   startScreen.classList.add('hidden');
   winScreen.classList.add('hidden');
   pauseBtn.classList.remove('hidden');
+  jumpBtn.classList.remove('hidden');
   attempts = 0;
   startAttempt();
 }
@@ -815,13 +893,18 @@ function showMenu() {
   if (Music.ctx) Music.ctx.resume();
   winScreen.classList.add('hidden');
   pauseScreen.classList.add('hidden');
+  document.getElementById('deadScreen').classList.add('hidden');
   pauseBtn.classList.add('hidden');
+  jumpBtn.classList.add('hidden');
   startScreen.classList.remove('hidden');
 }
 document.getElementById('againBtn').addEventListener('click', showMenu);
+document.getElementById('retryBtn').addEventListener('click', retryAttempt);
+document.getElementById('deadMenuBtn').addEventListener('click', showMenu);
 
 // ---------- ⏸️ 멈추기 / 계속하기 ----------
 const pauseBtn = document.getElementById('pauseBtn');
+const jumpBtn = document.getElementById('jumpBtn');
 const pauseScreen = document.getElementById('pauseScreen');
 let stateBeforePause = 'play';
 
@@ -849,6 +932,10 @@ document.getElementById('menuBtn').addEventListener('click', showMenu);
 // 다른 창으로 가면 자동으로 멈춤
 document.addEventListener('visibilitychange', () => { if (document.hidden) pauseGame(); });
 
+document.getElementById('rotateHintClose').addEventListener('click', () => {
+  document.getElementById('rotateHint').classList.add('dismissed');
+});
+
 const muteBtn = document.getElementById('muteBtn');
 muteBtn.addEventListener('click', () => {
   Music.muted = !Music.muted;
@@ -857,7 +944,14 @@ muteBtn.addEventListener('click', () => {
 });
 
 // 누르고 있는 동안 holding = true (노트북, 패드, 폰 모두 OK)
-canvas.addEventListener('pointerdown', e => { e.preventDefault(); press(); });
+// 캔버스 안쪽만이 아니라 화면 어디를 눌러도 점프해요. 손가락으로 캐릭터 앞길을 가리지 않아도 되고,
+// 오른쪽의 점프 버튼(모바일)을 눌러도 똑같이 동작해요. (버튼·링크를 누른 건 원래 하려던 동작만 하게 빼줘요)
+document.addEventListener('pointerdown', e => {
+  if (e.target.closest('button, a')) return;
+  e.preventDefault();
+  press();
+});
+jumpBtn.addEventListener('pointerdown', e => { e.preventDefault(); press(); });
 window.addEventListener('pointerup', () => holding = false);
 window.addEventListener('pointercancel', () => holding = false);
 window.addEventListener('blur', () => holding = false);
@@ -873,6 +967,7 @@ window.addEventListener('keydown', e => {
     e.preventDefault();
     if (state === 'menu') { if (!e.repeat) beginFromMenu(0); return; }
     if (state === 'win') { if (!e.repeat) showMenu(); return; }
+    if (state === 'deadChoice') { if (!e.repeat) retryAttempt(); return; }
     if (!e.repeat) press(); else holding = true;
   }
 }, true);
