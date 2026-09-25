@@ -1,5 +1,5 @@
-const fs = require('node:fs/promises');
 const path = require('node:path');
+const { createStorageBackend } = require('./storage');
 
 // 게임을 처음 추가했을 때부터 값이 있어야 하니 기본값을 코드에 둬요. 관리자가 값을 바꾸면
 // data/game-costs.json에 저장되고, 그 뒤로는 파일에 있는 값이 기본값을 덮어써요.
@@ -13,24 +13,18 @@ const DEFAULT_COSTS = {
   'land-grab': 3,
 };
 
-function createCosts(file = path.join(__dirname, '..', 'data', 'game-costs.json')) {
+function createCosts(file = path.join(__dirname, '..', 'data', 'game-costs.json'), backend = createStorageBackend()) {
   let queue = Promise.resolve();
 
   async function read() {
-    let raw;
-    try {
-      raw = await fs.readFile(file, 'utf8');
-    } catch (error) {
-      if (error.code === 'ENOENT') return { ...DEFAULT_COSTS };
-      throw error;
-    }
+    const raw = await backend.read(file);
+    if (raw == null) return { ...DEFAULT_COSTS };
     let data;
     try {
       data = JSON.parse(raw);
     } catch (error) {
-      const quarantine = `${file}.corrupt-${Date.now()}`;
-      await fs.rename(file, quarantine).catch(() => {});
-      console.error('입장료 파일이 손상돼서 격리했어요:', quarantine, error);
+      const quarantine = await backend.quarantine(file);
+      console.error('입장료가 손상돼서 격리했어요:', quarantine, error);
       return { ...DEFAULT_COSTS };
     }
     if (!data || typeof data !== 'object' || Array.isArray(data)) return { ...DEFAULT_COSTS };
@@ -42,10 +36,7 @@ function createCosts(file = path.join(__dirname, '..', 'data', 'game-costs.json'
   }
 
   async function write(data) {
-    await fs.mkdir(path.dirname(file), { recursive: true });
-    const temp = file + '.tmp';
-    await fs.writeFile(temp, JSON.stringify(data), 'utf8');
-    await fs.rename(temp, file);
+    await backend.write(file, JSON.stringify(data));
   }
 
   async function list() {
