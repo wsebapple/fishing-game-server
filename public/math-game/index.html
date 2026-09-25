@@ -202,28 +202,31 @@
 // ops: 그 학년에서 나오는 연산 종류. add/subMax: 덧셈·뺄셈 피연산자의 대략적인 최댓값.
 // mulMax: 곱셈 두 수가 각각 2~mulMax 사이(구구단 느낌). divMax: 나눗셈의 몫과 나누는 수가 각각 2~divMax 사이라서
 // 항상 나누어 떨어지는 문제만 나와요.
+// types: 그 학년에서 뽑힐 수 있는 문제 종류(아래 PROBLEM_GENERATORS의 키). 매 문제마다 이 중 하나를 무작위로 골라요.
 const GRADES = [
-  { g: 1, label: '1학년', emoji: '1️⃣', ops: ['+', '-'],
+  { g: 1, label: '1학년', emoji: '1️⃣', types: ['add', 'sub'],
     easy:   { add: 5,    sub: 9    },
     normal: { add: 9,    sub: 15   },
     hard:   { add: 20,   sub: 30   } },
-  { g: 2, label: '2학년', emoji: '2️⃣', ops: ['+', '-', '×'],
+  { g: 2, label: '2학년', emoji: '2️⃣', types: ['add', 'sub', 'mul'],
     easy:   { add: 20,   sub: 30,   mul: 5  },
     normal: { add: 50,   sub: 60,   mul: 7  },
     hard:   { add: 99,   sub: 99,   mul: 9  } },
-  { g: 3, label: '3학년', emoji: '3️⃣', ops: ['+', '-', '×', '÷'],
-    easy:   { add: 99,   sub: 99,   mul: 9,  div: 9  },
-    normal: { add: 200,  sub: 200,  mul: 12, div: 12 },
-    hard:   { add: 500,  sub: 500,  mul: 12, div: 12 } },
-  { g: 4, label: '4학년', emoji: '4️⃣', ops: ['+', '-', '×', '÷'],
+  // 3학년: 곱셈·나눗셈에 더해, 분모가 같은 분수끼리 더하기(fracAdd)와 소수 한 자리 덧셈(decAdd)도 나와요.
+  { g: 3, label: '3학년', emoji: '3️⃣', types: ['add', 'sub', 'mul', 'div', 'fracAdd', 'decAdd'],
+    easy:   { add: 99,   sub: 99,   mul: 9,  div: 9,  fracDenMax: 5, decTenthsMax: 9  },
+    normal: { add: 200,  sub: 200,  mul: 12, div: 12, fracDenMax: 7, decTenthsMax: 50 },
+    hard:   { add: 500,  sub: 500,  mul: 12, div: 12, fracDenMax: 9, decTenthsMax: 99 } },
+  { g: 4, label: '4학년', emoji: '4️⃣', types: ['add', 'sub', 'mul', 'div'],
     easy:   { add: 500,  sub: 500,  mul: 12, div: 12 },
     normal: { add: 1000, sub: 1000, mul: 15, div: 15 },
     hard:   { add: 3000, sub: 3000, mul: 20, div: 15 } },
-  { g: 5, label: '5학년', emoji: '5️⃣', ops: ['+', '-', '×', '÷'],
-    easy:   { add: 1000, sub: 1000, mul: 20, div: 15 },
-    normal: { add: 5000, sub: 5000, mul: 25, div: 20 },
-    hard:   { add: 9999, sub: 9999, mul: 30, div: 25 } },
-  { g: 6, label: '6학년', emoji: '6️⃣', ops: ['+', '-', '×', '÷'],
+  // 5학년: 사칙연산에 더해, 약분(reduceFrac)·최대공약수(gcd)·최소공배수(lcm) 문제도 나와요.
+  { g: 5, label: '5학년', emoji: '5️⃣', types: ['add', 'sub', 'mul', 'div', 'reduceFrac', 'gcd', 'lcm'],
+    easy:   { add: 1000, sub: 1000, mul: 20, div: 15, reduceDenMax: 6,  reduceFactorMax: 3, coprimeMax: 5, gcdFactorMax: 4 },
+    normal: { add: 5000, sub: 5000, mul: 25, div: 20, reduceDenMax: 9,  reduceFactorMax: 5, coprimeMax: 7, gcdFactorMax: 6 },
+    hard:   { add: 9999, sub: 9999, mul: 30, div: 25, reduceDenMax: 12, reduceFactorMax: 8, coprimeMax: 9, gcdFactorMax: 9 } },
+  { g: 6, label: '6학년', emoji: '6️⃣', types: ['add', 'sub', 'mul', 'div'],
     easy:   { add: 5000,  sub: 5000,  mul: 25, div: 20 },
     normal: { add: 9999,  sub: 9999,  mul: 30, div: 25 },
     hard:   { add: 20000, sub: 20000, mul: 40, div: 30 } },
@@ -238,41 +241,112 @@ const DIFF_POINTS = { easy: 8, normal: 12, hard: 18 };
 let selectedGrade = null, selectedDiff = null;
 
 function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+function gcdOf(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b]; } return a; }
+
+// ---------- 문제 생성기 ----------
+// 문제마다 kind(numeric/fraction/decimal)를 붙여서, 아래에서 보기(선택지)를 다르게 만들어요.
+const PROBLEM_GENERATORS = {
+  add(range) {
+    const a = randInt(1, range.add), b = randInt(1, range.add);
+    return { kind: 'numeric', text: a + ' + ' + b + ' = ?', answer: a + b };
+  },
+  sub(range) {
+    const a = randInt(Math.max(1, Math.floor(range.sub / 2)), range.sub);
+    const b = randInt(0, a);
+    return { kind: 'numeric', text: a + ' - ' + b + ' = ?', answer: a - b };
+  },
+  mul(range) {
+    const a = randInt(2, range.mul), b = randInt(2, range.mul);
+    return { kind: 'numeric', text: a + ' × ' + b + ' = ?', answer: a * b };
+  },
+  div(range) {
+    const b = randInt(2, range.div), q = randInt(2, range.div);
+    return { kind: 'numeric', text: (b * q) + ' ÷ ' + b + ' = ?', answer: q };
+  },
+  // 3학년: 분모가 같은 진분수끼리 더해요. 합이 1보다 작게(진분수가 되게) 두 번째 분자를 제한해요.
+  fracAdd(range) {
+    const d = randInt(3, range.fracDenMax);
+    const n1 = randInt(1, d - 2);
+    const n2 = randInt(1, d - 1 - n1);
+    return { kind: 'fraction', text: n1 + '/' + d + ' + ' + n2 + '/' + d + ' = ?', numerator: n1 + n2, denominator: d };
+  },
+  // 3학년: 소수 한 자리(0.1 단위) 덧셈. 오차 없이 더하려고 "몇 십분의 몇"(tenths) 정수로 계산해요.
+  decAdd(range) {
+    const t1 = randInt(1, range.decTenthsMax), t2 = randInt(1, range.decTenthsMax);
+    return { kind: 'decimal', text: (t1 / 10).toFixed(1) + ' + ' + (t2 / 10).toFixed(1) + ' = ?', tenths: t1 + t2 };
+  },
+  // 5학년: 기약분수 n/d를 k배 부풀린 n*k/d*k를 보여주고 약분시켜요.
+  reduceFrac(range) {
+    let d, n;
+    do { d = randInt(2, range.reduceDenMax); n = randInt(1, d - 1); } while (gcdOf(n, d) !== 1);
+    const k = randInt(2, range.reduceFactorMax);
+    return { kind: 'fraction', text: (n * k) + '/' + (d * k) + ' 을 약분하면?', numerator: n, denominator: d };
+  },
+  // 5학년: 서로소인 x,y에 공통 인수 g를 곱해서(x*g, y*g) 최대공약수가 정확히 g가 되게 만들어요.
+  gcd(range) {
+    const x = randInt(2, range.coprimeMax);
+    let y; do { y = randInt(2, range.coprimeMax); } while (gcdOf(x, y) !== 1);
+    const g = randInt(2, range.gcdFactorMax);
+    return { kind: 'numeric', text: (x * g) + ', ' + (y * g) + '의 최대공약수는?', answer: g };
+  },
+  // 5학년: 같은 방식으로 최소공배수는 x*y*g예요. "그냥 두 수를 곱한 값"(a*b)도 흔한 오답으로 보기에 넣어요.
+  lcm(range) {
+    const x = randInt(2, range.coprimeMax);
+    let y; do { y = randInt(2, range.coprimeMax); } while (gcdOf(x, y) !== 1);
+    const g = randInt(1, range.gcdFactorMax);
+    const a = x * g, b = y * g;
+    return { kind: 'numeric', text: a + ', ' + b + '의 최소공배수는?', answer: x * y * g, product: a * b };
+  },
+};
 
 function makeProblem(gradeCfg, diffKey) {
   const range = gradeCfg[diffKey];
-  const ops = gradeCfg.ops;
-  const op = ops[randInt(0, ops.length - 1)];
-  let a, b, answer;
-  if (op === '+') {
-    a = randInt(1, range.add);
-    b = randInt(1, range.add);
-    answer = a + b;
-  } else if (op === '-') {
-    a = randInt(Math.max(1, Math.floor(range.sub / 2)), range.sub);
-    b = randInt(0, a);
-    answer = a - b;
-  } else if (op === '×') {
-    a = randInt(2, range.mul);
-    b = randInt(2, range.mul);
-    answer = a * b;
-  } else {
-    b = randInt(2, range.div);
-    answer = randInt(2, range.div);
-    a = b * answer;
-  }
-  return { text: a + ' ' + op + ' ' + b + ' = ?', answer };
+  const type = gradeCfg.types[randInt(0, gradeCfg.types.length - 1)];
+  return PROBLEM_GENERATORS[type](range);
 }
 
-function makeChoices(answer) {
-  const step = Math.max(1, Math.round(answer * 0.12) || 1);
-  const set = new Set([answer]);
+function answerText(problem) {
+  if (problem.kind === 'fraction') return problem.numerator + '/' + problem.denominator;
+  if (problem.kind === 'decimal') return (problem.tenths / 10).toFixed(1);
+  return String(problem.answer);
+}
+
+function numericDeltaSet(base) {
+  const step = Math.max(1, Math.round(Math.abs(base) * 0.12) || 1);
+  const set = new Set([base]);
   while (set.size < 4) {
     const delta = randInt(1, step * 3 || 3) * (Math.random() < 0.5 ? -1 : 1);
-    const candidate = answer + delta;
-    if (candidate >= 0 && candidate !== answer) set.add(candidate);
+    const candidate = base + delta;
+    if (candidate >= 0 && candidate !== base) set.add(candidate);
   }
-  return shuffle([...set]);
+  return set;
+}
+
+function makeChoices(problem) {
+  if (problem.kind === 'fraction') {
+    const set = new Set([problem.numerator]);
+    while (set.size < 4) {
+      const delta = randInt(1, 3) * (Math.random() < 0.5 ? -1 : 1);
+      const candidate = problem.numerator + delta;
+      if (candidate >= 0 && candidate !== problem.numerator) set.add(candidate);
+    }
+    return shuffle([...set]).map(n => n + '/' + problem.denominator);
+  }
+  if (problem.kind === 'decimal') {
+    return shuffle([...numericDeltaSet(problem.tenths)]).map(t => (t / 10).toFixed(1));
+  }
+  if (problem.product !== undefined) {
+    const set = new Set([problem.answer]);
+    if (problem.product !== problem.answer) set.add(problem.product);
+    const step = Math.max(1, Math.round(problem.answer * 0.12) || 1);
+    while (set.size < 4) {
+      const delta = randInt(1, step * 3 || 3) * (Math.random() < 0.5 ? -1 : 1);
+      const candidate = problem.answer + delta;
+      if (candidate >= 0 && candidate !== problem.answer && candidate !== problem.product) set.add(candidate);
+    }
+    return shuffle([...set]).map(String);
+  }
+  return shuffle([...numericDeltaSet(problem.answer)]).map(String);
 }
 
 // ---------- 소리 (컴퓨터가 직접 연주해요) ----------
@@ -361,7 +435,8 @@ function renderQuestion() {
   gradeEl.className = 'badge ' + selectedDiff.key;
   bounceExpr();
 
-  const options = makeChoices(currentProblem.answer).map(n => ({ t: String(n), correct: n === currentProblem.answer }));
+  const correctText = answerText(currentProblem);
+  const options = makeChoices(currentProblem).map(t => ({ t, correct: t === correctText }));
 
   choicesEl.innerHTML = '';
   options.forEach(opt => {
