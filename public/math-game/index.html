@@ -190,7 +190,7 @@
   <div class="modal hidden" id="quitConfirm">
     <div class="card">
       <h1>⚠️ 잠깐!</h1>
-      <p style="text-align:center">정말 그만하고 처음 화면으로 돌아갈까요?<br>지금까지 점수는 사라져요.</p>
+      <p style="text-align:center">정말 그만하고 난이도를 다시 고를까요?<br>지금까지 점수는 사라져요.</p>
       <button id="quitYes">네, 나갈게요</button>
       <button id="quitNo" class="small">아니요</button>
     </div>
@@ -551,8 +551,16 @@ el('muteBtn').addEventListener('click', () => {
   el('muteBtn').textContent = Sound.muted ? '🔇' : '🔊';
 });
 
+function quitToDiffScreen() {
+  gameOver = true;
+  clearInterval(timerHandle);
+  playArea.classList.add('hidden');
+  el('quitBtn').classList.add('hidden');
+  showDiffScreen();
+}
+
 el('quitBtn').addEventListener('click', () => el('quitConfirm').classList.remove('hidden'));
-el('quitYes').addEventListener('click', () => { window.location.href = '/'; });
+el('quitYes').addEventListener('click', () => { el('quitConfirm').classList.add('hidden'); quitToDiffScreen(); });
 el('quitNo').addEventListener('click', () => el('quitConfirm').classList.add('hidden'));
 
 document.addEventListener('visibilitychange', () => { paused = document.hidden; });
