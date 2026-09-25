@@ -71,6 +71,7 @@
   .badge.g8 { background: #4a9d6e; }
   .badge.g7 { background: #d68a2e; }
   .badge.g6 { background: #c0392b; }
+  .badge.g5 { background: #7a3ec4; }
   #hanjaChar { display: block; font-size: clamp(88px, 24vw, 140px); line-height: 1; margin-top: 6px; font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', serif; }
   #hanjaChar.bounce { animation: charBounce .45s ease; }
   #popups { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
@@ -108,6 +109,11 @@
   .card button.small { font-size: clamp(13px, 2vw, 17px); padding: 0.25em 0.8em; border-width: 3px; box-shadow: 0 3px 0 var(--button-dark); background: var(--panel); color: var(--ink); }
   .home { display: inline-block; margin-top: 0.7em; font-size: clamp(12px, 1.8vw, 15px); color: var(--ink); }
 
+  .gradeRow { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 10px 0 4px; }
+  .gradePill { font-family: inherit; font-size: clamp(14px, 3vw, 17px); font-weight: bold; color: var(--ink); background: var(--panel-alt); border: 2px solid var(--ink); border-radius: 999px; padding: 8px 16px; cursor: pointer; opacity: .6; transform: scale(.96); transition: transform .12s ease, opacity .12s ease; }
+  .gradePill.active { opacity: 1; transform: scale(1.06); background: var(--button); color: #fff; box-shadow: 0 4px 0 var(--button-dark); }
+  .gradeDesc { font-size: clamp(12px, 2vw, 14px); opacity: .8; text-align: center; margin: 2px 0 12px; }
+
   @keyframes shake { 10%,90%{transform:translateX(-1px)} 20%,80%{transform:translateX(2px)} 30%,50%,70%{transform:translateX(-7px)} 40%,60%{transform:translateX(7px)} }
   @keyframes charBounce { 0%{transform:scale(.7) rotate(-6deg);opacity:.4} 55%{transform:scale(1.15) rotate(3deg);opacity:1} 100%{transform:scale(1) rotate(0)} }
   @keyframes floatUp { 0%{transform:translate(-50%,0) scale(.8);opacity:0} 18%{opacity:1;transform:translate(-50%,-8px) scale(1.08)} 100%{transform:translate(-50%,-58px) scale(1);opacity:0} }
@@ -142,12 +148,19 @@
       <h1>🀄 한자 맞추기</h1>
       <p>
         🀄 화면에 나온 한자를 보고, 알맞은 뜻과 소리(훈음)를 골라보세요!<br>
-        🎖️ 한자마다 급수가 표시돼요. 8급보다 7급, 7급보다 6급이 더 어렵고 점수도 더 높아요!<br>
+        🎖️ 한자마다 급수가 표시돼요. 8급보다 7급, 6급, 5급 순으로 더 어렵고 점수도 더 높아요!<br>
         ⏳ 시간은 60초! 정답을 많이 맞힐수록 시간이 늘어나요.<br>
         🔥 연속으로 맞히면 콤보가 쌓이고 점수 배율도 쭉쭉 올라가요. 5콤보마다 시간이 3초 늘어나요!<br>
         ❤️ 틀리면 목숨이 하나 줄고 시간도 2초 줄어요. 목숨 3개를 모두 잃으면 끝이에요.<br>
         🏆 최고 점수에 도전해보세요!
       </p>
+      <div class="gradeRow" id="gradeRow">
+        <button type="button" class="gradePill" data-grade="8">8급</button>
+        <button type="button" class="gradePill" data-grade="7">7급</button>
+        <button type="button" class="gradePill" data-grade="6">6급</button>
+        <button type="button" class="gradePill" data-grade="5">5급</button>
+      </div>
+      <p class="gradeDesc">내 급수를 골라주세요! 급수가 높을수록 그 급수에 가까운 어려운 한자가 더 자주 나와요.</p>
       <p class="best">최고 점수: <span id="bestStart">0</span>점</p>
       <button id="startBtn">시작하기</button>
       <br><a class="home" href="/">🏠 게임 놀이터로</a>
@@ -175,9 +188,9 @@
 </div>
 
 <script>
-// ---------- 한자 데이터 (초등 교육용 기초 한자 100자, 훈음, 급수) ----------
-// g(급수): 8급은 한국어문회 공식 배정한자 목록으로 확인됨. 7급·6급은 공식 세부 목록(7급Ⅱ·6급Ⅱ 구분)까지는
-// 확인하지 못해 개념 난이도(자연·신체=7급, 추상 개념어=6급)로 간단히 나눈 값이에요.
+// ---------- 한자 데이터 (초등 교육용 기초 한자 136자, 훈음, 급수) ----------
+// g(급수): 8급은 한국어문회 공식 배정한자 목록으로 확인됨. 7급·6급·5급은 공식 세부 목록(Ⅱ 구분)까지는
+// 확인하지 못해 개념 난이도로 간단히 나눈 값이에요(8급→7급→6급→5급 순으로 점점 추상적인 개념어).
 const HANJA = [
   {c:'一',m:'한',r:'일',g:8},{c:'二',m:'두',r:'이',g:8},{c:'三',m:'석',r:'삼',g:8},{c:'四',m:'넉',r:'사',g:8},{c:'五',m:'다섯',r:'오',g:8},
   {c:'六',m:'여섯',r:'육',g:8},{c:'七',m:'일곱',r:'칠',g:8},{c:'八',m:'여덟',r:'팔',g:8},{c:'九',m:'아홉',r:'구',g:8},{c:'十',m:'열',r:'십',g:8},
@@ -199,9 +212,18 @@ const HANJA = [
   {c:'韓',m:'한국',r:'한',g:8},{c:'國',m:'나라',r:'국',g:8},{c:'民',m:'백성',r:'민',g:8},{c:'軍',m:'군사',r:'군',g:8},{c:'農',m:'농사',r:'농',g:6},
   {c:'工',m:'장인',r:'공',g:6},{c:'世',m:'인간',r:'세',g:6},{c:'全',m:'온전',r:'전',g:6},{c:'名',m:'이름',r:'명',g:6},{c:'道',m:'길',r:'도',g:6},
   {c:'正',m:'바를',r:'정',g:6},{c:'事',m:'일',r:'사',g:6},{c:'物',m:'물건',r:'물',g:6},{c:'主',m:'주인',r:'주',g:6},{c:'命',m:'목숨',r:'명',g:6},
+  {c:'感',m:'느낄',r:'감',g:5},{c:'強',m:'강할',r:'강',g:5},{c:'弱',m:'약할',r:'약',g:5},{c:'苦',m:'쓸',r:'고',g:5},{c:'樂',m:'즐길',r:'락',g:5},
+  {c:'待',m:'기다릴',r:'대',g:5},{c:'對',m:'대할',r:'대',g:5},{c:'童',m:'아이',r:'동',g:5},{c:'頭',m:'머리',r:'두',g:5},{c:'等',m:'무리',r:'등',g:5},
+  {c:'例',m:'법식',r:'례',g:5},{c:'禮',m:'예도',r:'례',g:5},{c:'路',m:'길',r:'로',g:5},{c:'綠',m:'푸를',r:'록',g:5},{c:'利',m:'이할',r:'리',g:5},
+  {c:'反',m:'돌이킬',r:'반',g:5},{c:'半',m:'반',r:'반',g:5},{c:'發',m:'필',r:'발',g:5},{c:'放',m:'놓을',r:'방',g:5},{c:'別',m:'다를',r:'별',g:5},
+  {c:'病',m:'병',r:'병',g:5},{c:'服',m:'옷',r:'복',g:5},{c:'本',m:'근본',r:'본',g:5},{c:'死',m:'죽을',r:'사',g:5},{c:'社',m:'모일',r:'사',g:5},
+  {c:'書',m:'글',r:'서',g:5},{c:'線',m:'줄',r:'선',g:5},{c:'性',m:'성품',r:'성',g:5},{c:'成',m:'이룰',r:'성',g:5},{c:'消',m:'사라질',r:'소',g:5},
+  {c:'速',m:'빠를',r:'속',g:5},{c:'樹',m:'나무',r:'수',g:5},{c:'習',m:'익힐',r:'습',g:5},{c:'勝',m:'이길',r:'승',g:5},{c:'神',m:'귀신',r:'신',g:5},
+  {c:'身',m:'몸',r:'신',g:5},
 ];
 const itemText = h => h.m + ' ' + h.r;
-const GRADE_POINTS = { 8: 10, 7: 15, 6: 20 };
+const GRADE_ORDER = [8, 7, 6, 5]; // 왼쪽일수록 쉬움
+const GRADE_POINTS = { 8: 10, 7: 15, 6: 20, 5: 25 };
 
 // ---------- 소리 (컴퓨터가 직접 연주해요) ----------
 const Sound = {
@@ -227,8 +249,11 @@ const Sound = {
 const ROUND_TIME = 60;
 let score = 0, timeLeft = ROUND_TIME, lives = 3, combo = 0, bestCombo = 0;
 let totalAnswered = 0, totalCorrect = 0;
-let bag = [], lastChar = null, currentItem = null;
+let lastChar = null, currentItem = null, pool = [];
 let locked = false, gameOver = false, paused = false, timerHandle = null;
+
+let selectedGrade = Number(localStorage.getItem('hanjaGameGrade'));
+if (!GRADE_ORDER.includes(selectedGrade)) selectedGrade = 8;
 
 const el = id => document.getElementById(id);
 const scoreEl = el('score'), timerEl = el('timer'), livesEl = el('lives'), comboEl = el('combo');
@@ -238,10 +263,25 @@ const playArea = el('playArea'), wrapEl = el('wrap');
 function shuffle(arr) { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
 function comboMultiplier(n) { if (n >= 10) return 3; if (n >= 6) return 2; if (n >= 3) return 1.5; return 1; }
 
+// 고른 급수까지의 한자만 후보로 두고, 급수가 높을수록(그 급수에 가까울수록) 더 자주 뽑히게 가중치를 둬요.
+// 예를 들어 6급을 고르면 8·7·6급이 모두 나오되, 6급이 8급보다 3배 더 자주 나와요.
+function buildPool(grade) {
+  const maxRank = GRADE_ORDER.indexOf(grade);
+  return HANJA
+    .filter(h => GRADE_ORDER.indexOf(h.g) <= maxRank)
+    .map(h => ({ item: h, weight: GRADE_ORDER.indexOf(h.g) + 1 }));
+}
+
+function weightedDraw(candidates) {
+  const total = candidates.reduce((sum, p) => sum + p.weight, 0);
+  let r = Math.random() * total;
+  for (const p of candidates) { r -= p.weight; if (r <= 0) return p.item; }
+  return candidates[candidates.length - 1].item;
+}
+
 function drawItem() {
-  if (bag.length === 0) bag = shuffle(HANJA.slice());
-  let item = bag.pop();
-  if (item.c === lastChar && bag.length > 0) { bag.unshift(item); item = bag.pop(); }
+  let item = weightedDraw(pool);
+  for (let tries = 0; item.c === lastChar && tries < 5 && pool.length > 1; tries++) item = weightedDraw(pool);
   lastChar = item.c;
   return item;
 }
@@ -298,9 +338,9 @@ function renderQuestion() {
   bounceChar();
 
   const correctText = itemText(currentItem);
-  const pool = shuffle(HANJA.filter(h => h.c !== currentItem.c));
+  const distractorPool = shuffle(HANJA.filter(h => h.c !== currentItem.c));
   const distractors = [];
-  for (const h of pool) {
+  for (const h of distractorPool) {
     const t = itemText(h);
     if (t !== correctText && !distractors.includes(t)) { distractors.push(t); if (distractors.length === 3) break; }
   }
@@ -383,7 +423,8 @@ function startTimer() {
 function startGame() {
   Sound.ensure();
   score = 0; timeLeft = ROUND_TIME; lives = 3; combo = 0; bestCombo = 0;
-  totalAnswered = 0; totalCorrect = 0; bag = []; lastChar = null; gameOver = false;
+  totalAnswered = 0; totalCorrect = 0; lastChar = null; gameOver = false;
+  pool = buildPool(selectedGrade);
   el('startScreen').classList.add('hidden');
   el('overScreen').classList.add('hidden');
   playArea.classList.remove('hidden');
@@ -413,6 +454,20 @@ function endGame() {
 el('bestStart').textContent = localStorage.getItem('hanjaGameBest') || 0;
 el('startBtn').addEventListener('click', startGame);
 el('againBtn').addEventListener('click', startGame);
+
+function renderGradePicker() {
+  document.querySelectorAll('.gradePill').forEach(b => {
+    b.classList.toggle('active', Number(b.dataset.grade) === selectedGrade);
+  });
+}
+document.querySelectorAll('.gradePill').forEach(b => {
+  b.addEventListener('click', () => {
+    selectedGrade = Number(b.dataset.grade);
+    localStorage.setItem('hanjaGameGrade', String(selectedGrade));
+    renderGradePicker();
+  });
+});
+renderGradePicker();
 
 el('muteBtn').addEventListener('click', () => {
   Sound.muted = !Sound.muted;
