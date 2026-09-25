@@ -542,6 +542,12 @@ function burst(x, y, color, count) {
     particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 40, life: 0.5 + Math.random() * 0.3, size: 4 + Math.random() * 6, color });
   }
 }
+// 폭탄·무지개 과일은 level이 null이라 FRUITS[f.level]이 없어요 — 조각 색을 고를 때 항상 이걸로 가져와요
+function fruitColor(f) {
+  if (f.special === 'bomb') return '#2b2b2b';
+  if (f.special === 'rainbow') return '#ffd54a';
+  return FRUITS[f.level].color;
+}
 function updateParticles(dt) {
   particles.forEach(p => { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 500 * dt; p.life -= dt; });
   particles = particles.filter(p => p.life > 0);
@@ -847,7 +853,7 @@ function explodeBombs(initial, now) {
       if (f.special === 'bomb') { queue.push(f); continue; }   // 연쇄 폭발!
       removed.add(f.id);
       addScore(2);
-      burst(f.x, f.y, FRUITS[f.level].color, 6);
+      burst(f.x, f.y, fruitColor(f), 6);
     }
   }
   if (exploded.size > 1) popText(initial[0].x, initial[0].y - 40, '연쇄 폭발! 💥');
@@ -860,7 +866,7 @@ function triggerGrandSlam(x, y) {
   const bonus = 300 + fruits.length * 5;
   addScore(bonus);
   popText(x, y - 50, '보너스! +' + bonus);
-  fruits.forEach(f => burst(f.x, f.y, f.special === 'bomb' ? '#2b2b2b' : FRUITS[f.level].color, 10));
+  fruits.forEach(f => burst(f.x, f.y, fruitColor(f), 10));
   burst(x, y, '#ffd54a', 40);
   Music.sfx('big');
   fruits = [];
@@ -993,7 +999,7 @@ function draw(now) {
       ctx.restore();
     }
   }
-  const nextR = next.special === 'bomb' ? 22 : Math.min(FRUITS[next.level].r, 24);
+  const nextR = next.special ? 22 : Math.min(FRUITS[next.level].r, 24);
   drawFruit(ctx, { level: next.level, special: next.special, x: W - 34, y: 68, r: nextR }, now);
 
   drawParticles();
