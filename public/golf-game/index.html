@@ -282,11 +282,31 @@ const Snd = {
     o.connect(g).connect(this.ctx.destination);
     o.start(t); o.stop(t + len);
   },
-  play(kind) {
+  // 짧은 백색소음 버스트 — 스윙·착지처럼 "퍽!" 하는 타격감 있는 소리를 낼 때 써요
+  noiseBurst(t, len, vol, hpFreq) {
+    if (!this.ctx) return;
+    const n = Math.max(1, Math.floor(this.ctx.sampleRate * len));
+    const buffer = this.ctx.createBuffer(1, n, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < n; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const src = this.ctx.createBufferSource(); src.buffer = buffer;
+    const filter = this.ctx.createBiquadFilter(); filter.type = 'highpass'; filter.frequency.value = hpFreq || 1200;
+    const g = this.ctx.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + len);
+    src.connect(filter).connect(g).connect(this.ctx.destination);
+    src.start(t);
+  },
+  play(kind, power) {
     if (this.muted || !this.ctx) return;
     const t = this.ctx.currentTime;
+    const p = power == null ? 1 : clamp(power, 0.3, 1.4);
     if (kind === 'tick') { this.tone(520, t, 0.04, 'square', 0.05); return; }
-    if (kind === 'swing') { this.tone(220, t, 0.14, 'square', 0.1, 90); return; }
+    if (kind === 'swing') {
+      this.noiseBurst(t, 0.045, 0.22 * p, 2200);
+      this.tone(170, t, 0.15, 'triangle', 0.15 * p, 65);
+      this.tone(80, t + 0.01, 0.12, 'sine', 0.12 * p, 40);
+      return;
+    }
+    if (kind === 'thud') { this.noiseBurst(t, 0.07, 0.1, 500); this.tone(95, t, 0.1, 'sine', 0.09, 45); return; }
     if (kind === 'great') { [660, 880, 1100].forEach((f, i) => this.tone(f, t + i * 0.05, 0.12, 'triangle', 0.14)); return; }
     if (kind === 'miss') { this.tone(160, t, 0.18, 'sawtooth', 0.1, 90); return; }
     if (kind === 'splash') { this.tone(300, t, 0.22, 'sine', 0.12, 120); return; }
@@ -391,9 +411,28 @@ let phase = 'idle'; // idle | power | accuracy | flying
 let powerLoopT = 0, accLoopT = 0, lockedPower = 0, lockedAccuracy = 0;
 let flight = null;
 let pendingHoleShotStart = null; // {y,x} 벌타로 되돌아갈 위치
+// 카메라 창(camY0~camY1): 처음엔 홀 전체가 보이다가, 공이 날아가는 동안 실시간으로
+// 공을 따라가며 서서히 좁혀져서 "홀에 점점 다가가는" 느낌을 줘요.
+let camY0 = 0, camY1 = COURSE[0].length + 10;
+const CAM_LOOKBEHIND = 25, CAM_LOOKAHEAD = 10, CAM_SPEED = 3.2;
 let bannerText = '', bannerT = 0;
 let popups = [], best = null;
+let particles = [], shakeTime = 0, shakeMag = 0, ballTrail = [], waveT = 0;
 try { const b = localStorage.getItem('golfGameBest'); if (b !== null) best = parseInt(b, 10); } catch (e) {}
+
+// 타격감(치는 맛)을 위한 이펙트: 화면을 잠깐 흔들고, 잔디/모래/물 파편을 흩뿌려요
+function shakeScreen(mag, time) { shakeMag = Math.max(shakeMag, mag); shakeTime = Math.max(shakeTime, time); }
+function burstParticles(x, y, count, colors, spread) {
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const spd = (20 + Math.random() * 90) * spread;
+    particles.push({
+      x, y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd - spd * 0.4,
+      life: 0.35 + Math.random() * 0.35, maxLife: 0.7,
+      r: 1.5 + Math.random() * 2.5, color: colors[(Math.random() * colors.length) | 0],
+    });
+  }
+}
 
 const startScreen = document.getElementById('startScreen');
 const pauseScreen = document.getElementById('pauseScreen');
@@ -465,6 +504,8 @@ function startHole(idx) {
   aimOffsetDeg = 0; aimHeld = null;
   lie = 'tee';
   phase = 'idle';
+  camY0 = 0; camY1 = h.length + CAM_LOOKAHEAD;
+  particles = []; ballTrail = [];
   gaugeWrap.classList.add('hidden');
   accuracyBar.classList.add('hidden');
   updateHoleUi();
@@ -571,6 +612,14 @@ function launchShot() {
   const rad = degToRad(totalAngleDeg);
   const forward = travel * Math.cos(rad);
   const lateralDelta = travel * Math.sin(rad);
+  const powerFrac = clamp(travel / maxPower, 0.25, 1.2);
+
+  // 타격감: 스윙 순간 화면이 잠깐 흔들리고 잔디(또는 모래) 파편이 튀어요
+  const hitPt = currentProjector().map(ballY, ballX);
+  shakeScreen(clamp(powerFrac * 9, 2, 9), 0.2);
+  const divotColors = lie === 'sand' ? ['#dcb567', '#c99f4d', '#fff'] : ['#4fae5c', '#2f7a3d', '#c9a35a'];
+  burstParticles(hitPt.x, hitPt.y, Math.round(8 + powerFrac * 10), divotColors, 0.5 + powerFrac * 0.6);
+  ballTrail = [];
 
   strokesThisHole++; totalStrokes++;
   pendingHoleShotStart = { y: ballY, x: ballX };
@@ -582,7 +631,7 @@ function launchShot() {
   };
   phase = 'flying';
   gaugeWrap.classList.add('hidden');
-  Snd.play('swing');
+  Snd.play('swing', powerFrac);
   if (quality === 'PERFECT') addPopup('PERFECT!', '#8be0ff');
   else if (quality === 'MISS') addPopup(missOffset < 0 ? '훅! 😵' : '슬라이스! 😵', '#ff8a3d');
   updateHoleUi();
@@ -594,6 +643,7 @@ function resolveLanding() {
   const h = COURSE[holeIndex];
   let newY = clamp(flight.startY + flight.forward, 0, h.length);
   let newX = flight.startX + flight.lateralDelta;
+  const landPt = currentProjector().map(newY, newX);
   const dToHole = Math.hypot(h.length - newY, h.holeX - newX);
   if (dToHole <= HOLE_RADIUS || strokesThisHole >= 8) {
     ballY = newY; ballX = newX;
@@ -601,14 +651,18 @@ function resolveLanding() {
     return;
   }
   const newLie = lieAt(h, newY, newX);
+  shakeScreen(3, 0.1);
   if (newLie === 'water' || newLie === 'trees') {
     Snd.play(newLie === 'water' ? 'splash' : 'miss');
+    burstParticles(landPt.x, landPt.y, 12, newLie === 'water' ? ['#5fc3f0', '#bfe9ff'] : ['#7a5230', '#4fae5c'], 0.7);
     addPopup(newLie === 'water' ? '풍덩! +1벌타' : 'OB! +1벌타', '#ff5b3d');
     totalStrokes++; strokesThisHole++;
     ballY = pendingHoleShotStart.y; ballX = pendingHoleShotStart.x;
     lie = lieAt(h, ballY, ballX);
   } else {
-    if (newLie === 'sand') Snd.play('sand'); else Snd.play('great');
+    Snd.play('thud');
+    if (newLie === 'sand') { Snd.play('sand'); burstParticles(landPt.x, landPt.y, 10, ['#dcb567', '#c99f4d'], 0.5); }
+    else { Snd.play('great'); burstParticles(landPt.x, landPt.y, 8, ['#4fae5c', '#8fe39c'], 0.45); }
     ballY = newY; ballX = newX; lie = newLie;
   }
   aimOffsetDeg = 0;
@@ -712,11 +766,29 @@ muteBtn.addEventListener('click', () => {
 
 // ---------- 🔄 업데이트 ----------
 const AIM_SPEED = 26; // 초당 각도 변화
+function updateCamera(dt) {
+  const h = COURSE[holeIndex];
+  let focusY = ballY;
+  if (phase === 'flying' && flight) {
+    const t = clamp(flight.elapsed / flight.duration, 0, 1);
+    focusY = flight.startY + flight.forward * easeOutQuad(t);
+  }
+  const targetY0 = Math.max(0, focusY - CAM_LOOKBEHIND);
+  const targetY1 = h.length + CAM_LOOKAHEAD;
+  const k = Math.min(1, dt * CAM_SPEED);
+  camY0 += (targetY0 - camY0) * k;
+  camY1 += (targetY1 - camY1) * k;
+}
 function update(dt) {
+  waveT += dt * 2;
   if (bannerT > 0) bannerT -= dt;
   for (const p of popups) p.life -= dt;
   popups = popups.filter(p => p.life > 0);
+  for (const p of particles) { p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 220 * dt; p.vx *= 0.98; }
+  particles = particles.filter(p => p.life > 0);
+  if (shakeTime > 0) { shakeTime -= dt; if (shakeTime <= 0) shakeMag = 0; }
   if (state !== 'play') return;
+  updateCamera(dt);
 
   if (phase === 'idle' && aimHeld) {
     aimOffsetDeg = clamp(aimOffsetDeg + (aimHeld === 'left' ? -1 : 1) * AIM_SPEED * dt, -30, 30);
@@ -750,14 +822,15 @@ function currentProjector() {
       map: (y, x) => ({ x: CENTER_X + (x - h.holeX) * scale, y: midY - (y - h.length) * scale }),
     };
   }
-  // 코스 전체 보기: 폭 계산에 쓰는 안전한 축척은 그대로 두고(넘치지 않게),
-  // 홀에 가까워질수록(t→1) 좌우 폭만 좁혀서 "저 멀리 보이는 그린" 같은 원근감을 줘요.
-  // 세로(거리) 방향은 눈금이 일정하게 보이도록 그대로 선형으로 둬요.
-  const scale = clamp(Math.min((MAP_BOTTOM - MAP_TOP) / h.length, (W * 0.44) / MAP_HALF_WIDTH_M), 0.5, 6);
-  const widthScaleAt = y => lerp(1, MIN_WIDTH_SCALE, clamp(y / h.length, 0, 1));
+  // 코스 보기: 카메라 창(camY0~camY1)이 공을 따라 서서히 좁혀지면서 홀에 다가가는
+  // 느낌을 줘요. 폭 계산에 쓰는 축척은 넘치지 않게 안전한 값으로 제한하고,
+  // 창 안에서 멀어질수록(t→1) 좌우 폭만 좁혀서 원근감을 더해요.
+  const windowSpan = Math.max(20, camY1 - camY0);
+  const scale = clamp(Math.min((MAP_BOTTOM - MAP_TOP) / windowSpan, (W * 0.44) / MAP_HALF_WIDTH_M), 0.5, 14);
+  const widthScaleAt = y => lerp(1, MIN_WIDTH_SCALE, clamp((y - camY0) / windowSpan, 0, 1));
   return {
-    mode: 'course', scale, widthScaleAt, yStart: 0, yEnd: h.length,
-    map: (y, x) => ({ x: CENTER_X + x * scale * widthScaleAt(y), y: MAP_BOTTOM - y * scale }),
+    mode: 'course', scale, widthScaleAt, yStart: camY0, yEnd: camY1,
+    map: (y, x) => ({ x: CENTER_X + x * scale * widthScaleAt(y), y: MAP_BOTTOM - (y - camY0) * scale }),
   };
 }
 
@@ -778,11 +851,16 @@ function drawCourse() {
     const sky = ctx.createLinearGradient(0, 0, 0, MAP_TOP);
     sky.addColorStop(0, '#bdeeff'); sky.addColorStop(1, '#eaffee');
     ctx.fillStyle = sky; ctx.fillRect(0, 0, W, MAP_TOP);
+    ctx.beginPath(); ctx.arc(W * 0.78, MAP_TOP * 0.35, 26, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,250,210,0.8)'; ctx.fill();
     ctx.fillStyle = '#0f3d1c'; ctx.fillRect(0, MAP_TOP - 14, W, H - MAP_TOP + 14);
-    ctx.fillStyle = '#164a24';
     for (let i = 0; i < 14; i++) {
       const tx = (i + 0.5) * (W / 14);
-      ctx.beginPath(); ctx.arc(tx, MAP_TOP - 8, 12 + (i % 3) * 3, 0, Math.PI * 2); ctx.fill();
+      const r = 12 + (i % 3) * 3;
+      ctx.fillStyle = '#123f1f';
+      ctx.beginPath(); ctx.arc(tx, MAP_TOP - 8, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#1f5c30';
+      ctx.beginPath(); ctx.arc(tx - r * 0.3, MAP_TOP - 8 - r * 0.3, r * 0.55, 0, Math.PI * 2); ctx.fill();
     }
   } else {
     ctx.fillStyle = '#0f3d1c'; ctx.fillRect(0, 0, W, H);
@@ -805,31 +883,78 @@ function drawCourse() {
   ctx.fill();
   // 페어웨이
   ctx.fillStyle = '#4fae5c';
-  polyFromPts(edgePoly(y => fairwayHalfWidthAt(h, y)));
+  const fairwayPoly = edgePoly(y => fairwayHalfWidthAt(h, y));
+  polyFromPts(fairwayPoly);
   ctx.fill();
+  // 잔디 줄무늬 (진짜 골프장처럼 깎은 방향이 번갈아 보이게)
+  ctx.save();
+  polyFromPts(fairwayPoly);
+  ctx.clip();
+  const stripeStep = 16;
+  const stripeFrom = Math.floor(proj.yStart / stripeStep) * stripeStep;
+  for (let y = stripeFrom, band = Math.round(stripeFrom / stripeStep); y < proj.yEnd + stripeStep; y += stripeStep, band++) {
+    if (band % 2 !== 0) continue;
+    const sy0 = map(y, 0).y, sy1 = map(y + stripeStep, 0).y;
+    ctx.fillStyle = 'rgba(255,255,255,0.07)';
+    ctx.fillRect(0, Math.min(sy0, sy1), W, Math.abs(sy0 - sy1) + 1);
+  }
+  ctx.restore();
   // 그린 (가로 폭만 원근감으로 좁아지니 타원으로 그려요)
   const holeMapped = map(h.length, h.holeX);
   const holeWs = proj.widthScaleAt(h.length);
   ctx.fillStyle = '#8fe39c';
   ctx.beginPath(); ctx.ellipse(holeMapped.x, holeMapped.y, GREEN_RADIUS * scale * holeWs, GREEN_RADIUS * scale, 0, 0, Math.PI * 2); ctx.fill();
   ctx.strokeStyle = '#5fb86f'; ctx.lineWidth = 1.5; ctx.stroke();
-  // 해저드
+  // 해저드 (물은 그러데이션+잔물결, 벙커는 점박이 모래알 느낌으로)
   for (const hz of h.hazards) {
     if (hz.y1 < proj.yStart || hz.y0 > proj.yEnd) continue;
     const y0 = clamp(hz.y0, proj.yStart, proj.yEnd), y1 = clamp(hz.y1, proj.yStart, proj.yEnd);
     const pts = [map(y0, hz.xMin), map(y1, hz.xMin), map(y1, hz.xMax), map(y0, hz.xMax)];
-    ctx.fillStyle = hz.type === 'water' ? '#2c8fd6' : '#e3c477';
+    ctx.save();
     polyFromPts(pts);
-    ctx.fill();
+    ctx.clip();
+    const top = Math.min(pts[0].y, pts[1].y, pts[2].y, pts[3].y), bot = Math.max(pts[0].y, pts[1].y, pts[2].y, pts[3].y);
+    const left = Math.min(pts[0].x, pts[1].x, pts[2].x, pts[3].x), right = Math.max(pts[0].x, pts[1].x, pts[2].x, pts[3].x);
+    if (hz.type === 'water') {
+      const grad = ctx.createLinearGradient(0, top, 0, bot);
+      grad.addColorStop(0, '#5fc3f0'); grad.addColorStop(1, '#1f6fae');
+      ctx.fillStyle = grad; ctx.fillRect(left, top, right - left, bot - top);
+      ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 1.5;
+      const waveGap = 10;
+      for (let wy = top + 6; wy < bot; wy += waveGap) {
+        ctx.beginPath();
+        for (let wx = left; wx <= right; wx += 6) {
+          const yy = wy + Math.sin((wx + wy) * 0.15 + waveT) * 2.2;
+          wx === left ? ctx.moveTo(wx, yy) : ctx.lineTo(wx, yy);
+        }
+        ctx.stroke();
+      }
+    } else {
+      const grad = ctx.createLinearGradient(0, top, 0, bot);
+      grad.addColorStop(0, '#f0d99a'); grad.addColorStop(1, '#dcb567');
+      ctx.fillStyle = grad; ctx.fillRect(left, top, right - left, bot - top);
+      if (!hz._dots) {
+        hz._dots = [];
+        for (let i = 0; i < 60; i++) hz._dots.push({ u: Math.random(), v: Math.random(), r: 0.6 + Math.random() * 1 });
+      }
+      ctx.fillStyle = 'rgba(150,110,50,0.35)';
+      for (const d of hz._dots) {
+        ctx.beginPath(); ctx.arc(left + d.u * (right - left), top + d.v * (bot - top), d.r, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    ctx.restore();
   }
-  // 거리 눈금 (야디지북처럼 남은 거리를 미리 보여줘요)
+  // 거리 눈금 (야디지북처럼 남은 거리를 보여줘요 — 카메라가 좁혀질수록 더 촘촘하게)
   if (proj.mode === 'course') {
-    const step = h.length <= 150 ? 25 : (h.length <= 350 ? 50 : 100);
+    const span = proj.yEnd - proj.yStart;
+    const step = span <= 40 ? 10 : (span <= 90 ? 20 : (span <= 200 ? 50 : 100));
+    const yFrom = Math.max(step, Math.ceil(proj.yStart / step) * step);
+    const yTo = Math.min(h.length, proj.yEnd);
     ctx.save();
     ctx.setLineDash([4, 6]);
     ctx.strokeStyle = '#ffffff55'; ctx.lineWidth = 1;
     ctx.fillStyle = '#eaffee'; ctx.font = '11px Jua, sans-serif'; ctx.textAlign = 'right';
-    for (let y = step; y < h.length; y += step) {
+    for (let y = yFrom; y < yTo; y += step) {
       const cx = centerlineX(h, y), halfW = fairwayHalfWidthAt(h, y) + ROUGH_BUFFER;
       const pL = map(y, cx - halfW - 4), pR = map(y, cx + halfW + 4);
       ctx.beginPath(); ctx.moveTo(pL.x, pL.y); ctx.lineTo(pR.x, pR.y); ctx.stroke();
@@ -854,18 +979,35 @@ function drawCourse() {
     ctx.stroke();
     ctx.restore();
   }
-  // 깃발 (원근감에 맞춰 멀리 있는 홀에서는 살짝 작게 그려요)
+  // 깃발 (원근감에 맞춰 멀리 있는 홀에서는 살짝 작게, 바람 방향으로 펄럭이게 그려요)
   const poleH = clamp(22 * holeWs, 11, 22), flagW = clamp(13 * holeWs, 6.5, 13), cupR = clamp(4 * holeWs, 2, 4);
+  const flutter = Math.sin(waveT * 3) * 2.5 * (wind.strength > 0 ? 1 : 0.3);
+  const windLean = wind.strength > 0 ? wind.dir * clamp(wind.strength * 1.2, 0, 4) : 0;
+  ctx.fillStyle = '#1a1a1a';
+  ctx.beginPath(); ctx.ellipse(holeMapped.x, holeMapped.y, cupR, cupR * 0.5, 0, 0, Math.PI * 2); ctx.fill();
   ctx.strokeStyle = '#e8e8e8'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(holeMapped.x, holeMapped.y); ctx.lineTo(holeMapped.x, holeMapped.y - poleH); ctx.stroke();
   ctx.fillStyle = '#ff4d4d';
   ctx.beginPath();
   ctx.moveTo(holeMapped.x, holeMapped.y - poleH);
-  ctx.lineTo(holeMapped.x + flagW, holeMapped.y - poleH + poleH * 0.18);
-  ctx.lineTo(holeMapped.x, holeMapped.y - poleH + poleH * 0.36);
+  ctx.quadraticCurveTo(holeMapped.x + flagW * 0.7 + windLean, holeMapped.y - poleH + poleH * 0.1 + flutter * 0.4,
+    holeMapped.x + flagW + windLean, holeMapped.y - poleH + poleH * 0.18 + flutter);
+  ctx.quadraticCurveTo(holeMapped.x + flagW * 0.7 + windLean, holeMapped.y - poleH + poleH * 0.27 + flutter * 0.4,
+    holeMapped.x, holeMapped.y - poleH + poleH * 0.36);
   ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#1a1a1a';
-  ctx.beginPath(); ctx.ellipse(holeMapped.x, holeMapped.y, cupR, cupR, 0, 0, Math.PI * 2); ctx.fill();
+}
+
+// 공을 살짝 입체감 있게(그러데이션+딤플) 그려요
+function drawBallSphere(x, y, r) {
+  const grad = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.15, x, y, r * 1.15);
+  grad.addColorStop(0, '#ffffff'); grad.addColorStop(0.7, '#f2f2f2'); grad.addColorStop(1, '#c9c9c9');
+  ctx.fillStyle = grad; ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = Math.max(0.6, r * 0.14);
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  if (r > 3) {
+    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+    const dimples = [[-0.3, -0.1], [0.15, -0.3], [0.3, 0.2], [-0.1, 0.35]];
+    for (const [dx, dy] of dimples) { ctx.beginPath(); ctx.arc(x + dx * r, y + dy * r, r * 0.14, 0, Math.PI * 2); ctx.fill(); }
+  }
 }
 
 function drawBall() {
@@ -880,18 +1022,28 @@ function drawBall() {
     const ws = clamp(proj.widthScaleAt(worldY), 0.5, 1);
     const r = clamp(5 * ws, 2.5, 5);
     const hop = Math.sin(t * Math.PI) * 10 * ws;
+    // 날아가는 궤적을 살짝 남겨서 스피드감을 줘요
+    ballTrail.push({ x: pt.x, y: pt.y - hop, life: 1 });
+    if (ballTrail.length > 9) ballTrail.shift();
+    for (let i = 0; i < ballTrail.length - 1; i++) {
+      const a = ballTrail[i], b = ballTrail[i + 1], f = i / ballTrail.length;
+      ctx.strokeStyle = `rgba(255,255,255,${0.22 * f})`;
+      ctx.lineWidth = clamp(r * 0.7 * f, 0.5, 4);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
     // 그림자(땅에 붙어있는 위치)와 공(살짝 위로 뜬 위치)을 따로 그려서 날아가는 느낌을 줘요
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.beginPath(); ctx.ellipse(pt.x, pt.y, r, r * 0.48, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#0003'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(pt.x, pt.y - hop, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    drawBallSphere(pt.x, pt.y - hop, r);
     return;
   }
+  if (ballTrail.length) ballTrail = [];
   pt = proj.map(ballY, ballX);
   const ws = clamp(proj.widthScaleAt(ballY), 0.5, 1);
   const r = clamp(6 * ws, 3, 6);
-  ctx.fillStyle = '#fff'; ctx.strokeStyle = '#0003'; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.beginPath(); ctx.ellipse(pt.x, pt.y + r * 0.15, r * 0.9, r * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+  drawBallSphere(pt.x, pt.y, r);
   ctx.strokeStyle = '#ffd23faa'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.arc(pt.x, pt.y, r * 1.5, 0, Math.PI * 2); ctx.stroke();
 }
@@ -899,8 +1051,19 @@ function drawBall() {
 function draw() {
   ctx.clearRect(0, 0, W, H);
   if (state === 'menu') { ctx.fillStyle = '#0f3d1c'; ctx.fillRect(0, 0, W, H); return; }
+  ctx.save();
+  if (shakeTime > 0) {
+    const m = shakeMag * (shakeTime / 0.2);
+    ctx.translate((Math.random() - 0.5) * m, (Math.random() - 0.5) * m);
+  }
   drawCourse();
   drawBall();
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
 
   if (bannerT > 0) {
     ctx.globalAlpha = Math.min(1, bannerT);
@@ -916,6 +1079,7 @@ function draw() {
     ctx.globalAlpha = 1;
     py -= 30;
   }
+  ctx.restore();
 }
 
 // ---------- 🔁 게임 루프 ----------
