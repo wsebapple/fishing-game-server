@@ -10,7 +10,7 @@ const STARTING_POINTS = 30; // 처음 등록할 때부터 즐거운 게임을 �
 // 완벽한 부정 방지는 아니지만(진짜 정답을 맞혔는지까지는 확인 안 해요), 남용 규모를 작게 묶어둬요.
 const EARN_CONFIG = {
   'hanja-game': { pointsPerCorrect: 1, maxCorrectPerRound: 30, maxPointsPerDay: 50 },
-  'math-game': { pointsPerCorrect: 1, maxCorrectPerRound: 30, maxPointsPerDay: 50 },
+  'math-game': { pointsPerCorrect: 1 / 5, maxCorrectPerRound: 30, maxPointsPerDay: 50 }, // 정답 5개당 1점
 };
 
 // 이름은 방 코드와 달리 대문자로 바꾸지 않아요(사람 이름의 대소문자를 그대로 존중) — 그래서 rooms.js의
@@ -187,7 +187,8 @@ function createPoints(file = path.join(__dirname, '..', 'data', 'points.json'), 
         throw error;
       }
       const cappedCorrect = Math.min(Math.max(0, Math.floor(correct) || 0), config.maxCorrectPerRound);
-      const rawPoints = cappedCorrect * config.pointsPerCorrect;
+      // pointsPerCorrect가 1보다 작은 게임(예: 정답 5개당 1점 = 0.2)도 있어서, 소수점 포인트가 쌓이지 않게 내림해요.
+      const rawPoints = Math.floor(cappedCorrect * config.pointsPerCorrect);
       const today = new Date(now).toISOString().slice(0, 10);
       const todaysEntry = entry.dailyEarn && entry.dailyEarn[gameId];
       const earnedToday = todaysEntry && todaysEntry.date === today ? todaysEntry.amount : 0;
