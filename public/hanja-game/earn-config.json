@@ -1,0 +1,6 @@
+{
+  "unit": "정답 개수",
+  "pointsPerUnit": 1,
+  "maxUnitsPerRound": 30,
+  "maxPointsPerDay": 50
+}

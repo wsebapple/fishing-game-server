@@ -427,7 +427,7 @@ async function reportEarnedPoints() {
     const res = await fetch('/api/points/earn', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-      body: JSON.stringify({ gameId: 'hanja-game', correct: totalCorrect }),
+      body: JSON.stringify({ gameId: 'hanja-game', units: totalCorrect }),
     });
     const data = await res.json();
     if (!res.ok) { earnEl.textContent = data.error || '포인트를 적립하지 못했어요.'; return; }

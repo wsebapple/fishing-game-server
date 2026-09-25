@@ -3,11 +3,25 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { createPoints, STARTING_POINTS, EARN_CONFIG } = require('../server/points');
+const { createPoints, STARTING_POINTS, DEFAULT_EARN_POLICY } = require('../server/points');
 
 async function tmpFile() {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'fishing-points-'));
   return { directory, file: path.join(directory, 'points.json') };
+}
+
+// earn()은 학습게임 폴더 안 earn-config.json을 직접 읽으니, 가짜 게임 폴더를 담을 임시 "public" 디렉터리도 같이 줘요
+async function tmpFileWithGames() {
+  const { directory, file } = await tmpFile();
+  const gamesDir = path.join(directory, 'public');
+  await fs.mkdir(gamesDir, { recursive: true });
+  return { directory, file, gamesDir };
+}
+
+async function writeEarnConfig(gamesDir, gameId, config) {
+  const gameDir = path.join(gamesDir, gameId);
+  await fs.mkdir(gameDir, { recursive: true });
+  await fs.writeFile(path.join(gameDir, 'earn-config.json'), JSON.stringify(config), 'utf8');
 }
 
 test('a new name registers with the starting points, and the same name+PIN logs back in with the same points', async () => {
@@ -123,47 +137,90 @@ test('listAll reports every registered name with their current points', async ()
   }
 });
 
-test('earn awards points per correct answer, capped per round, and rejects an unknown game or a logged-out name', async () => {
-  const { directory, file } = await tmpFile();
-  const { pointsPerCorrect, maxCorrectPerRound } = EARN_CONFIG['hanja-game'];
+test('earn awards points per unit according to that game\'s own earn-config.json, capped per round, and rejects an unregistered game or a logged-out name', async () => {
+  const { directory, file, gamesDir } = await tmpFileWithGames();
+  const policy = { pointsPerUnit: 2, maxUnitsPerRound: 10, maxPointsPerDay: 1000 };
+  await writeEarnConfig(gamesDir, 'quiz-game', policy);
   try {
-    const points = createPoints(file, 'test-secret');
+    const points = createPoints(file, 'test-secret', { gamesDir });
     await points.login('민수', '1234');
 
-    const result = await points.earn('민수', 'hanja-game', 5);
-    assert.equal(result.awarded, 5 * pointsPerCorrect);
-    assert.equal(result.points, STARTING_POINTS + 5 * pointsPerCorrect);
+    const result = await points.earn('민수', 'quiz-game', 5);
+    assert.equal(result.awarded, 5 * policy.pointsPerUnit);
+    assert.equal(result.points, STARTING_POINTS + 5 * policy.pointsPerUnit);
     assert.equal(result.dailyCapped, false);
 
-    // 한 판에 인정하는 정답 개수를 넘겨 보내도 상한만큼만 쳐줘요
-    const overReport = await points.earn('민수', 'hanja-game', maxCorrectPerRound + 1000);
-    assert.equal(overReport.awarded, maxCorrectPerRound * pointsPerCorrect);
+    // 한 판에 인정하는 단위 수(maxUnitsPerRound)를 넘겨 보내도 상한만큼만 쳐줘요
+    const overReport = await points.earn('민수', 'quiz-game', policy.maxUnitsPerRound + 1000);
+    assert.equal(overReport.awarded, policy.maxUnitsPerRound * policy.pointsPerUnit);
 
+    // earn-config.json 자체가 없는 게임 폴더(혹은 아예 없는 폴더)는 학습게임으로 등록 안 된 거예요
     await assert.rejects(points.earn('민수', 'no-such-game', 3), (error) => error.code === 'UNKNOWN_GAME');
-    await assert.rejects(points.earn('없는사람', 'hanja-game', 3), (error) => error.code === 'NOT_FOUND');
+    await assert.rejects(points.earn('없는사람', 'quiz-game', 3), (error) => error.code === 'NOT_FOUND');
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('a game folder with no earn-config.json cannot earn points, even though a fun game folder with the same name exists', async () => {
+  const { directory, file, gamesDir } = await tmpFileWithGames();
+  await fs.mkdir(path.join(gamesDir, 'fishing'), { recursive: true }); // index.html만 있고 earn-config.json은 없는 상황을 흉내내요
+  try {
+    const points = createPoints(file, 'test-secret', { gamesDir });
+    await points.login('철수', '1234');
+    await assert.rejects(points.earn('철수', 'fishing', 5), (error) => error.code === 'UNKNOWN_GAME');
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('a partial earn-config.json only overrides the fields it sets; the rest fall back to DEFAULT_EARN_POLICY', async () => {
+  const { directory, file, gamesDir } = await tmpFileWithGames();
+  await writeEarnConfig(gamesDir, 'partial-game', { pointsPerUnit: 5, maxPointsPerDay: 1000 }); // maxUnitsPerRound만 안 정해요
+  try {
+    const points = createPoints(file, 'test-secret', { gamesDir });
+    await points.login('영희', '1234');
+    const result = await points.earn('영희', 'partial-game', 2);
+    assert.equal(result.awarded, 2 * 5, '지정한 pointsPerUnit(5)은 그대로 쓰여요');
+
+    const overReport = await points.earn('영희', 'partial-game', DEFAULT_EARN_POLICY.maxUnitsPerRound + 100);
+    assert.equal(overReport.awarded, DEFAULT_EARN_POLICY.maxUnitsPerRound * 5, 'maxUnitsPerRound는 기본값으로 채워져요');
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('a game id with path-traversal characters is rejected outright, never read as a file path', async () => {
+  const { directory, file, gamesDir } = await tmpFileWithGames();
+  try {
+    const points = createPoints(file, 'test-secret', { gamesDir });
+    await points.login('보안테스트', '1234');
+    await assert.rejects(points.earn('보안테스트', '../../etc/passwd', 3), (error) => error.code === 'UNKNOWN_GAME');
+    await assert.rejects(points.earn('보안테스트', '..', 3), (error) => error.code === 'UNKNOWN_GAME');
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
   }
 });
 
 test('earn stops handing out points once the daily cap for that game is reached, and resets the next day', async () => {
-  const { directory, file } = await tmpFile();
-  const { pointsPerCorrect, maxCorrectPerRound, maxPointsPerDay } = EARN_CONFIG['hanja-game'];
-  const maxPerRoundPoints = maxCorrectPerRound * pointsPerCorrect;
+  const { directory, file, gamesDir } = await tmpFileWithGames();
+  const policy = { pointsPerUnit: 1, maxUnitsPerRound: 30, maxPointsPerDay: 50 };
+  await writeEarnConfig(gamesDir, 'hanja-game', policy);
+  const maxPerRoundPoints = policy.maxUnitsPerRound * policy.pointsPerUnit;
   const day1 = Date.parse('2026-01-01T00:00:00.000Z');
   const day2 = Date.parse('2026-01-02T00:00:00.000Z');
   try {
-    const points = createPoints(file, 'test-secret');
+    const points = createPoints(file, 'test-secret', { gamesDir });
     await points.login('지호', '1234');
 
     // 한 판 최대치를 여러 판 연달아 보내서 하루 한도(maxPointsPerDay)를 넘겨봐요
     let awardedSoFar = 0, capped = false;
-    for (let round = 0; round < Math.ceil(maxPointsPerDay / maxPerRoundPoints) + 1; round++) {
-      const result = await points.earn('지호', 'hanja-game', maxCorrectPerRound, day1);
+    for (let round = 0; round < Math.ceil(policy.maxPointsPerDay / maxPerRoundPoints) + 1; round++) {
+      const result = await points.earn('지호', 'hanja-game', policy.maxUnitsPerRound, day1);
       awardedSoFar += result.awarded;
       if (result.dailyCapped) capped = true;
     }
-    assert.equal(awardedSoFar, maxPointsPerDay, '아무리 여러 판 해도 하루 한도만큼만 쌓여요');
+    assert.equal(awardedSoFar, policy.maxPointsPerDay, '아무리 여러 판 해도 하루 한도만큼만 쌓여요');
     assert.ok(capped, '한도를 넘기는 시도에서는 dailyCapped가 true예요');
 
     const stillToday = await points.earn('지호', 'hanja-game', 5, day1);

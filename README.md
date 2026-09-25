@@ -8,7 +8,15 @@ Node.js 18 이상에서 `pnpm install` 후 `pnpm start`를 실행하고 `http://
 
 허브 페이지는 "즐거운 게임"·"포인트 쌓기" 두 탭으로 나뉩니다. `GAMES` 배열 각 항목의 `category`가 `'fun'`인 게임(낚시·바다소풍·네모모험·우주선·과일합체·총잡이 대작전·탐사로봇 땅따먹기)은 즐거운 게임 탭에 뜨고, 카드를 누르면 `GET /api/points/costs`로 공개된 입장료만큼 `POST /api/points/spend`가 포인트를 깎은 뒤에만 실제 게임으로 이동합니다. 입장료는 `server/costs.js`가 `data/game-costs.json`에 보관하고, 값이 없으면 코드에 있는 기본값을 씁니다. `category`가 `'learning'`인 게임(한자 맞추기)은 포인트 쌓기 탭에 뜨고 입장료 없이 바로 들어갈 수 있습니다. 이름별 포인트 지급/차감과 게임별 입장료 조정은 `http://localhost:3000/admin/`(`public/admin/index.html`)에서 합니다 — 이 화면과 `POST /api/admin/grant`·`GET/POST /api/admin/costs`·`GET /api/admin/players`는 모두 `ADMIN_KEY` 환경변수와 일치하는 `X-Admin-Key` 헤더가 있어야 동작하며, `ADMIN_KEY`를 설정하지 않으면 관리자 기능 전체가 막힙니다.
 
-학습게임은 `POST /api/points/earn`으로 포인트를 적립합니다. 게임이 스스로 매기는 점수(배율·콤보 등)는 믿지 않고 "정답 개수"만 서버로 보내면, `server/points.js`의 `EARN_CONFIG`(게임별 정답 1개당 포인트, 한 판에 인정하는 최대 정답 수, 하루 적립 한도)에 따라 서버가 실제 지급액을 정합니다. 완벽한 부정 방지는 아니지만(진짜로 정답을 맞혔는지까지는 확인하지 않아요), 한 번에 줄 수 있는 포인트와 하루 총량을 서버가 강제로 제한해 남용 규모를 작게 묶어둡니다. 한자 맞추기(`public/hanja-game/index.html`)가 라운드가 끝날 때 이 방식으로 연동한 첫 사례입니다 — 새 학습게임을 추가할 때는 `EARN_CONFIG`에 게임 항목을 추가하고, 그 게임이 라운드 종료 시점에 허브와 같은 `localStorage` 토큰으로 이 API를 부르게 하면 됩니다.
+학습게임은 `POST /api/points/earn`으로 포인트를 적립합니다. 게임이 스스로 매기는 점수(배율·콤보 등)를 그대로 믿는 대신, "그 게임이 정의한 단위(예: 정답 개수) 몇 개를 달성했는지"만 서버로 보냅니다(`{ gameId, units }`). **그 단위를 포인트로 환산하는 정책은 게임마다 따로 가져갑니다** — 중앙에서 관리하는 표가 아니라, `public/<게임>/earn-config.json` 파일에 그 게임이 직접 적어둡니다:
+
+```json
+{ "unit": "정답 개수", "pointsPerUnit": 1, "maxUnitsPerRound": 30, "maxPointsPerDay": 50 }
+```
+
+전체 시스템(`server/points.js`)은 이 정책을 읽어서 "한 판에 인정하는 단위 수"와 "하루 적립 한도"를 강제로 지키는 것까지만 압니다 — 완벽한 부정 방지는 아니지만(진짜로 그 단위를 달성했는지까지는 확인하지 않아요), 게임 하나가 한 번에·하루에 줄 수 있는 포인트를 항상 작게 묶어둡니다. `earn-config.json`이 아예 없는 게임 폴더는 학습게임으로 등록되지 않은 걸로 보고 적립을 거부하고(`UNKNOWN_GAME`), 파일은 있지만 값이 비어있거나 이상하면 그 항목만 `server/points.js`의 `DEFAULT_EARN_POLICY`로 채웁니다 — 그래서 **새 학습게임은 `earn-config.json`만 있으면(내용이 비어 있어도) 바로 적립이 동작**합니다.
+
+한자 맞추기(`public/hanja-game/`)가 이 방식으로 연동한 첫 사례입니다. 새 학습게임을 추가할 때는: (1) `public/<게임>/earn-config.json`을 만들고, (2) `public/index.html`의 `GAMES`에 `category: 'learning'`으로 등록하고, (3) 그 게임이 라운드 종료 시점에 허브와 같은 `localStorage`(`fishing.points.token`) 토큰으로 `POST /api/points/earn`을 부르게 하면 됩니다 — `server/points.js`나 `server.js`는 손댈 필요가 없습니다.
 
 낚시 게임 브라우저 코드는 `public/fishing/js/`에서 싱글플레이, 멀티플레이, UI, 사운드로 나뉩니다. 게임 상태는 전역 변수 대신 `core.js`가 만드는 `window.Game` 아래(`Game.config`, `Game.state`, `Game.mp` 등)에 모여 있습니다. 물고기 종류·레벨·판정 크기 설정은 서버와 브라우저가 `public/fishing/game-config.json`을 함께 사용하고, 보스 이동·은신, 사나운 보스의 포식, 대왕게 쓰레기 궤적 계산식은 `public/fishing/js/shared/boss-math.js` 한 파일을 서버와 브라우저가 같이 씁니다. 친구 순위표에는 서버가 계산한 멀티플레이 라운드 점수만 기록됩니다. 서버를 여러 인스턴스로 늘리려면 방 상태와 순위 저장소를 공유 저장소로 옮겨야 합니다.
 
