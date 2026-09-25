@@ -94,6 +94,32 @@
   .home { display: inline-block; margin-top: 0.8em; font-size: clamp(12px, 1.8vw, 17px); color: var(--ink); }
   .home.hidden { display: none; }
   #pauseBtn.hidden { display: none; }
+
+  /* 폰을 세로로 들고 있을 때만(가로로 돌리면 사라져요) 가로 모드를 추천하는 안내 */
+  #rotateHint {
+    display: none;
+    position: fixed; inset: 0; z-index: 50;
+    flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    background: rgba(29, 19, 64, 0.94);
+    color: #fff8e6;
+    text-align: center;
+    padding: 24px;
+  }
+  #rotateHint .icon { font-size: 56px; animation: rotateHintSpin 1.6s ease-in-out infinite; }
+  #rotateHint p { margin: 0; font-size: clamp(15px, 4.4vw, 22px); line-height: 1.5; }
+  #rotateHint button {
+    margin-top: 8px; font-family: inherit; font-size: clamp(14px, 3.6vw, 18px);
+    color: var(--ink); background: var(--button); border: 3px solid #fff8e6; border-radius: 8px;
+    padding: 0.3em 1.1em; box-shadow: 0 4px 0 var(--button-dark); cursor: pointer;
+  }
+  #rotateHint.dismissed { display: none !important; }
+  @keyframes rotateHintSpin {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(-90deg); }
+  }
+  @media (orientation: portrait) and (pointer: coarse) {
+    #rotateHint:not(.dismissed) { display: flex; }
+  }
 </style>
 </head>
 <body>
@@ -142,6 +168,12 @@
       <button id="againBtn">처음 화면으로</button>
     </div>
   </div>
+</div>
+
+<div id="rotateHint">
+  <div class="icon" aria-hidden="true">📱</div>
+  <p><strong>가로 모드</strong>로 돌리면 화면이 더 커져서 하기 편해요!<br>기기를 옆으로 돌려주세요.</p>
+  <button id="rotateHintClose">이대로 계속하기</button>
 </div>
 
 <script>
@@ -873,6 +905,10 @@ document.getElementById('resumeBtn').addEventListener('click', resumeGame);
 document.getElementById('menuBtn').addEventListener('click', showMenu);
 // 다른 창으로 가면 자동으로 멈춤
 document.addEventListener('visibilitychange', () => { if (document.hidden) pauseGame(); });
+
+document.getElementById('rotateHintClose').addEventListener('click', () => {
+  document.getElementById('rotateHint').classList.add('dismissed');
+});
 
 const muteBtn = document.getElementById('muteBtn');
 muteBtn.addEventListener('click', () => {
