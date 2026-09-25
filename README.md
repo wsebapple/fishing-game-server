@@ -1,6 +1,6 @@
 # 낚시 게임
 
-Node.js 18 이상에서 `pnpm install` 후 `pnpm start`를 실행하고 `http://localhost:3000`에 접속합니다(`PORT` 환경변수로 포트를 바꿀 수 있어요). 첫 화면(`public/index.html`)은 여러 게임을 고르는 메인 페이지이고, 낚시 게임은 `http://localhost:3000/fishing/`, 바다 소풍 게임은 `http://localhost:3000/sea-picnic/`, 호야의 네모 모험(점핑 게임)은 `http://localhost:3000/nemo-adventure/`, 우주선 뿅뿅대작전(슈팅 게임)은 `http://localhost:3000/spaceship/`, 과일 합체 게임은 `http://localhost:3000/fruit-game/`, 지렁이 땅따먹기(클래식 스네이크)는 `http://localhost:3000/worm-game/`에 있습니다. 새 게임은 `public/<폴더>/`에 넣고 메인 페이지의 `GAMES` 목록에 한 줄 추가하면 됩니다. 테스트는 `pnpm test`로 실행합니다.
+Node.js 18 이상에서 `pnpm install` 후 `pnpm start`를 실행하고 `http://localhost:3000`에 접속합니다(`PORT` 환경변수로 포트를 바꿀 수 있어요). 첫 화면(`public/index.html`)은 여러 게임을 고르는 메인 페이지이고, 낚시 게임은 `http://localhost:3000/fishing/`, 바다 소풍 게임은 `http://localhost:3000/sea-picnic/`, 호야의 네모 모험(점핑 게임)은 `http://localhost:3000/nemo-adventure/`, 우주선 뿅뿅대작전(슈팅 게임)은 `http://localhost:3000/spaceship/`, 과일 합체 게임은 `http://localhost:3000/fruit-game/`, 탐사로봇 땅따먹기(볼피드류 영역 차지하기)는 `http://localhost:3000/land-grab/`에 있습니다. 새 게임은 `public/<폴더>/`에 넣고 메인 페이지의 `GAMES` 목록에 한 줄 추가하면 됩니다. 테스트는 `pnpm test`로 실행합니다.
 
 `server.js`는 HTTP/Socket.IO 시작점입니다. `server/rooms.js`가 방과 라운드를 관리하고, `server/fish.js`가 물고기 위치와 포획 판정을 계산하며, `server/socket.js`가 클라이언트 이벤트를 검증합니다. 순위 기록은 `server/leaderboard.js`가 `data/leaderboard.json`에 보관합니다. 이 파일은 Git에서 제외됩니다.
 
