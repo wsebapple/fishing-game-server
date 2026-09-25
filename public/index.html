@@ -79,14 +79,22 @@
 
   footer{ margin-top:36px; text-align:center; font-size:14px; color:var(--ink-soft); }
 
+  .tabBar{ display:flex; justify-content:center; gap:10px; margin:0 0 24px; }
+  .tabBtn{
+    font:inherit; font-size:16px; color:var(--ink-soft); background:var(--card);
+    border:2px solid var(--card-edge); border-radius:999px; padding:8px 20px; cursor:pointer;
+  }
+  .tabBtn.active{ color:#fff; background:var(--accent); border-color:var(--accent-dark); }
+
   .pointsBar{
     display:flex; align-items:center; justify-content:center; gap:10px;
     margin:0 0 20px; font-size:16px; color:var(--ink-soft);
   }
   .pointsBar .amount{ font-size:18px; color:var(--ink); font-weight:bold; }
-  .pointsBar button{
+  .pointsBar button, .pointsBar a{
     font:inherit; font-size:13px; color:var(--ink-soft); background:none;
     border:1px solid var(--card-edge); border-radius:999px; padding:4px 12px; cursor:pointer;
+    text-decoration:none;
   }
 
   .modalOverlay{
@@ -129,7 +137,13 @@
 
   <div class="pointsBar" id="pointsBar" hidden>
     <span><span id="pointsName"></span>님, 포인트 <span class="amount" id="pointsAmount"></span>점</span>
+    <a href="/admin/" id="adminLinkBtn" hidden>관리자 페이지</a>
     <button type="button" id="switchNameBtn">다른 이름으로</button>
+  </div>
+
+  <div class="tabBar" id="tabBar">
+    <button type="button" class="tabBtn" data-tab="fun">즐거운 게임</button>
+    <button type="button" class="tabBtn" data-tab="learning">포인트 쌓기</button>
   </div>
 
   <ul class="games" id="gameList"></ul>
@@ -207,6 +221,8 @@ const GAMES = [
     href: '/fruit-game/',
   },
   {
+    id: 'gunner',
+    category: 'fun',
     title: '총잡이 대작전',
     art: '🔫👹💥',
     artBg: 'linear-gradient(180deg, #14100a 0%, #3a2c14 55%, #6b4e1c 100%)',
@@ -215,6 +231,8 @@ const GAMES = [
     href: '/gunner/',
   },
   {
+    id: 'land-grab',
+    category: 'fun',
     title: '탐사로봇 땅따먹기',
     art: '🤖🪨✂️',
     artBg: 'linear-gradient(180deg, #142042 0%, #070a16 100%)',
@@ -233,6 +251,7 @@ const GAMES = [
     href: '/hanja-game/',
   },
   {
+    category: 'fun',
     title: '다음 게임',
     art: '🎲',
     artBg: 'linear-gradient(180deg, #e3dcff 0%, #a99bff 100%)',
@@ -242,6 +261,7 @@ const GAMES = [
 ];
 
 let GAME_COSTS = {};
+let activeTab = 'fun';
 
 function el(tag, className, text){
   const node = document.createElement(tag);
@@ -252,7 +272,8 @@ function el(tag, className, text){
 
 function renderGames(){
   const list = document.getElementById('gameList');
-  GAMES.forEach(game => {
+  list.innerHTML = '';
+  GAMES.filter(game => (game.category || 'fun') === activeTab).forEach(game => {
     const item = el('li');
     const card = el(game.href ? 'a' : 'div', 'card' + (game.href ? '' : ' soon'));
     if(game.href) card.href = game.href;
@@ -340,6 +361,9 @@ async function showLiveCount(url, target){
 }
 
 const POINTS_TOKEN_KEY = 'fishing.points.token';
+// 이 이름으로 로그인하면 허브 화면에 관리자 페이지 버튼을 보여줘요. 버튼은 /admin/으로 가는 링크일 뿐이고,
+// 실제 관리자 권한은 그 페이지에서 따로 관리자 코드(ADMIN_KEY)를 넣어야 생겨요 — 이 이름/PIN만으로는 아무 권한도 안 생겨요.
+const ADMIN_NAME = '이수인';
 
 function showLoginOverlay(message){
   document.getElementById('loginError').textContent = message || '';
@@ -351,6 +375,7 @@ function hideLoginOverlay(){
 function showPointsBar(name, amount){
   document.getElementById('pointsName').textContent = name;
   document.getElementById('pointsAmount').textContent = amount;
+  document.getElementById('adminLinkBtn').hidden = name !== ADMIN_NAME;
   document.getElementById('pointsBar').hidden = false;
 }
 
@@ -404,6 +429,16 @@ document.getElementById('switchNameBtn').addEventListener('click', () => {
   document.getElementById('pointsBar').hidden = true;
   document.getElementById('loginForm').reset();
   showLoginOverlay();
+});
+
+document.querySelectorAll('.tabBtn').forEach(btn => {
+  btn.classList.toggle('active', btn.dataset.tab === activeTab);
+  btn.addEventListener('click', () => {
+    if(btn.dataset.tab === activeTab) return;
+    activeTab = btn.dataset.tab;
+    document.querySelectorAll('.tabBtn').forEach(b => b.classList.toggle('active', b === btn));
+    renderGames();
+  });
 });
 
 loadCosts().then(renderGames);
