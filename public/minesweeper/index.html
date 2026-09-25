@@ -127,6 +127,7 @@
   .cell.mine.revealed { background: #d0d0d0; }
   .cell.boom { background: #ff3b30; }
   .cell.wrongflag { background: #d0d0d0; }
+  .cell.pressed { border: 1px solid var(--lo); background: var(--face); }
   .cell[data-n="1"] { color: #0000ff; }
   .cell[data-n="2"] { color: #008000; }
   .cell[data-n="3"] { color: #ff0000; }
@@ -164,7 +165,8 @@
   <div class="status" id="status"></div>
   <div class="help">
     왼쪽 클릭(탭): 칸 열기 · 오른쪽 클릭 또는 길게 누르기: 깃발 꽂기<br>
-    숫자 칸 더블클릭(더블탭): 깃발 수가 맞으면 주변 한번에 열기
+    숫자 칸에서 양쪽 버튼(또는 가운데 버튼)을 누르고 있으면 주변이 눌린 채 보여요 —<br>
+    손을 떼면 깃발 수가 맞을 때만 한번에 열려요 (더블클릭·더블탭도 가능)
   </div>
   <div class="best" id="best"></div>
 
@@ -197,6 +199,25 @@
   var elapsed = 0, timerHandle = null;
   var mouseButtonsDown = new Set();
   var lastTap = null; // { r, c, time }
+  var pressedCells = []; // cells currently shown "sunken" during a chord hold-preview
+
+  function isChordCombo(){
+    return mouseButtonsDown.has(1) || (mouseButtonsDown.has(0) && mouseButtonsDown.has(2));
+  }
+  function clearPressed(){
+    pressedCells.forEach(function(el){ el.classList.remove('pressed'); });
+    pressedCells = [];
+  }
+  function refreshPreview(r, c){
+    clearPressed();
+    if (state === 'won' || state === 'lost' || !isChordCombo()) return;
+    var cell = grid[r][c];
+    if (!cell.revealed || cell.count === 0) return;
+    neighbors(r, c).forEach(function(p){
+      var n = grid[p[0]][p[1]];
+      if (!n.revealed && !n.flagged){ n.el.classList.add('pressed'); pressedCells.push(n.el); }
+    });
+  }
 
   DIFFS.forEach(function(d){
     var b = document.createElement('button');
@@ -491,6 +512,11 @@
     }
   }
 
+  // Reveal/flag/chord on a cell. Touch uses Pointer Events (tap/long-press/double-tap): a
+  // single touch pointer only ever fires pointerdown/pointerup once per gesture. Mouse combo
+  // chording (holding two buttons at once) needs plain mousedown/mouseup instead: Pointer
+  // Events only fire pointerdown on the FIRST button pressed and pointerup on the LAST one
+  // released, so a second button pressed mid-hold never generates its own pointer event.
   function attachCellEvents(el, r, c){
     var pressTimer = null;
     var longPressFired = false;
@@ -499,39 +525,29 @@
     el.addEventListener('contextmenu', function(e){ e.preventDefault(); });
 
     el.addEventListener('pointerdown', function(e){
+      if (e.pointerType === 'mouse') return;
       if (state === 'won' || state === 'lost') return;
-      mouseButtonsDown.add(e.button);
+      e.preventDefault();
       startX = e.clientX; startY = e.clientY;
       longPressFired = false;
-      if (e.pointerType !== 'mouse'){
-        pressTimer = setTimeout(function(){
-          longPressFired = true;
-          toggleFlag(r, c);
-          if (navigator.vibrate) navigator.vibrate(15);
-        }, LONG_PRESS_MS);
-      }
-      if (e.button === 2){
+      pressTimer = setTimeout(function(){
+        longPressFired = true;
         toggleFlag(r, c);
-      } else if (e.button === 0 && !grid[r][c].flagged && !grid[r][c].revealed){
-        setFace('😮');
-      }
-      if (mouseButtonsDown.has(0) && mouseButtonsDown.has(2) && grid[r][c].revealed){
-        chord(r, c);
-      }
+        if (navigator.vibrate) navigator.vibrate(15);
+      }, LONG_PRESS_MS);
     });
 
     el.addEventListener('pointermove', function(e){
+      if (e.pointerType === 'mouse') return;
       if (pressTimer && (Math.abs(e.clientX - startX) > MOVE_CANCEL_PX || Math.abs(e.clientY - startY) > MOVE_CANCEL_PX)){
         clearTimeout(pressTimer); pressTimer = null;
       }
     });
 
-    function finishPress(e){
+    function finishTap(e){
+      if (e.pointerType === 'mouse') return;
       if (pressTimer){ clearTimeout(pressTimer); pressTimer = null; }
-      mouseButtonsDown.delete(e.button);
-      if (state !== 'won' && state !== 'lost') setFace('🙂');
       if (longPressFired){ longPressFired = false; return; }
-      if (e.button === 2) return;
       var cell = grid[r][c];
       if (cell.revealed){
         var now = Date.now();
@@ -545,14 +561,53 @@
         revealCell(r, c);
       }
     }
-
-    el.addEventListener('pointerup', finishPress);
+    el.addEventListener('pointerup', finishTap);
     el.addEventListener('pointercancel', function(e){
+      if (e.pointerType === 'mouse') return;
       if (pressTimer){ clearTimeout(pressTimer); pressTimer = null; }
+    });
+
+    el.addEventListener('mousedown', function(e){
+      if (state === 'won' || state === 'lost') return;
+      var hadLeft = mouseButtonsDown.has(0);
+      mouseButtonsDown.add(e.button);
+      if (e.button === 2 && !hadLeft){
+        toggleFlag(r, c);
+      } else if (e.button === 0 && !grid[r][c].flagged && !grid[r][c].revealed){
+        setFace('😮');
+      }
+      refreshPreview(r, c);
+    });
+
+    el.addEventListener('mouseenter', function(){ refreshPreview(r, c); });
+
+    el.addEventListener('mouseup', function(e){
+      var wasChordCombo = isChordCombo();
       mouseButtonsDown.delete(e.button);
       if (state !== 'won' && state !== 'lost') setFace('🙂');
+      if (wasChordCombo){
+        clearPressed();
+        chord(r, c);
+        return;
+      }
+      if (e.button === 2) return;
+      var cell = grid[r][c];
+      if (cell.revealed){
+        var now = Date.now();
+        if (lastTap && lastTap.r === r && lastTap.c === c && (now - lastTap.time) < DOUBLE_TAP_MS){
+          chord(r, c);
+          lastTap = null;
+        } else {
+          lastTap = { r: r, c: c, time: now };
+        }
+      } else {
+        revealCell(r, c);
+      }
     });
   }
+
+  boardEl.addEventListener('mouseleave', function(){ clearPressed(); });
+  window.addEventListener('mouseup', function(e){ mouseButtonsDown.delete(e.button); });
 
   faceEl.addEventListener('click', newGame);
 
