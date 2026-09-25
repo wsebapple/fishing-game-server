@@ -1,0 +1,889 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>하늘땅 골프 챔피언</title>
+<meta name="description" content="파워 게이지와 정확도를 맞춰 공을 치는 아케이드 골프 게임! 5개 홀을 돌며 최고 기록에 도전해요.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --page: #0b3d1f;
+    --ink: #fff8e8;
+    --button: #ffd23f;
+    --button-dark: #a9761a;
+    --panel: #143c22;
+    --accent: #ff6b3d;
+    --gold: #ffe066;
+    --water: #2c8fd6;
+    --sand: #e3c477;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  html { height: 100%; }
+  body {
+    margin: 0; height: 100%;
+    background: var(--page);
+    font-family: 'Jua', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+    color: var(--ink);
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #wrap {
+    position: relative;
+    width: min(96vw, calc(92dvh * 0.632));
+    aspect-ratio: 0.632 / 1;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 25px 80px #000a;
+    border: 3px solid #0a2915;
+  }
+  @media (pointer: coarse), (max-width: 560px) {
+    #wrap { width: 100vw; height: 100dvh; aspect-ratio: auto; border-radius: 0; border: 0; }
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  #hud {
+    position: absolute; left: 0; right: 0; top: 0;
+    padding: calc(10px + env(safe-area-inset-top, 0px)) 14px 0;
+    display: flex; align-items: flex-start; justify-content: space-between;
+    pointer-events: none; text-shadow: 0 2px 4px #000c;
+  }
+  #hud .holeInfo { font-size: clamp(15px, 3.6vw, 20px); color: var(--gold); }
+  #hud .strokeInfo { font-size: clamp(13px, 3.2vw, 17px); text-align: right; color: #dff5e6; }
+
+  #windBadge {
+    position: absolute; left: 50%; top: calc(8px + env(safe-area-inset-top, 0px));
+    transform: translateX(-50%);
+    background: #0006; border: 2px solid #ffffff44; border-radius: 999px;
+    padding: 2px 12px; font-size: clamp(12px, 3vw, 15px);
+    pointer-events: none; text-shadow: 0 2px 4px #000c; white-space: nowrap;
+  }
+  #distanceBadge {
+    position: absolute; left: 0; right: 0; top: calc(40px + env(safe-area-inset-top, 0px));
+    text-align: center; font-size: clamp(12px, 3vw, 15px); color: #cdeedd;
+    pointer-events: none; text-shadow: 0 2px 4px #000c;
+  }
+
+  .overlay {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(4, 12, 8, 0.72);
+    backdrop-filter: blur(1px);
+  }
+  .overlay.hidden { display: none; }
+  .card {
+    background: var(--panel);
+    border: 4px solid #2f8a4f;
+    border-radius: 14px;
+    padding: 6% 7%;
+    text-align: center;
+    max-width: 88%;
+    max-height: 86%;
+    overflow-y: auto;
+    box-shadow: 8px 8px 0 var(--accent);
+  }
+  .card h1 { margin: 0 0 0.25em; font-size: clamp(20px, 5.6vw, 34px); font-weight: 400; color: #fff; }
+  .card p  { margin: 0 0 0.9em; font-size: clamp(13px, 3vw, 17px); line-height: 1.5; color: #dff2e6; }
+  .card .big { font-size: clamp(24px, 7vw, 38px); color: var(--gold); margin: 0.1em 0 0.3em; }
+  .card .term { font-size: clamp(20px, 5.5vw, 30px); color: #ffb84d; margin: 0.1em 0 0.5em; }
+  .card button {
+    font-family: inherit;
+    font-size: clamp(16px, 3.8vw, 24px);
+    color: #1c2a0c;
+    background: var(--button);
+    border: 4px solid #5c3d0c;
+    border-radius: 8px;
+    padding: 0.25em 1.2em;
+    box-shadow: 0 6px 0 var(--button-dark);
+    cursor: pointer;
+    margin: 4px;
+  }
+  .card button:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--button-dark); }
+  .card button:focus-visible { outline: 4px dashed #fff; outline-offset: 4px; }
+  .card button.ghost { background: #1c2f1e; color: #d8f0dd; box-shadow: 0 6px 0 #0e1c10; }
+
+  .scoreTable { width: 100%; border-collapse: collapse; margin: 0.6em 0; font-size: clamp(12px, 2.8vw, 15px); }
+  .scoreTable th, .scoreTable td { padding: 3px 6px; border-bottom: 1px solid #2f8a4f55; }
+  .scoreTable th { color: #b9e6c4; font-weight: normal; }
+
+  #muteBtn, #pauseBtn {
+    position: absolute; top: calc(8px + env(safe-area-inset-top, 0px)); pointer-events: auto;
+    font-size: clamp(16px, 4vw, 22px);
+    background: rgba(255,255,255,0.12);
+    border: 2px solid #ffffff55; border-radius: 8px;
+    padding: 0.15em 0.45em; cursor: pointer; color: #fff; z-index: 3;
+  }
+  #muteBtn { right: 1.5%; }
+  #pauseBtn { left: 1.5%; }
+  #pauseBtn.hidden { display: none; }
+
+  .home { display: inline-block; margin-top: 0.7em; font-size: clamp(12px, 3vw, 16px); color: #a7d6b3; }
+  .home.hidden { display: none; }
+
+  #controls {
+    position: absolute; left: 0; right: 0; bottom: calc(3% + env(safe-area-inset-bottom, 0px));
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    pointer-events: none;
+  }
+  #controls.hidden { display: none; }
+  #aimRow { display: flex; align-items: center; gap: 14px; pointer-events: auto; }
+  #aimRow button {
+    width: 52px; height: 52px; border-radius: 50%;
+    font-size: 22px; color: #1c2a0c;
+    background: rgba(255, 210, 63, 0.9);
+    border: 3px solid #5c3d0c;
+    display: flex; align-items: center; justify-content: center; padding: 0;
+  }
+  #aimRow button:active { background: #fff; }
+  #aimDegText {
+    min-width: 70px; text-align: center; font-size: 17px;
+    background: #0006; border-radius: 8px; padding: 4px 8px; text-shadow: 0 2px 4px #000c;
+  }
+  #gaugeWrap { width: min(84%, 340px); pointer-events: none; }
+  #gaugeWrap.hidden { display: none; }
+  .gaugeLabel { text-align: center; font-size: 14px; margin-bottom: 2px; text-shadow: 0 2px 4px #000c; }
+  #powerBar, #accuracyBar {
+    position: relative; height: 22px; border-radius: 999px; border: 2px solid #fff8;
+    background: #0007; overflow: hidden; margin-bottom: 6px;
+  }
+  #powerBar { background: linear-gradient(90deg, #4be36a, #ffd23f 65%, #ff5b3d 92%); }
+  #accuracyBar.hidden { display: none; }
+  #accZone {
+    position: absolute; top: 0; bottom: 0; left: 40%; width: 20%;
+    background: rgba(255,255,255,0.45); border-left: 2px solid #fff; border-right: 2px solid #fff;
+  }
+  #powerMarker, #accMarker {
+    position: absolute; top: -4px; bottom: -4px; width: 4px; left: 0%;
+    background: #fff; box-shadow: 0 0 6px #000c;
+  }
+  #shotBtn {
+    pointer-events: auto;
+    font-family: inherit; font-size: clamp(18px, 4.4vw, 26px);
+    color: #fff8e8; background: var(--accent);
+    border: 4px solid #7c2d10; border-radius: 999px;
+    padding: 0.35em 1.4em; box-shadow: 0 6px 0 #7c2d10; cursor: pointer;
+  }
+  #shotBtn:active { transform: translateY(4px); box-shadow: 0 2px 0 #7c2d10; }
+  #shotBtn.hidden { display: none; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+
+  <div id="hud">
+    <div class="holeInfo" id="holeInfoText">1번 홀 · PAR 3</div>
+    <div class="strokeInfo" id="strokeInfoText">스트로크 0<br>총 0</div>
+  </div>
+  <div id="windBadge">무풍</div>
+  <div id="distanceBadge">남은 거리 0m · 티</div>
+
+  <button id="muteBtn" aria-label="소리 켜기 끄기">🔊</button>
+  <button id="pauseBtn" class="hidden" aria-label="멈추기">⏸️</button>
+
+  <div id="controls">
+    <div id="gaugeWrap" class="hidden">
+      <div class="gaugeLabel" id="gaugeLabel">파워</div>
+      <div id="powerBar"><i id="powerMarker"></i></div>
+      <div id="accuracyBar" class="hidden"><i id="accZone"></i><i id="accMarker"></i></div>
+    </div>
+    <div id="aimRow">
+      <button id="aimLeftBtn" aria-label="왼쪽으로 조준">◀</button>
+      <div id="aimDegText">0°</div>
+      <button id="aimRightBtn" aria-label="오른쪽으로 조준">▶</button>
+    </div>
+    <button id="shotBtn">샷! 🏌️</button>
+  </div>
+
+  <div class="overlay hidden" id="pauseScreen">
+    <div class="card">
+      <h1>잠깐 멈춤 ⏸️</h1>
+      <p>쉬었다가 준비되면 눌러!<br>(키보드 P 나 Esc 로도 할 수 있어)</p>
+      <button id="resumeBtn">계속하기</button>
+      <button id="quitBtn" class="ghost">처음으로</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="startScreen">
+    <div class="card">
+      <h1>⛳ 하늘땅 골프 챔피언</h1>
+      <p>◀▶ 버튼(또는 방향키)으로 조준하고 <b>샷!</b>을 눌러요.<br>
+         첫 번째 누르면 <b>파워 게이지</b>가 움직여요, 다시 누르면 파워가 멈춰요.<br>
+         이어서 <b>정확도 게이지</b>가 나오면 가운데 하얀 칸에서 멈추게 다시 눌러요!<br>
+         바람과 벙커·물웅덩이를 피해 5개 홀을 최소 타수로 돌아봐요.</p>
+      <button id="startBtn">시작하기 ▶</button>
+      <p style="margin-top:0.8em; font-size:0.85em; color:#9fcbaa;">PC에서는 방향키로 조준, 스페이스바로 샷!</p>
+      <a id="homeLink" class="home hidden" href="/">🏠 게임 놀이터로</a>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="holeScreen">
+    <div class="card">
+      <h1 id="holeScreenTitle">홀 완료!</h1>
+      <div class="term" id="holeTermText">파</div>
+      <div class="big" id="holeStrokeText">3타</div>
+      <p id="holeParText">PAR 3</p>
+      <button id="nextHoleBtn">다음 홀 ▶</button>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="roundScreen">
+    <div class="card">
+      <h1>🏆 라운드 완료!</h1>
+      <table class="scoreTable" id="scoreTable"></table>
+      <div class="big" id="roundTotalText">0타</div>
+      <p id="roundBestText"></p>
+      <button id="retryBtn">다시 하기</button>
+      <button id="menuBtn2" class="ghost">처음 화면</button>
+      <a id="homeLink2" class="home hidden" href="/">🏠 게임 놀이터로</a>
+    </div>
+  </div>
+</div>
+
+<script>
+// =====================================================
+//  ⛳ 하늘땅 골프 챔피언 — 팡야 스타일 파워 게이지 + 정확도 게이지로 치는
+//  간단한 3인칭 시점 아케이드 골프. 공 뒤에서 보는 원근 시점으로 페어웨이가
+//  멀어질수록 좁아 보이게 그려서, 실제 골프 코스를 도는 느낌을 줘요.
+// =====================================================
+const W = 480, H = 760;
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+function fitCanvas() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = Math.round(rect.width * dpr);
+  canvas.height = Math.round(rect.height * dpr);
+  ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+}
+window.addEventListener('resize', fitCanvas);
+
+// ---------- 🔊 사운드 (소리 파일 없이 코드로 직접 연주) ----------
+const Snd = {
+  ctx: null, muted: false,
+  ensure() {
+    if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+  },
+  tone(freq, t, len, type, vol, freqEnd) {
+    if (!this.ctx) return;
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (freqEnd) o.frequency.exponentialRampToValueAtTime(freqEnd, t + len);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + len);
+    o.connect(g).connect(this.ctx.destination);
+    o.start(t); o.stop(t + len);
+  },
+  play(kind) {
+    if (this.muted || !this.ctx) return;
+    const t = this.ctx.currentTime;
+    if (kind === 'tick') { this.tone(520, t, 0.04, 'square', 0.05); return; }
+    if (kind === 'swing') { this.tone(220, t, 0.14, 'square', 0.1, 90); return; }
+    if (kind === 'great') { [660, 880, 1100].forEach((f, i) => this.tone(f, t + i * 0.05, 0.12, 'triangle', 0.14)); return; }
+    if (kind === 'miss') { this.tone(160, t, 0.18, 'sawtooth', 0.1, 90); return; }
+    if (kind === 'splash') { this.tone(300, t, 0.22, 'sine', 0.12, 120); return; }
+    if (kind === 'sand') { this.tone(140, t, 0.14, 'square', 0.09); return; }
+    if (kind === 'holein') { [523, 659, 784, 1046, 1318].forEach((f, i) => this.tone(f, t + i * 0.08, 0.18, 'triangle', 0.16)); return; }
+    if (kind === 'clear') { [392, 494, 587, 784].forEach((f, i) => this.tone(f, t + i * 0.09, 0.16, 'triangle', 0.15)); return; }
+    if (kind === 'gameover') { [392, 349, 294, 220].forEach((f, i) => this.tone(f, t + i * 0.16, 0.24, 'sine', 0.16)); return; }
+  },
+};
+
+// ---------- 🧮 도우미 ----------
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function easeInQuad(t) { return t * t; }
+function easeOutQuad(t) { return 1 - (1 - t) * (1 - t); }
+function degToRad(d) { return d * Math.PI / 180; }
+function interp(points, y) {
+  if (y <= points[0][0]) return points[0][1];
+  for (let i = 0; i < points.length - 1; i++) {
+    const [y0, v0] = points[i], [y1, v1] = points[i + 1];
+    if (y <= y1) { const t = (y - y0) / (y1 - y0); return v0 + (v1 - v0) * t; }
+  }
+  return points[points.length - 1][1];
+}
+
+// ---------- 🏞️ 코스 데이터 ----------
+const ROUGH_BUFFER = 14;
+const GREEN_RADIUS = 15;
+const HOLE_RADIUS = 1.2;
+const COURSE = [
+  {
+    name: '1번', par: 3, length: 120,
+    centerline: [[0, 0], [120, 0]],
+    halfWidth: [[0, 20], [120, 9]],
+    hazards: [{ y0: 82, y1: 106, xMin: -30, xMax: -6, type: 'water' }],
+    windMin: 0, windMax: 2,
+  },
+  {
+    name: '2번', par: 4, length: 340,
+    centerline: [[0, 0], [160, 0], [260, 26], [340, 26]],
+    halfWidth: [[0, 24], [160, 20], [340, 13]],
+    hazards: [{ y0: 250, y1: 312, xMin: 40, xMax: 58, type: 'sand' }],
+    windMin: 1, windMax: 3,
+  },
+  {
+    name: '3번', par: 5, length: 480,
+    centerline: [[0, 0], [140, -24], [260, -24], [420, 10], [480, 10]],
+    halfWidth: [[0, 26], [240, 22], [480, 12]],
+    hazards: [
+      { y0: 258, y1: 302, xMin: -40, xMax: 20, type: 'water' },
+      { y0: 432, y1: 470, xMin: -16, xMax: -2, type: 'sand' },
+    ],
+    windMin: 0, windMax: 3,
+  },
+  {
+    name: '4번 (아일랜드 그린)', par: 3, length: 155,
+    centerline: [[0, 0], [155, 0]],
+    halfWidth: [[0, 16], [155, 7]],
+    hazards: [
+      { y0: 55, y1: 155, xMin: -85, xMax: -31, type: 'water' },
+      { y0: 55, y1: 155, xMin: 31, xMax: 85, type: 'water' },
+    ],
+    windMin: 1, windMax: 3,
+  },
+  {
+    name: '5번', par: 4, length: 300,
+    centerline: [[0, 0], [100, -22], [200, 18], [300, 18]],
+    halfWidth: [[0, 22], [300, 12]],
+    hazards: [
+      { y0: 250, y1: 292, xMin: -8, xMax: 5, type: 'sand' },
+      { y0: 250, y1: 292, xMin: 31, xMax: 44, type: 'sand' },
+    ],
+    windMin: 0, windMax: 2,
+  },
+];
+for (const h of COURSE) h.holeX = interp(h.centerline, h.length);
+
+function centerlineX(h, y) { return interp(h.centerline, clamp(y, 0, h.length)); }
+function fairwayHalfWidthAt(h, y) { return interp(h.halfWidth, clamp(y, 0, h.length)); }
+function hazardAt(h, y, x) {
+  for (const hz of h.hazards) if (y >= hz.y0 && y <= hz.y1 && x >= hz.xMin && x <= hz.xMax) return hz.type;
+  return null;
+}
+function lieAt(h, y, x) {
+  const hz = hazardAt(h, y, x);
+  if (hz) return hz;
+  const dToHole = Math.hypot(h.length - y, h.holeX - x);
+  if (dToHole <= GREEN_RADIUS) return 'green';
+  const cx = centerlineX(h, y), hw = fairwayHalfWidthAt(h, y), dx = Math.abs(x - cx);
+  if (dx <= hw) return 'fairway';
+  if (dx <= hw + ROUGH_BUFFER) return 'rough';
+  return 'trees';
+}
+const LIE_LABEL = { tee: '티', fairway: '페어웨이', rough: '러프', sand: '벙커', water: '물웅덩이', trees: '숲속', green: '그린' };
+
+// ---------- 🎮 게임 상태 ----------
+let state = 'menu'; // menu | play | paused | over(전환용 아님, holeScreen/roundScreen DOM으로 표시)
+let holeIndex = 0, totalStrokes = 0, holeResults = []; // {strokes, par}
+let ballY = 0, ballX = 0, wind = { strength: 0, dir: 1 };
+let lie = 'tee', manualAimDeg = 0, aimHeld = null;
+let phase = 'idle'; // idle | power | accuracy | flying
+let powerLoopT = 0, accLoopT = 0, lockedPower = 0, lockedAccuracy = 0;
+let flight = null;
+let pendingHoleShotStart = null; // {y,x} 벌타로 되돌아갈 위치
+let bannerText = '', bannerT = 0;
+let popups = [], best = null;
+try { const b = localStorage.getItem('golfGameBest'); if (b !== null) best = parseInt(b, 10); } catch (e) {}
+
+const startScreen = document.getElementById('startScreen');
+const pauseScreen = document.getElementById('pauseScreen');
+const holeScreen = document.getElementById('holeScreen');
+const roundScreen = document.getElementById('roundScreen');
+const pauseBtn = document.getElementById('pauseBtn');
+const controls = document.getElementById('controls');
+const gaugeWrap = document.getElementById('gaugeWrap');
+const powerMarker = document.getElementById('powerMarker');
+const accuracyBar = document.getElementById('accuracyBar');
+const accMarker = document.getElementById('accMarker');
+const gaugeLabel = document.getElementById('gaugeLabel');
+const shotBtn = document.getElementById('shotBtn');
+const aimDegText = document.getElementById('aimDegText');
+const holeInfoText = document.getElementById('holeInfoText');
+const strokeInfoText = document.getElementById('strokeInfoText');
+const windBadge = document.getElementById('windBadge');
+const distanceBadge = document.getElementById('distanceBadge');
+
+function randInt(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
+
+function distanceToHole() {
+  const h = COURSE[holeIndex];
+  return Math.hypot(h.length - ballY, h.holeX - ballX);
+}
+
+function clubTierFor(lieName, dist) {
+  if (lieName === 'green') return 'putt';
+  if (dist > 60) return 'drive';
+  if (dist > 15) return 'approach';
+  return 'chip';
+}
+const TIER = {
+  drive:    { power: [90, 260], scale: 1.25, maxAngle: 30 },
+  approach: { power: [25, 95],  scale: 1.35, maxAngle: 22 },
+  chip:     { power: [8, 35],   scale: 1.4,  maxAngle: 16 },
+  putt:     { power: [1, 20],   scale: 1.5,  maxAngle: 6 },
+};
+const LIE_MODIFIER = { sand: { power: 0.7, acc: 0.6 }, rough: { power: 0.88, acc: 0.8 } };
+
+function updateHoleUi() {
+  const h = COURSE[holeIndex];
+  holeInfoText.textContent = h.name + ' 홀 · PAR ' + h.par;
+  strokeInfoText.innerHTML = '스트로크 ' + strokesThisHole + '<br>총 ' + totalStrokes;
+  const dist = Math.round(distanceToHole());
+  distanceBadge.textContent = '남은 거리 ' + dist + 'm · ' + LIE_LABEL[lie];
+  if (wind.strength <= 0) windBadge.textContent = '무풍';
+  else windBadge.textContent = (wind.dir < 0 ? '◀ ' : '') + '바람 ' + wind.strength + (wind.dir > 0 ? ' ▶' : '');
+  aimDegText.textContent = Math.round(manualAimDeg) + '°';
+}
+let strokesThisHole = 0;
+
+function startHole(idx) {
+  holeIndex = idx;
+  const h = COURSE[idx];
+  ballY = 0; ballX = centerlineX(h, 0);
+  strokesThisHole = 0;
+  wind = { strength: randInt(h.windMin, h.windMax), dir: Math.random() < 0.5 ? -1 : 1 };
+  manualAimDeg = 0; aimHeld = null;
+  lie = 'tee';
+  phase = 'idle';
+  gaugeWrap.classList.add('hidden');
+  accuracyBar.classList.add('hidden');
+  updateHoleUi();
+  bannerText = h.name + ' 홀! PAR ' + h.par; bannerT = 1.8;
+}
+
+function beginGame() {
+  state = 'play';
+  holeResults = []; totalStrokes = 0;
+  startScreen.classList.add('hidden');
+  roundScreen.classList.add('hidden');
+  pauseBtn.classList.remove('hidden');
+  controls.classList.remove('hidden');
+  startHole(0);
+  Snd.ensure();
+}
+document.getElementById('startBtn').addEventListener('click', beginGame);
+document.getElementById('retryBtn').addEventListener('click', beginGame);
+document.getElementById('menuBtn2').addEventListener('click', showMenu);
+function showMenu() {
+  state = 'menu';
+  roundScreen.classList.add('hidden');
+  pauseScreen.classList.add('hidden');
+  pauseBtn.classList.add('hidden');
+  controls.classList.add('hidden');
+  startScreen.classList.remove('hidden');
+}
+
+// ---------- 🕹️ 조준 입력 ----------
+function setAimHeld(dir) { if (phase === 'idle') aimHeld = dir; }
+function clearAimHeld(dir) { if (aimHeld === dir) aimHeld = null; }
+const aimLeftBtn = document.getElementById('aimLeftBtn');
+const aimRightBtn = document.getElementById('aimRightBtn');
+aimLeftBtn.addEventListener('pointerdown', e => { e.preventDefault(); Snd.ensure(); setAimHeld('left'); });
+aimRightBtn.addEventListener('pointerdown', e => { e.preventDefault(); Snd.ensure(); setAimHeld('right'); });
+['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => {
+  aimLeftBtn.addEventListener(ev, () => clearAimHeld('left'));
+  aimRightBtn.addEventListener(ev, () => clearAimHeld('right'));
+});
+
+const KEY_AIM = { ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right' };
+window.addEventListener('keydown', e => {
+  const dir = KEY_AIM[e.code];
+  if (dir) { e.preventDefault(); Snd.ensure(); setAimHeld(dir); }
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); if (state === 'menu') beginGame(); else triggerShot(); }
+  if (e.code === 'Escape' || e.code === 'KeyP') { if (!e.repeat) togglePause(); }
+}, true);
+window.addEventListener('keyup', e => { const dir = KEY_AIM[e.code]; if (dir) clearAimHeld(dir); }, true);
+window.addEventListener('blur', () => { aimHeld = null; });
+document.querySelectorAll('.card button').forEach(b => b.addEventListener('click', () => b.blur()));
+
+// ---------- 🏌️ 샷 시퀀스 ----------
+function triggerShot() {
+  if (state !== 'play') return;
+  if (phase === 'idle') {
+    phase = 'power'; powerLoopT = 0;
+    gaugeWrap.classList.remove('hidden');
+    gaugeLabel.textContent = '파워';
+    accuracyBar.classList.add('hidden');
+    Snd.play('tick');
+  } else if (phase === 'power') {
+    lockedPower = powerValueNow();
+    phase = 'accuracy'; accLoopT = 0;
+    gaugeLabel.textContent = '정확도';
+    accuracyBar.classList.remove('hidden');
+    Snd.play('tick');
+  } else if (phase === 'accuracy') {
+    lockedAccuracy = accuracyValueNow();
+    launchShot();
+  }
+}
+shotBtn.addEventListener('pointerdown', e => { e.preventDefault(); Snd.ensure(); triggerShot(); });
+
+function powerValueNow() {
+  const phaseT = (powerLoopT * 1.15) % 2;
+  return phaseT <= 1 ? phaseT * 100 : (2 - phaseT) * 100;
+}
+function accuracyValueNow() {
+  const phaseT = (accLoopT * 2.0) % 2;
+  return phaseT <= 1 ? phaseT * 100 : (2 - phaseT) * 100;
+}
+
+function launchShot() {
+  const h = COURSE[holeIndex];
+  const dist = distanceToHole();
+  const tier = clubTierFor(lie, dist);
+  const cfg = TIER[tier];
+  const mod = LIE_MODIFIER[lie] || { power: 1, acc: 1 };
+  let maxPower = clamp(dist * cfg.scale, cfg.power[0], cfg.power[1]) * mod.power;
+
+  const missOffset = (lockedAccuracy - 50) / 50; // -1..1
+  const absMiss = Math.abs(missOffset) / mod.acc;
+  let quality, powerMult;
+  if (absMiss <= 0.1) { quality = 'PERFECT'; powerMult = 1.0; }
+  else if (absMiss <= 0.3) { quality = 'GOOD'; powerMult = 0.9; }
+  else if (absMiss <= 0.6) { quality = 'OK'; powerMult = 0.75; }
+  else { quality = 'MISS'; powerMult = 0.55; }
+  const missAngleDeg = missOffset * cfg.maxAngle * (quality === 'PERFECT' ? 0 : 1);
+
+  const windAngleDeg = tier === 'putt' ? 0 : wind.dir * wind.strength * (maxPower / 90);
+
+  const travel = (lockedPower / 100) * maxPower * powerMult;
+  const totalAngleDeg = manualAimDeg + missAngleDeg + windAngleDeg;
+  const rad = degToRad(totalAngleDeg);
+  const forward = travel * Math.cos(rad);
+  const lateralDelta = travel * Math.sin(rad);
+
+  strokesThisHole++; totalStrokes++;
+  pendingHoleShotStart = { y: ballY, x: ballX };
+
+  flight = {
+    startY: ballY, startX: ballX, forward, lateralDelta,
+    duration: clamp(0.55 + travel / 220, 0.6, 1.6),
+    elapsed: 0, arcHeight: clamp(travel / 6, 6, 60), quality, tier,
+  };
+  phase = 'flying';
+  gaugeWrap.classList.add('hidden');
+  Snd.play('swing');
+  if (quality === 'PERFECT') addPopup('PERFECT!', '#8be0ff');
+  else if (quality === 'MISS') addPopup(missOffset < 0 ? '훅! 😵' : '슬라이스! 😵', '#ff8a3d');
+  updateHoleUi();
+}
+
+function addPopup(text, color) { popups.push({ text, color, life: 1.1, maxLife: 1.1 }); }
+
+function resolveLanding() {
+  const h = COURSE[holeIndex];
+  let newY = clamp(flight.startY + flight.forward, 0, h.length);
+  let newX = flight.startX + flight.lateralDelta;
+  const dToHole = Math.hypot(h.length - newY, h.holeX - newX);
+  if (dToHole <= HOLE_RADIUS || strokesThisHole >= 8) {
+    ballY = newY; ballX = newX;
+    finishHole();
+    return;
+  }
+  const newLie = lieAt(h, newY, newX);
+  if (newLie === 'water' || newLie === 'trees') {
+    Snd.play(newLie === 'water' ? 'splash' : 'miss');
+    addPopup(newLie === 'water' ? '풍덩! +1벌타' : 'OB! +1벌타', '#ff5b3d');
+    totalStrokes++; strokesThisHole++;
+    ballY = pendingHoleShotStart.y; ballX = pendingHoleShotStart.x;
+    lie = lieAt(h, ballY, ballX);
+  } else {
+    if (newLie === 'sand') Snd.play('sand'); else Snd.play('great');
+    ballY = newY; ballX = newX; lie = newLie;
+  }
+  phase = 'idle'; flight = null;
+  updateHoleUi();
+}
+
+function finishHole() {
+  Snd.play('holein');
+  const h = COURSE[holeIndex];
+  holeResults[holeIndex] = { strokes: strokesThisHole, par: h.par };
+  phase = 'idle'; flight = null;
+  const diff = strokesThisHole - h.par;
+  let term;
+  if (strokesThisHole === 1) term = '홀인원! 🎉';
+  else if (diff <= -3) term = '알바트로스!! 😮';
+  else if (diff === -2) term = '이글! 🦅';
+  else if (diff === -1) term = '버디! 🐦';
+  else if (diff === 0) term = '파 ✅';
+  else if (diff === 1) term = '보기';
+  else if (diff === 2) term = '더블보기';
+  else term = '트리플보기+ 😅';
+  document.getElementById('holeScreenTitle').textContent = h.name + ' 홀 완료!';
+  document.getElementById('holeTermText').textContent = term;
+  document.getElementById('holeStrokeText').textContent = strokesThisHole + '타';
+  document.getElementById('holeParText').textContent = 'PAR ' + h.par;
+  const nextBtn = document.getElementById('nextHoleBtn');
+  nextBtn.textContent = holeIndex < COURSE.length - 1 ? '다음 홀 ▶' : '결과 보기 🏆';
+  holeScreen.classList.remove('hidden');
+}
+document.getElementById('nextHoleBtn').addEventListener('click', () => {
+  holeScreen.classList.add('hidden');
+  if (holeIndex < COURSE.length - 1) startHole(holeIndex + 1);
+  else showRoundResult();
+});
+
+function showRoundResult() {
+  const table = document.getElementById('scoreTable');
+  let totalDiff = 0, totalPar = 0, totalStr = 0;
+  let rows = '<tr><th>홀</th><th>PAR</th><th>타수</th><th>결과</th></tr>';
+  holeResults.forEach((r, i) => {
+    const diff = r.strokes - r.par;
+    totalDiff += diff; totalPar += r.par; totalStr += r.strokes;
+    const diffText = diff === 0 ? 'E' : (diff > 0 ? '+' + diff : String(diff));
+    rows += '<tr><td>' + COURSE[i].name + '</td><td>' + r.par + '</td><td>' + r.strokes + '</td><td>' + diffText + '</td></tr>';
+  });
+  table.innerHTML = rows;
+  const diffText = totalDiff === 0 ? '이븐파' : (totalDiff > 0 ? totalDiff + '오버파' : Math.abs(totalDiff) + '언더파');
+  document.getElementById('roundTotalText').textContent = totalStr + '타 (' + diffText + ')';
+  if (best === null || totalDiff < best) {
+    best = totalDiff;
+    try { localStorage.setItem('golfGameBest', String(best)); } catch (e) {}
+    document.getElementById('roundBestText').textContent = '🏆 새로운 최고 기록!';
+    Snd.play('clear');
+  } else {
+    const bestText = best === 0 ? '이븐파' : (best > 0 ? best + '오버파' : Math.abs(best) + '언더파');
+    document.getElementById('roundBestText').textContent = '최고 기록: ' + bestText;
+    Snd.play('gameover');
+  }
+  pauseBtn.classList.add('hidden');
+  controls.classList.add('hidden');
+  roundScreen.classList.remove('hidden');
+}
+
+if (location.pathname.startsWith('/golf-game')) {
+  document.getElementById('homeLink').classList.remove('hidden');
+  document.getElementById('homeLink2').classList.remove('hidden');
+}
+
+// ---------- ⏸️ 일시정지 ----------
+let stateBeforePause = 'play';
+function pauseGame() {
+  if (state !== 'play') return;
+  stateBeforePause = state;
+  state = 'paused';
+  if (Snd.ctx) Snd.ctx.suspend();
+  pauseScreen.classList.remove('hidden');
+}
+function resumeGame() {
+  if (state !== 'paused') return;
+  state = stateBeforePause;
+  if (Snd.ctx) Snd.ctx.resume();
+  pauseScreen.classList.add('hidden');
+  last = performance.now();
+}
+function togglePause() {
+  if (state === 'paused') resumeGame();
+  else if (state === 'play') pauseGame();
+}
+pauseBtn.addEventListener('click', togglePause);
+document.getElementById('resumeBtn').addEventListener('click', resumeGame);
+document.getElementById('quitBtn').addEventListener('click', () => { pauseScreen.classList.add('hidden'); showMenu(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) pauseGame(); });
+
+const muteBtn = document.getElementById('muteBtn');
+muteBtn.addEventListener('click', () => {
+  Snd.ensure();
+  Snd.muted = !Snd.muted;
+  muteBtn.textContent = Snd.muted ? '🔇' : '🔊';
+});
+
+// ---------- 🔄 업데이트 ----------
+const AIM_SPEED = 26; // 초당 각도 변화
+function update(dt) {
+  if (bannerT > 0) bannerT -= dt;
+  for (const p of popups) p.life -= dt;
+  popups = popups.filter(p => p.life > 0);
+  if (state !== 'play') return;
+
+  if (phase === 'idle' && aimHeld) {
+    manualAimDeg = clamp(manualAimDeg + (aimHeld === 'left' ? -1 : 1) * AIM_SPEED * dt, -35, 35);
+    updateHoleUi();
+  }
+  if (phase === 'power') { powerLoopT += dt; powerMarker.style.left = powerValueNow() + '%'; }
+  if (phase === 'accuracy') { accLoopT += dt; accMarker.style.left = accuracyValueNow() + '%'; }
+  if (phase === 'flying' && flight) {
+    flight.elapsed += dt;
+    if (flight.elapsed >= flight.duration) resolveLanding();
+  }
+}
+
+// ---------- 🖌️ 원근 투영 & 그리기 ----------
+const HORIZON_Y = H * 0.30, GROUND_BOTTOM_Y = H * 0.80, CENTER_X = W / 2, LATERAL_SCALE = 6.6;
+function project(aheadY, worldX, originX, viewRange) {
+  const raw = viewRange > 0 ? aheadY / viewRange : 0;
+  const t = clamp(raw, 0, 1.2);
+  const pT = Math.min(1, t);
+  const scale = lerp(1, 0.09, easeOutQuad(pT)) * (t > 1 ? clamp(1 - (t - 1) * 2, 0.2, 1) : 1);
+  const y = lerp(GROUND_BOTTOM_Y, HORIZON_Y, easeInQuad(pT));
+  const x = CENTER_X + (worldX - originX) * LATERAL_SCALE * scale;
+  return { x, y, scale };
+}
+
+function polyFromEdges(pts) {
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
+}
+
+function drawCourse() {
+  const h = COURSE[holeIndex];
+  const viewRange = Math.max(20, distanceToHole());
+  const steps = 20;
+  // 하늘
+  const sky = ctx.createLinearGradient(0, 0, 0, HORIZON_Y);
+  sky.addColorStop(0, '#bdeeff'); sky.addColorStop(1, '#eaffed');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, HORIZON_Y);
+  // 배경 숲
+  ctx.fillStyle = '#0f3d1c'; ctx.fillRect(0, HORIZON_Y, W, GROUND_BOTTOM_Y - HORIZON_Y + 60);
+
+  function edgePoints(offsetFn) {
+    const left = [], right = [];
+    for (let i = 0; i <= steps; i++) {
+      const ahead = viewRange * i / steps;
+      const y = ballY + ahead;
+      const cx = centerlineX(h, y);
+      const off = offsetFn(y);
+      left.push(project(ahead, cx - off, ballX, viewRange));
+      right.push(project(ahead, cx + off, ballX, viewRange));
+    }
+    return left.concat(right.reverse());
+  }
+  // 러프
+  ctx.fillStyle = '#2f7a3d';
+  polyFromEdges(edgePoints(y => fairwayHalfWidthAt(h, y) + ROUGH_BUFFER));
+  ctx.fill();
+  // 페어웨이
+  ctx.fillStyle = '#4fae5c';
+  polyFromEdges(edgePoints(y => fairwayHalfWidthAt(h, y)));
+  ctx.fill();
+  // 그린 (홀 주변 원형 느낌을 위해 그냥 좁은 스트립 덧칠)
+  ctx.fillStyle = '#6fd47c';
+  const greenPts = [];
+  for (let i = 0; i <= steps; i++) {
+    const ahead = viewRange * i / steps;
+    const y = ballY + ahead;
+    const distHere = Math.hypot(h.length - y, 0);
+    if (distHere > GREEN_RADIUS * 1.6) continue;
+    const off = Math.max(4, GREEN_RADIUS - Math.abs(h.length - y) * 0.2);
+    greenPts.push({ ahead, y, off });
+  }
+  if (greenPts.length > 1) {
+    const l = greenPts.map(p => project(p.ahead, h.holeX - p.off, ballX, viewRange));
+    const r = greenPts.map(p => project(p.ahead, h.holeX + p.off, ballX, viewRange)).reverse();
+    polyFromEdges(l.concat(r));
+    ctx.fill();
+  }
+  // 해저드
+  for (const hz of h.hazards) {
+    if (hz.y1 < ballY || hz.y0 > ballY + viewRange) continue;
+    const y0 = clamp(hz.y0, ballY, ballY + viewRange), y1 = clamp(hz.y1, ballY, ballY + viewRange);
+    const a0 = y0 - ballY, a1 = y1 - ballY;
+    const p1 = project(a0, hz.xMin, ballX, viewRange), p2 = project(a1, hz.xMin, ballX, viewRange);
+    const p3 = project(a1, hz.xMax, ballX, viewRange), p4 = project(a0, hz.xMax, ballX, viewRange);
+    ctx.fillStyle = hz.type === 'water' ? '#2c8fd6' : '#e3c477';
+    polyFromEdges([p1, p2, p3, p4]);
+    ctx.fill();
+  }
+  // 조준선
+  if (phase === 'idle' || phase === 'power' || phase === 'accuracy') {
+    ctx.save();
+    ctx.setLineDash([6, 8]);
+    ctx.strokeStyle = '#fff9'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    const rad = degToRad(manualAimDeg);
+    for (let i = 0; i <= steps; i++) {
+      const ahead = viewRange * i / steps;
+      const px = ballX + ahead * Math.sin(rad);
+      const pt = project(ahead, px, ballX, viewRange);
+      if (i === 0) ctx.moveTo(pt.x, pt.y); else ctx.lineTo(pt.x, pt.y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+  // 깃발
+  const flagAhead = h.length - ballY;
+  const flagP = project(flagAhead, h.holeX, ballX, viewRange);
+  const poleH = clamp(40 * flagP.scale, 6, 40);
+  ctx.strokeStyle = '#e8e8e8'; ctx.lineWidth = clamp(3 * flagP.scale, 1, 3);
+  ctx.beginPath(); ctx.moveTo(flagP.x, flagP.y); ctx.lineTo(flagP.x, flagP.y - poleH); ctx.stroke();
+  ctx.fillStyle = '#ff4d4d';
+  ctx.beginPath();
+  ctx.moveTo(flagP.x, flagP.y - poleH);
+  ctx.lineTo(flagP.x + poleH * 0.55, flagP.y - poleH + poleH * 0.18);
+  ctx.lineTo(flagP.x, flagP.y - poleH + poleH * 0.36);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#1a1a1a';
+  ctx.beginPath(); ctx.ellipse(flagP.x, flagP.y, clamp(6 * flagP.scale, 1.5, 6), clamp(2.4 * flagP.scale, 0.6, 2.4), 0, 0, 7); ctx.fill();
+}
+
+function drawBall() {
+  let px, py, scale, shadowScale;
+  if (phase === 'flying' && flight) {
+    const t = clamp(flight.elapsed / flight.duration, 0, 1);
+    const eased = easeOutQuad(t);
+    const ahead = flight.forward * eased;
+    const worldX = flight.startX + flight.lateralDelta * eased;
+    const viewRange = Math.max(20, Math.hypot(COURSE[holeIndex].length - flight.startY, COURSE[holeIndex].holeX - flight.startX));
+    const proj = project(ahead, worldX, flight.startX, viewRange);
+    const hop = Math.sin(t * Math.PI) * flight.arcHeight * proj.scale;
+    px = proj.x; py = proj.y - hop; scale = proj.scale; shadowScale = proj.scale;
+    // 그림자
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath(); ctx.ellipse(proj.x, proj.y, clamp(6 * shadowScale, 1, 6), clamp(2.4 * shadowScale, 0.5, 2.4), 0, 0, 7); ctx.fill();
+  } else {
+    px = CENTER_X; py = GROUND_BOTTOM_Y; scale = 1;
+  }
+  ctx.fillStyle = '#fff';
+  ctx.strokeStyle = '#0003'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(px, py, clamp(5 * scale, 1.5, 5), 0, 7); ctx.fill(); ctx.stroke();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  if (state === 'menu') { ctx.fillStyle = '#0f3d1c'; ctx.fillRect(0, 0, W, H); return; }
+  drawCourse();
+  drawBall();
+
+  if (bannerT > 0) {
+    ctx.globalAlpha = Math.min(1, bannerT);
+    ctx.fillStyle = '#fff'; ctx.font = '28px Jua, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(bannerText, W / 2, H * 0.4);
+    ctx.globalAlpha = 1;
+  }
+  let py = H * 0.5;
+  for (const p of popups) {
+    ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+    ctx.fillStyle = p.color; ctx.font = '24px Jua, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(p.text, W / 2, py);
+    ctx.globalAlpha = 1;
+    py -= 30;
+  }
+}
+
+// ---------- 🔁 게임 루프 ----------
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+fitCanvas();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

@@ -11,6 +11,7 @@ const DEFAULT_COSTS = {
   'fruit-game': 2,
   gunner: 4,
   'land-grab': 3,
+  'golf-game': 3,
 };
 
 function createCosts(file = path.join(__dirname, '..', 'data', 'game-costs.json')) {
